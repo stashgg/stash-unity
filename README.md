@@ -1,5 +1,9 @@
 # Stash for Unity
 
+<img src="https://i.ibb.co/LYPjvRj/3-D-Yellow.png" width="40%"></img>
+
+![buildtest](https://github.com/fractalwagmi/unity-sdk/actions/workflows/main.yml/badge.svg)
+
 ## About
 
 This package is designed to get your Unity project up and running with Stash web shop in a few easy steps. Package is wrapping Stash API endpoints and is very lightweight with no external dependencies. 
