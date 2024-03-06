@@ -2,7 +2,7 @@
 
 <img src="https://i.ibb.co/LYPjvRj/3-D-Yellow.png" width="40%"></img>
 
-![buildtest](https://github.com/fractalwagmi/unity-sdk/actions/workflows/main.yml/badge.svg)
+![buildtest](https://github.com/stashgg/stash-unity/actions/workflows/main.yml/badge.svg)
 
 ## About
 
