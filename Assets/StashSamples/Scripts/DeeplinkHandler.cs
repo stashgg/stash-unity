@@ -14,7 +14,6 @@ public class DeeplinkHandler : MonoBehaviour
     
     private void Awake()
     {
-        StashClient.Instance.LinkGoogleOrApple("TEST", "TEST", "TEST");
         if (Instance == null)
         {
             Instance = this;                
@@ -34,7 +33,7 @@ public class DeeplinkHandler : MonoBehaviour
         }
     }
  
-    private void onDeepLinkActivated(string url)
+    private async void onDeepLinkActivated(string url)
     {
         //Extract the challenge parameter from the link.
         stashChallenge = url.Split("/link?challenge=")[1];
@@ -42,11 +41,16 @@ public class DeeplinkHandler : MonoBehaviour
         {
             //Work with the code challenge, prompt user for confirmation.
             Debug.Log("Stash: Deep Link Challenge: " + stashChallenge);
-
             
-            //Show Confirm Panel
-            ConfirmPanel.SetActive(true);
-           
+            //Get the Game Center Signature, Salt, Timestamp, TeamPlayerID and GamePlayerID from player prefs.
+            string Signature = PlayerPrefs.GetString("Signature");
+            string Salt = PlayerPrefs.GetString("Salt");
+            string Timestamp = PlayerPrefs.GetString("Timestamp");
+            string TeamPlayerID = PlayerPrefs.GetString("TeamPlayerID");
+            string PublicKeyURL = PlayerPrefs.GetString("PublicKeyURL");
+            
+            //Call LinkAppleGameCenter
+            StashClient.Instance.LinkAppleGameCenter(stashChallenge, "com.Stash.iosdemo", Signature, Salt, PublicKeyURL, TeamPlayerID, Timestamp );
         }
     }
     

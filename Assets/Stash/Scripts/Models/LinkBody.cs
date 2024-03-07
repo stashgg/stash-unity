@@ -3,7 +3,7 @@ using System;
 namespace Stash.Models
 {
     [Serializable]
-    public class RequestBody
+    public class LinkBody
     {
         public string code_challenge;
         public User user;

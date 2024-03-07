@@ -61,6 +61,14 @@ public class AppleGameCenterExampleScript : MonoBehaviour
             Debug.Log($"GameKit TeamPlayerID: {TeamPlayerID} / GamePlayerID: {GamePlayerID}");
             Debug.Log($"GameKit Timestamp: {Timestamp}");
             
+            //Save latest game center data to player prefs
+            PlayerPrefs.SetString("Signature", Signature);
+            PlayerPrefs.SetString("TeamPlayerID", TeamPlayerID);
+            PlayerPrefs.SetString("Salt", Salt);
+            PlayerPrefs.SetString("Timestamp", Timestamp);
+            PlayerPrefs.SetString("GamePlayerID", GamePlayerID);
+            PlayerPrefs.SetString("PublicKeyURL", fetchItemsResponse.PublicKeyUrl);
+            
         }
         else
         {
