@@ -130,8 +130,6 @@ public class StashClient : MonoBehaviour
         {
             try
             {
-                Debug.Log("[STASH] LinkAppleGameCenter successful Response: " + result.Data);
-                // Parse the response data into a LinkResponse object
                 LinkResponse resultResponse = JsonUtility.FromJson<LinkResponse>(result.Data);
                 return resultResponse;
             }
