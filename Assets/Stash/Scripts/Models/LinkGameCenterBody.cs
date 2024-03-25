@@ -6,9 +6,16 @@ namespace Stash.Models
     public class LinkGameCenterBody
     {
         public string codeChallenge;
-        public Player player;
         public Verification verification;
-
+        public User user;
+        
+        [Serializable]
+        public class Verification
+        {
+            public Player player;
+            public Response response;
+        }
+        
         [Serializable]
         public class Player
         {
@@ -17,12 +24,18 @@ namespace Stash.Models
         }
         
         [Serializable]
-        public class Verification
+        public class Response
         {
             public string signature;
             public string salt;
             public string publicKeyUrl;
             public string timestamp;
+        }
+        
+        [Serializable]
+        public class User
+        {
+            public string id;
         }
     }
 }

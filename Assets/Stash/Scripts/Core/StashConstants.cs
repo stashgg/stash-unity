@@ -2,10 +2,11 @@ namespace Stash.Core
 {
     public class StashConstants
     {
-        public const string APIRootURL = "https://api-rest-f57w5ea4ya-uc.a.run.app";
-        public const string TestRootURL = "https://stash.requestcatcher.com";
+        public const string RootUrl = "https://api.stash.gg";
+        public const string RootUrlTest = "https://test-api.stash.gg";
+        
         public const string LinkAccount = "/sdk/link_code/link";
-        public const string LnkGameCenter = "/sdk/link_code/link_game_center";
+        public const string LinkAppleGameCenter = "/sdk/link_code/link_apple_game_center";
+        public const string LinkGooglePlayGames = "/sdk/link_code/link_google_play_games";
     }
-    
 }

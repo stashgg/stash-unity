@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -7,39 +6,17 @@ using Stash.Models;
 
 namespace Stash.Core
 {
-public class StashClient : MonoBehaviour
+public static class StashClient
 {
-    private static StashClient _instance;
-    public static StashClient Instance
-    {
-        get
-        {
-            if (_instance == null)
-            {
-                _instance = FindObjectOfType<StashClient>();
-                if (_instance == null)
-                {
-                    GameObject stashClient = new()
-                    {
-                        name = nameof(StashClient)
-                    };
-                    _instance = stashClient.AddComponent<StashClient>();
-                    DontDestroyOnLoad(stashClient);
-                }
-            }
-            return _instance;
-        }
-    }
-    
     /// <summary>
     /// Links the player's account to Stash account for Apple Account & Google Account.
-    /// Requires a valid JWT identity token issued by Apple or Google.
+    /// Requires a valid JWT token issued by any of the supported providers no older than 1 hour.
     /// </summary>
-    /// <param name="challenge">Stash challenge from the deeplink.</param>
-    /// <param name="internalUserId">Internal user id, will be used to identify the purchases.</param>
-    /// <param name="idToken">Valid idToken (JWT) of the player to be linked.</param>
+    /// <param name="challenge">Stash code challenge from the deeplink.</param>
+    /// <param name="playerId">Player identification, that will be used to identify purchases.</param>
+    /// <param name="idToken">Valid JWT token of the player.</param>
     /// <returns>Returns a confirmation response, or throws StashAPIRequestError if fails.</returns>
-    public async Task<LinkResponse> LinkGoogleOrApple(string challenge, string internalUserId, string idToken)
+    public static async Task<LinkResponse> LinkAccount(string challenge, string playerId, string idToken)
     {
         // Create the authorization header with the access token
         RequestHeader authorizationHeader = new()
@@ -54,12 +31,12 @@ public class StashClient : MonoBehaviour
             code_challenge = challenge,
             user = new LinkBody.User
             {
-                id = internalUserId
+                id = playerId
             }
         };
     
         // Set the URL for the link account endpoint
-        const string requestUrl = StashConstants.APIRootURL + StashConstants.LinkAccount;
+        const string requestUrl = StashConstants.RootUrlTest + StashConstants.LinkAccount;
         // Make a POST request to link the access token
         Response result = await RestClient.Post(requestUrl, JsonUtility.ToJson(requestBody), new List<RequestHeader> { authorizationHeader });
     
@@ -69,7 +46,6 @@ public class StashClient : MonoBehaviour
             try
             {
                 // Parse the response data into a LinkResponse object
-                Debug.Log("[STASH] LinkGoogleOrApple successful Response: " + result.Data);
                 LinkResponse resultResponse = JsonUtility.FromJson<LinkResponse>(result.Data);
                 return resultResponse;
             }
@@ -82,46 +58,53 @@ public class StashClient : MonoBehaviour
         else
         {
             // Throw an error if the API request was not successful
-            throw new StashAPIRequestError(result.StatusCode, result.Data);
+            throw new StashRequestError(result.StatusCode, result.Data);
         }
     }
     
     /// <summary>
     /// Links an Apple Game Center account to the Stash user's account.
-    /// Requires signature generated using fetchItems(forIdentityVerificationSignature:)
+    /// Requires a valid response (signature, salt, timestamp, publicKeyUrl) received from GameKit "fetchItems" no older than 1 hour.
     /// </summary>
-    /// <param name="challenge">The challenge for linking the account.</param>
-    /// <param name="bundleId">The bundle ID of the iOS/macOS app. (CFBundleIdentifier)</param>
-    /// <param name="signature">The verification signature data that GameKit generates.</param>
-    /// <param name="salt">A random string that GameKit uses to compute the hash and randomize it.</param>
+    /// <param name="challenge">Stash code challenge from the deeplink.</param>
+    /// <param name="playerId">Player identification, that will be used to identify purchases.</param>
+    /// <param name="bundleId">The bundle ID of the app (CFBundleIdentifier)</param>
+    /// <param name="teamPlayerID">GameKit identifier for a player of all the games that you distribute using your Apple developer account.</param>
+    /// <param name="signature">The verification signature data that GameKit generates. (Base64 Encoded)</param>
+    /// <param name="salt">A random string that GameKit uses to compute the hash and randomize it. (Base64 Encoded)</param>
     /// <param name="publicKeyUrl">The URL for the public encryption key.</param>
-    /// <param name="teamPlayerID">A unique identifier for a player of all the games that you distribute using your developer account.</param>
     /// <param name="timestamp">The signature’s creation date and time.</param>
     /// <returns>A LinkResponse object.</returns>
-    public async Task<LinkResponse> LinkAppleGameCenter(string challenge, string bundleId, string signature, 
-        string salt, string publicKeyUrl, string teamPlayerID, string timestamp )
+    public static async Task<LinkResponse> LinkAppleGameCenter(string challenge, string playerId, string bundleId, string teamPlayerID, string signature, 
+        string salt, string publicKeyUrl, string timestamp )
     {
-        
         // Create the request body with the challenge and internal user id
         var requestBody = new LinkGameCenterBody()
         {
             codeChallenge = challenge,
-            player = new LinkGameCenterBody.Player
+            verification = new LinkGameCenterBody.Verification()
             {
-                bundleId = bundleId,
-                playerId = teamPlayerID
+                player = new LinkGameCenterBody.Player()
+                {
+                    bundleId = bundleId,
+                    playerId = teamPlayerID
+                },
+                response = new LinkGameCenterBody.Response()
+                {
+                    signature = signature,
+                    salt = salt,
+                    publicKeyUrl = publicKeyUrl,
+                    timestamp = timestamp
+                } 
             },
-            verification = new LinkGameCenterBody.Verification
+            user = new LinkGameCenterBody.User()
             {
-                signature = signature,
-                salt = salt,
-                publicKeyUrl = publicKeyUrl,
-                timestamp = timestamp
+                id = playerId
             }
         };
     
         // Set the URL for the link account endpoint
-        const string requestUrl = StashConstants.APIRootURL + StashConstants.LnkGameCenter;
+        const string requestUrl = StashConstants.RootUrlTest + StashConstants.LinkAppleGameCenter;
         // Make a POST request to link the access token
         Response result = await RestClient.Post(requestUrl, JsonUtility.ToJson(requestBody));
     
@@ -142,9 +125,58 @@ public class StashClient : MonoBehaviour
         else
         {
             // Throw an error if the API request was not successful
-            throw new StashAPIRequestError(result.StatusCode, result.Data);
+            throw new StashRequestError(result.StatusCode, result.Data);
         }
     }
     
+    /// <summary>
+    /// Links a Google Play Games account to the Stash user's account.
+    /// Requires valid authorization code generated using "RequestServerSideAccess" from GooglePlayGames no older than 1 hour.
+    /// </summary>
+    /// <param name="challenge">Stash code challenge from the deeplink.</param>
+    /// <param name="playerId">Player identification, that will be used to identify purchases.</param>
+    /// <param name="authCode">The authorization code generated using RequestServerSideAccess</param>
+    /// <returns>A LinkResponse object.</returns>
+    public static async Task<LinkResponse> LinkGooglePlayGames(string challenge, string playerId, string authCode)
+    {
+        // Create the request body with the challenge and internal user id
+        var requestBody = new LinkGooglePlayGamesBody()
+        {
+            codeChallenge = challenge,
+            verification = new LinkGooglePlayGamesBody.Verification()
+            {
+                authCode = authCode
+            },
+            user = new LinkGooglePlayGamesBody.User()
+            {
+                id = playerId
+            }
+        };
+    
+        // Set the URL for the link account endpoint
+        const string requestUrl = StashConstants.RootUrlTest + StashConstants.LinkGooglePlayGames;
+        // Make a POST request to link the access token
+        Response result = await RestClient.Post(requestUrl, JsonUtility.ToJson(requestBody));
+    
+        // Check the response status code
+        if (result.StatusCode == 200)
+        {
+            try
+            {
+                LinkResponse resultResponse = JsonUtility.FromJson<LinkResponse>(result.Data);
+                return resultResponse;
+            }
+            catch
+            {
+                // Throw an error if there is an issue parsing the response data
+                throw new StashParseError(result.Data);
+            }
+        }
+        else
+        {
+            // Throw an error if the API request was not successful
+            throw new StashRequestError(result.StatusCode, result.Data);
+        }
+    }
 }
 }
