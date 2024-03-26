@@ -143,10 +143,7 @@ public static class StashClient
         var requestBody = new LinkGooglePlayGamesBody()
         {
             codeChallenge = challenge,
-            verification = new LinkGooglePlayGamesBody.Verification()
-            {
-                authCode = authCode
-            },
+            authCode = authCode,
             user = new LinkGooglePlayGamesBody.User()
             {
                 id = playerId

@@ -7,6 +7,6 @@ namespace Stash.Core
         
         public const string LinkAccount = "/sdk/link_code/link";
         public const string LinkAppleGameCenter = "/sdk/link_code/link_apple_game_center";
-        public const string LinkGooglePlayGames = "/sdk/link_code/link_google_play_games";
+        public const string LinkGooglePlayGames = "/sdk/link_code/link_google_play";
     }
 }
