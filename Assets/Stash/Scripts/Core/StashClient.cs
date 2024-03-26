@@ -87,7 +87,7 @@ public static class StashClient
                 player = new LinkGameCenterBody.Player()
                 {
                     bundleId = bundleId,
-                    playerId = teamPlayerID
+                    teamPlayerId = teamPlayerID
                 },
                 response = new LinkGameCenterBody.Response()
                 {

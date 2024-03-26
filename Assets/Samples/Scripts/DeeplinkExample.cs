@@ -10,7 +10,6 @@ public class DeeplinkExample : MonoBehaviour
 {
     public static DeeplinkExample Instance { get; private set; }
     
-    public TextMeshProUGUI debugLabel;
     public TextMeshProUGUI userLabel;
     public GameObject confirmPanel;
     
@@ -38,7 +37,6 @@ public class DeeplinkExample : MonoBehaviour
             Destroy(gameObject);
         }
     }
-
     
     private void Start()
     {
@@ -81,12 +79,10 @@ public class DeeplinkExample : MonoBehaviour
             LinkResponse response = await StashClient.LinkGooglePlayGames(_stashChallenge, InternalPlayerId, PlayGames.AuthCode);
             
             Debug.Log("[STASH][Google Play Games] Account linked successfully.");
-            debugLabel.text = response.codeChallenge;
         }
         catch (StashRequestError e)
         {
-            Debug.LogError($"[STASH][Google Play Games] Account linking failed. Code: {e.Code}");
-            debugLabel.text = e.Message;
+            Debug.LogError($"[STASH][Google Play Games] Account linking failed. Code: {e.Code}, Message: {e.Message}");
         }
     #endif
         
@@ -96,14 +92,12 @@ public class DeeplinkExample : MonoBehaviour
         {
             LinkResponse response = await StashClient.LinkAppleGameCenter( _stashChallenge, InternalPlayerId, "com.Stash.iosdemo", 
                 GameCenter.TeamPlayerID, GameCenter.Signature, GameCenter.Salt, GameCenter.PublicKeyUrl, GameCenter.Timestamp);
-
+            
             Debug.Log("[STASH][Apple Game Center] Account linked successfully.");
-            debugLabel.text = response.codeChallenge;
         }
         catch (StashRequestError e)
         {
-            Debug.LogError($"[STASH][Apple Game Center] Account linking failed. Code: {e.Code}");
-            debugLabel.text = e.Message;
+            Debug.LogError($"[STASH][Apple Game Center] Account linking failed. Code: {e.Code}, Message: {e.Message}");
         }
     #endif
     }

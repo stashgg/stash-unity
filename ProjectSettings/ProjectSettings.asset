@@ -136,7 +136,7 @@ PlayerSettings:
   vulkanEnableLateAcquireNextImage: 0
   vulkanEnableCommandBufferRecycling: 1
   loadStoreDebugModeEnabled: 0
-  bundleVersion: 0.4
+  bundleVersion: 0.5
   preloadedAssets: []
   metroInputSource: 0
   wsaTransparentSwapchain: 0
@@ -227,6 +227,8 @@ PlayerSettings:
   iOSDeviceRequirements: []
   iOSURLSchemes:
   - stashiosdemo
+  - stashiosdemo
+  - stashiosdemo
   macOSURLSchemes: []
   iOSBackgroundModes: 0
   iOSMetalForceHardShadows: 0
@@ -285,7 +287,7 @@ PlayerSettings:
   - m_BuildTarget: 
     m_Icons:
     - serializedVersion: 2
-      m_Icon: {fileID: 2800000, guid: 2bc96997168164a369465e891b768670, type: 3}
+      m_Icon: {fileID: 2800000, guid: a560f4d1967d04985a4d5a27430a9aa0, type: 3}
       m_Width: 128
       m_Height: 128
       m_Kind: 0
@@ -362,8 +364,7 @@ PlayerSettings:
       m_Height: 1024
       m_Kind: 4
       m_SubKind: App Store
-    - m_Textures:
-      - {fileID: 2800000, guid: 2bc96997168164a369465e891b768670, type: 3}
+    - m_Textures: []
       m_Width: 180
       m_Height: 180
       m_Kind: 0
@@ -947,7 +948,7 @@ PlayerSettings:
   embeddedLinuxEnableGamepadInput: 1
   hmiLogStartupTiming: 0
   hmiCpuConfiguration: 
-  apiCompatibilityLevel: 6
+  apiCompatibilityLevel: 3
   activeInputHandler: 0
   windowsGamepadBackendHint: 0
   cloudProjectId: 314fa7c3-56ae-4be8-83f8-349749e5d051

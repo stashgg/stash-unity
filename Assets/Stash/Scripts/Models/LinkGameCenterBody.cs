@@ -20,7 +20,7 @@ namespace Stash.Models
         public class Player
         {
             public string bundleId;
-            public string playerId;
+            public string teamPlayerId;
         }
         
         [Serializable]

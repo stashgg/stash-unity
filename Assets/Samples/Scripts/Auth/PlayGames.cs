@@ -21,12 +21,12 @@ public static class PlayGames
         {
             if (success == SignInStatus.Success)
             {
-                string DisplayName = PlayGamesPlatform.Instance.GetUserDisplayName();
-                Debug.Log($"[GOOGLE PLAY GAMES] Login successful - {DisplayName}");
+                string displayName = PlayGamesPlatform.Instance.GetUserDisplayName();
+                Debug.Log($"[GOOGLE PLAY GAMES] Login successful - {displayName}");
                 
                 //Fetch AuthCode for server-side verification.
                 RefreshCredentials();
-                DeeplinkExample.Instance.DisplayUsername(DisplayName);
+                DeeplinkExample.Instance.DisplayUsername(displayName);
             }
             else
             {
