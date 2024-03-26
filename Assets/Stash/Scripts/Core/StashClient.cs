@@ -28,7 +28,7 @@ public static class StashClient
         // Create the request body with the challenge and internal user id
         var requestBody = new LinkBody()
         {
-            code_challenge = challenge,
+            codeChallenge = challenge,
             user = new LinkBody.User
             {
                 id = playerId

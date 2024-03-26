@@ -5,7 +5,7 @@ namespace Stash.Models
     [Serializable]
     public class LinkBody
     {
-        public string code_challenge;
+        public string codeChallenge;
         public User user;
 
         [Serializable]
