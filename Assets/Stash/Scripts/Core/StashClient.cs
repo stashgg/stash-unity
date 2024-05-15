@@ -63,6 +63,60 @@ public static class StashClient
     }
     
     /// <summary>
+    /// Links the player's account to Stash account for Apple Account & Google Account.
+    /// 
+    /// </summary>
+    /// <param name="challenge">Stash code challenge from the deeplink.</param>
+    /// <param name="playerId">Player identification, that will be used to identify purchases.</param>
+    /// <param name="idToken">Valid JWT token of the player.</param>
+    /// <returns>Returns a confirmation response, or throws StashAPIRequestError if fails.</returns>
+    public static async Task<LinkResponse> LinkCustom(string challenge, string playerId, string idToken)
+    {
+        // Create the authorization header with the access token
+        RequestHeader authorizationHeader = new()
+        {
+            Key = "Authorization",
+            Value = "Bearer " + idToken
+        };
+    
+        // Create the request body with the challenge and internal user id
+        var requestBody = new LinkBody()
+        {
+            codeChallenge = challenge,
+            user = new LinkBody.User
+            {
+                id = playerId
+            }
+        };
+    
+        // Set the URL for the link account endpoint
+        const string requestUrl = StashConstants.RootUrlTest + StashConstants.LinkCustomAccount;
+        // Make a POST request to link the access token
+        Response result = await RestClient.Post(requestUrl, JsonUtility.ToJson(requestBody), new List<RequestHeader> { authorizationHeader });
+    
+        // Check the response status code
+        if (result.StatusCode == 200)
+        {
+            try
+            {
+                // Parse the response data into a LinkResponse object
+                LinkResponse resultResponse = JsonUtility.FromJson<LinkResponse>(result.Data);
+                return resultResponse;
+            }
+            catch
+            {
+                // Throw an error if there is an issue parsing the response data
+                throw new StashParseError(result.Data);
+            }
+        }
+        else
+        {
+            // Throw an error if the API request was not successful
+            throw new StashRequestError(result.StatusCode, result.Data);
+        }
+    }
+    
+    /// <summary>
     /// Links an Apple Game Center account to the Stash user's account.
     /// Requires a valid response (signature, salt, timestamp, publicKeyUrl) received from GameKit "fetchItems" no older than 1 hour.
     /// </summary>
@@ -160,6 +214,7 @@ public static class StashClient
         {
             try
             {
+                Debug.Log("[RESPONSE RAW] " + result.Data);
                 LinkResponse resultResponse = JsonUtility.FromJson<LinkResponse>(result.Data);
                 return resultResponse;
             }
