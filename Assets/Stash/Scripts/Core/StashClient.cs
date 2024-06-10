@@ -186,8 +186,9 @@ public static class StashClient
     /// <param name="code">Stash code challenge from the log in deeplink.</param>
     /// <param name="playerId">Player identification, that will be used to identify purchases.</param>
     /// <param name="idToken">Valid identification token (OICD) of the player.</param>
+    /// <param name="profileImageUrl">URL to the player's profile image/avatar to be displayed during login and on web shop.</param>
     /// <returns>Returns a confirmation response, or throws StashAPIRequestError if fails.</returns>
-    public static async Task<LinkResponse> CustomLogin(string code, string playerId, string idToken)
+    public static async Task<LinkResponse> CustomLogin(string code, string playerId, string idToken, string profileImageUrl)
     {
         // Create the authorization header with the access token
         RequestHeader authorizationHeader = new()
@@ -202,7 +203,8 @@ public static class StashClient
             code = code,
             user = new CustomLoginBody.User
             {
-                id = playerId
+                id = playerId,
+                profile_image_url = profileImageUrl
             }
         };
     
