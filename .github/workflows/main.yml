@@ -1,32 +1,38 @@
-name: Build & Test Stash Unity
+name: Test Build
 
 on: [push, pull_request]
 
 jobs:
-    buildForAllSupportedPlatforms:
-        name: Build for ${{ matrix.targetPlatform }}
-        runs-on: ubuntu-latest
-        strategy:
-            fail-fast: false
-            matrix:
-                targetPlatform:
-                    - StandaloneWindows64 # Build a Windows 64-bit standalone.
-        steps:
-            - uses: actions/checkout@v2
-              with:
-                  fetch-depth: 0
-                  lfs: true
-            - uses: actions/cache@v2
-              with:
-                  path: Library
-                  key: Library-${{ matrix.targetPlatform }}
-                  restore-keys: Library-
-            - uses: game-ci/unity-builder@v2
-              env:
-                  UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-              with:
-                  targetPlatform: ${{ matrix.targetPlatform }}
-            - uses: actions/upload-artifact@v2
-              with:
-                  name: Build-${{ matrix.targetPlatform }}
-                  path: build/${{ matrix.targetPlatform }}
+  build:
+    name: Test Package & Sample Scenes
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      # Cache
+      - uses: actions/cache@v3
+        with:
+          path: Library
+          key: Library-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-
+
+      # Build
+      - name: Build project
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          targetPlatform: StandaloneWindows64
+
+      # Output
+      - uses: actions/upload-artifact@v3
+        with:
+          name: Build
+          path: build
