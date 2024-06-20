@@ -11,7 +11,7 @@ To start with the SDK, you need to import the package from the releases tab and 
 ## Usage
 
 To interact with Stash API and handle responses, the SDK offers the `StashAuth`, `StashLauncher` and other classes, named according to the product you plan to use.
-All classes are static, with no inheritance to the MonoBehaviour, so they can only be called when needed.
+All classes are static, with no inheritance to the MonoBehaviour, no need to place them in the scene and can be called only when needed.
 
 ## Requirements
 
