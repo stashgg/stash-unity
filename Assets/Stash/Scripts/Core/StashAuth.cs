@@ -3,11 +3,15 @@ using System.Threading.Tasks;
 using UnityEngine;
 using Stash.Core.Exceptions;
 using Stash.Models;
-
+using Stash.Scripts.Core;
 
 namespace Stash.Core
 {
-public static class StashClient
+    /// <summary>
+    /// Linking the player's account to Stash web shop or using 3rd party authentication provider.
+    /// </summary>
+    
+public static class StashAuth
 {
     /// <summary>
     /// Links the player's account to Stash account for Apple Account & Google Account.
@@ -16,8 +20,12 @@ public static class StashClient
     /// <param name="challenge">Stash code challenge from the deeplink.</param>
     /// <param name="playerId">Player identification, that will be used to identify purchases.</param>
     /// <param name="idToken">Valid JWT token of the player.</param>
+    /// <param name="environment">Stash API environment (Defaults to Test).</param>
     /// <returns>Returns a confirmation response, or throws StashAPIRequestError if fails.</returns>
-    public static async Task<LinkResponse> LinkAccount(string challenge, string playerId, string idToken)
+    public static async Task<LinkResponse> LinkAccount(string challenge, 
+        string playerId, 
+        string idToken, 
+        StashEnvironment environment = StashEnvironment.Test)
     {
         // Create the authorization header with the access token
         RequestHeader authorizationHeader = new()
@@ -27,7 +35,7 @@ public static class StashClient
         };
     
         // Create the request body with the challenge and internal user id
-        var requestBody = new LinkBody()
+        var requestBody = new LinkBody
         {
             codeChallenge = challenge,
             user = new LinkBody.User
@@ -37,7 +45,7 @@ public static class StashClient
         };
     
         // Set the URL for the link account endpoint
-        const string requestUrl = StashConstants.RootUrlTest + StashConstants.LinkAccount;
+        string requestUrl = environment.GetRootUrl() + StashConstants.LinkAccount;
         // Make a POST request to link the access token
         Response result = await RestClient.Post(requestUrl, JsonUtility.ToJson(requestBody), new List<RequestHeader> { authorizationHeader });
     
@@ -56,11 +64,9 @@ public static class StashClient
                 throw new StashParseError(result.Data);
             }
         }
-        else
-        {
-            // Throw an error if the API request was not successful
-            throw new StashRequestError(result.StatusCode, result.Data);
-        }
+
+        // Throw an error if the API request was not successful
+        throw new StashRequestError(result.StatusCode, result.Data);
     }
     
     
@@ -76,9 +82,10 @@ public static class StashClient
     /// <param name="salt">A random string that GameKit uses to compute the hash and randomize it. (Base64 Encoded)</param>
     /// <param name="publicKeyUrl">The URL for the public encryption key.</param>
     /// <param name="timestamp">The signature’s creation date and time.</param>
+    /// <param name="environment">Stash API environment (Defaults to Test).</param>
     /// <returns>A LinkResponse object.</returns>
     public static async Task<LinkResponse> LinkAppleGameCenter(string challenge, string playerId, string bundleId, string teamPlayerID, string signature, 
-        string salt, string publicKeyUrl, string timestamp )
+        string salt, string publicKeyUrl, string timestamp, StashEnvironment environment = StashEnvironment.Test)
     {
         // Create the request body with the challenge and internal user id
         var requestBody = new LinkGameCenterBody()
@@ -106,7 +113,7 @@ public static class StashClient
         };
     
         // Set the URL for the link account endpoint
-        const string requestUrl = StashConstants.RootUrlTest + StashConstants.LinkAppleGameCenter;
+        string requestUrl = environment.GetRootUrl() + StashConstants.LinkAppleGameCenter;
         // Make a POST request to link the access token
         Response result = await RestClient.Post(requestUrl, JsonUtility.ToJson(requestBody));
     
@@ -139,7 +146,7 @@ public static class StashClient
     /// <param name="playerId">Player identification, that will be used to identify purchases.</param>
     /// <param name="authCode">The authorization code generated using RequestServerSideAccess</param>
     /// <returns>A LinkResponse object.</returns>
-    public static async Task<LinkResponse> LinkGooglePlayGames(string challenge, string playerId, string authCode)
+    public static async Task<LinkResponse> LinkGooglePlayGames(string challenge, string playerId, string authCode, StashEnvironment environment = StashEnvironment.Test)
     {
         // Create the request body with the challenge and internal user id
         var requestBody = new LinkGooglePlayGamesBody()
@@ -153,7 +160,7 @@ public static class StashClient
         };
     
         // Set the URL for the link account endpoint
-        const string requestUrl = StashConstants.RootUrlTest + StashConstants.LinkGooglePlayGames;
+        string requestUrl = environment.GetRootUrl() + StashConstants.LinkGooglePlayGames;
         // Make a POST request to link the access token
         Response result = await RestClient.Post(requestUrl, JsonUtility.ToJson(requestBody));
     
@@ -179,7 +186,7 @@ public static class StashClient
         }
     }
     
-     /// <summary>
+    /// <summary>
     /// Log in to stash account created using 3rd party authentication provider.
     /// For use with bespoke login provider. Not intended for general account linking.
     /// </summary>
@@ -188,7 +195,7 @@ public static class StashClient
     /// <param name="idToken">Valid identification token (OICD) of the player.</param>
     /// <param name="profileImageUrl">URL to the player's profile image/avatar to be displayed during login and on web shop.</param>
     /// <returns>Returns a confirmation response, or throws StashAPIRequestError if fails.</returns>
-    public static async Task<LinkResponse> CustomLogin(string code, string playerId, string idToken, string profileImageUrl)
+    public static async Task<LinkResponse> CustomLogin(string code, string playerId, string idToken, string profileImageUrl, StashEnvironment environment = StashEnvironment.Test)
     {
         // Create the authorization header with the access token
         RequestHeader authorizationHeader = new()
@@ -209,7 +216,7 @@ public static class StashClient
         };
     
         // Set the URL for the link account endpoint
-        const string requestUrl = StashConstants.RootUrlTest + StashConstants.CustomLogin;
+        string requestUrl = environment.GetRootUrl() + StashConstants.CustomLogin;
         // Make a POST request to link the access token
         Response result = await RestClient.Post(requestUrl, JsonUtility.ToJson(requestBody), new List<RequestHeader> { authorizationHeader });
     

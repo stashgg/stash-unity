@@ -76,7 +76,7 @@ public class DeeplinkExample : MonoBehaviour
         PlayGames.RefreshCredentials();
         try
         {
-            LinkResponse response = await StashClient.LinkGooglePlayGames(_stashChallenge, InternalPlayerId, PlayGames.AuthCode);
+            LinkResponse response = await StashAuth.LinkGooglePlayGames(_stashChallenge, InternalPlayerId, PlayGames.AuthCode);
             
             Debug.Log("[STASH][Google Play Games] Account linked successfully.");
         }
