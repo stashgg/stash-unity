@@ -4,14 +4,19 @@
 
 ## About
 
-This package is designed to get your Unity project up and running with Stash web shop in a few easy steps. Package is wrapping Stash API endpoints and is very lightweight with no external dependencies. 
+This package is designed to get your Unity project up and running with the Stash web shop in a few easy steps. The package is wrapping Stash API endpoints and is very lightweight with no external dependencies. 
 
-To start with the SDK, you need to import the package from the releases tab and read [getting started guide](https://docs.stash.gg/docs/configure-unity-project).
+To start with the SDK, you need to import the package from the releases tab and follow [getting started guide](https://docs.stash.gg/docs/configure-unity-project).
 
 ## Usage
 
-To interact with Stash API and handle responses, the SDK offers the `StashAuth`, `StashLauncher` and other classes, named according to the product you plan to use.
-All classes are static, with no inheritance to the MonoBehaviour, no need to place them in the scene and can be called only when needed.
+To interact with Stash API and handle responses, the SDK offers the `StashAuth`, `StashLauncher`, and other classes, named according to the product you plan to use.
+All classes are static, with no inheritance to the MonoBehaviour, no need to place them in the scene, and can be called only when needed.
+
+## Sample
+
+The repository contains a sample project. This scene is always up to date and pre-build for testing in the `Actions` tab.
+For more samples, visit [playground repository](https://github.com/stashgg/stash-playground), keep in mind that some of the samples in the playground repository might be out of date and should not be used in production.
 
 ## Requirements
 
