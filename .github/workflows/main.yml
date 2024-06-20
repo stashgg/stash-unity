@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 jobs:
   build:
-    name: Build SDK & Sample Scenes
+    name: Test Package & Sample Scenes
     runs-on: ubuntu-latest
     steps:
       # Checkout
@@ -29,7 +29,7 @@ jobs:
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
-          targetPlatform: Android
+          targetPlatform: StandaloneWindows64
 
       # Output
       - uses: actions/upload-artifact@v3
