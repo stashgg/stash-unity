@@ -8,10 +8,11 @@ using Stash.Scripts.Core;
 namespace Stash.Core
 {
     /// <summary>
-    /// Linking the player's account to Stash web shop or using 3rd party authentication provider.
+    /// Linking the player's account to Stash Account.
+    /// For a custom sing in, use StashCustomLogin.
     /// </summary>
     
-public static class StashAuth
+public static class StashLink
 {
     /// <summary>
     /// Links the player's account to Stash account for Apple Account & Google Account.
@@ -186,60 +187,5 @@ public static class StashAuth
         }
     }
     
-    /// <summary>
-    /// Log in to stash account created using 3rd party authentication provider.
-    /// For use with bespoke login provider. Not intended for general account linking.
-    /// </summary>
-    /// <param name="code">Stash code challenge from the log in deeplink.</param>
-    /// <param name="playerId">Player identification, that will be used to identify purchases.</param>
-    /// <param name="idToken">Valid identification token (OICD) of the player.</param>
-    /// <param name="profileImageUrl">URL to the player's profile image/avatar to be displayed during login and on web shop.</param>
-    /// <returns>Returns a confirmation response, or throws StashAPIRequestError if fails.</returns>
-    public static async Task<LinkResponse> CustomLogin(string code, string playerId, string idToken, string profileImageUrl, StashEnvironment environment = StashEnvironment.Test)
-    {
-        // Create the authorization header with the access token
-        RequestHeader authorizationHeader = new()
-        {
-            Key = "Authorization",
-            Value = "Bearer " + idToken
-        };
-    
-        // Create the request body with the challenge and internal user id
-        var requestBody = new CustomLoginBody()
-        {
-            code = code,
-            user = new CustomLoginBody.User
-            {
-                id = playerId,
-                profile_image_url = profileImageUrl
-            }
-        };
-    
-        // Set the URL for the link account endpoint
-        string requestUrl = environment.GetRootUrl() + StashConstants.CustomLogin;
-        // Make a POST request to link the access token
-        Response result = await RestClient.Post(requestUrl, JsonUtility.ToJson(requestBody), new List<RequestHeader> { authorizationHeader });
-    
-        // Check the response status code
-        if (result.StatusCode == 200)
-        {
-            try
-            {
-                // Parse the response data into a LinkResponse object
-                LinkResponse resultResponse = JsonUtility.FromJson<LinkResponse>(result.Data);
-                return resultResponse;
-            }
-            catch
-            {
-                // Throw an error if there is an issue parsing the response data
-                throw new StashParseError(result.Data);
-            }
-        }
-        else
-        {
-            // Throw an error if the API request was not successful
-            throw new StashRequestError(result.StatusCode, result.Data);
-        }
-    }
 }
 }
