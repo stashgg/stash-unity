@@ -22,6 +22,7 @@ public static class StashCustomLogin
     /// <param name="playerId">Player identification, that will be used to identify purchases.</param>
     /// <param name="idToken">Valid identification token (OICD) of the player.</param>
     /// <param name="profileImageUrl">URL to the player's profile image/avatar to be displayed during login and on web shop.</param>
+    /// <param name="environment">Stash API environment (Defaults to Test).</param>
     /// <returns>Returns a confirmation response, or throws StashAPIRequestError if fails.</returns>
     public static async Task<LinkResponse> CustomLogin(string code, string playerId, string idToken, string profileImageUrl, StashEnvironment environment = StashEnvironment.Test)
     {
@@ -146,6 +147,7 @@ public static class StashCustomLogin
     /// <param name="code">Stash code challenge from the deeplink.</param>
     /// <param name="playerId">Player identification, that will be used to identify purchases.</param>
     /// <param name="authCode">The authorization code generated using RequestServerSideAccess</param>
+    /// <param name="environment">Stash API environment (Defaults to Test).</param>
     /// <returns>A LinkResponse object.</returns>
     public static async Task<LinkResponse> LinkGooglePlayGames(string code, string playerId, string authCode, StashEnvironment environment = StashEnvironment.Test)
     {
@@ -155,6 +157,59 @@ public static class StashCustomLogin
             code = code,
             authCode = authCode,
             user = new LoginGooglePlayGamesBody.User()
+            {
+                id = playerId
+            }
+        };
+    
+        // Set the URL for the link account endpoint
+        string requestUrl = environment.GetRootUrl() + StashConstants.LoginGooglePlayGames;
+        // Make a POST request to link the access token
+        Response result = await RestClient.Post(requestUrl, JsonUtility.ToJson(requestBody));
+    
+        // Check the response status code
+        if (result.StatusCode == 200)
+        {
+            try
+            {
+                Debug.Log("[RESPONSE RAW] " + result.Data);
+                LinkResponse resultResponse = JsonUtility.FromJson<LinkResponse>(result.Data);
+                return resultResponse;
+            }
+            catch
+            {
+                // Throw an error if there is an issue parsing the response data
+                throw new StashParseError(result.Data);
+            }
+        }
+        else
+        {
+            // Throw an error if the API request was not successful
+            throw new StashRequestError(result.StatusCode, result.Data);
+        }
+    }
+    
+    
+    
+    /// <summary>
+    /// Logs in to stash web shop via Facebook account.
+    /// Requires valid access token generated from Facebook login.
+    /// </summary>
+    /// <param name="code">Stash code challenge from the deeplink.</param>
+    /// <param name="playerId">Player identification, that will be used to identify purchases.</param>
+    /// <param name="appId">Facebook app id.</param>
+    /// <param name="accessToken">Facebook access token.</param>
+    /// <param name="environment">Stash API environment (Defaults to Test).</param>
+    /// <returns>A LinkResponse object.</returns>
+    public static async Task<LinkResponse> LinkFacebook(string code, string playerId, string appId, string accessToken, StashEnvironment environment = StashEnvironment.Test)
+    {
+        // Create the request body with the challenge and internal user id
+        var requestBody = new LoginFacebook()
+        {
+            code = code,
+            appId = appId,
+            inputToken = accessToken,
+            user = new LoginFacebook.User()
             {
                 id = playerId
             }

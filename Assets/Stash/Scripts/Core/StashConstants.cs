@@ -15,6 +15,7 @@ namespace Stash.Core
         public const string CustomLogin = "/sdk/custom_login/approve_with_jwt";
         public const string LoginAppleGameCenter = "/sdk/custom_login/approve_apple_game_center";
         public const string LoginGooglePlayGames = "/sdk/custom_login/google_play";
+        public const string LoginFacebook = "/sdk/custom_login/facebook_auth";
         
     }
 }
