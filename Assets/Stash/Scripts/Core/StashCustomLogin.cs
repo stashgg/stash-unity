@@ -216,7 +216,7 @@ public static class StashCustomLogin
         };
     
         // Set the URL for the link account endpoint
-        string requestUrl = environment.GetRootUrl() + StashConstants.LoginGooglePlayGames;
+        string requestUrl = environment.GetRootUrl() + StashConstants.LoginFacebook;
         // Make a POST request to link the access token
         Response result = await RestClient.Post(requestUrl, JsonUtility.ToJson(requestBody));
     
