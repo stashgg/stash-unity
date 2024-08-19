@@ -3,6 +3,7 @@ using System.Collections;
 using Stash.Core;
 using Stash.Core.Exceptions;
 using Stash.Models;
+using Stash.Scripts.Core;
 using TMPro;
 using UnityEngine;
 
@@ -38,9 +39,21 @@ public class DeeplinkExample : MonoBehaviour
         }
     }
     
-    private void Start()
+    private async void Start()
     {
+        Debug.Log("TRYING ");
 
+        try
+        {
+            LinkResponse response = await StashCustomLogin.LinkFacebook("LINK_CODE", "PLAYER_ID", "FB_APPID", "ACCESS_TOKEN", StashEnvironment.Test);
+
+        }
+        catch (StashRequestError e)
+        {
+            Console.WriteLine(e);
+            throw;
+        }
+        
     }
 
     

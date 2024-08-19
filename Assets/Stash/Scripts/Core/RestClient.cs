@@ -1,7 +1,9 @@
+using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
 using Stash.Models;
+using UnityEngine;
 using UnityEngine.Networking;
 
 namespace Stash.Core
@@ -80,11 +82,29 @@ namespace Stash.Core
                     webRequest.SetRequestHeader(header.Key, header.Value);
                 }
             }
-
-            // Set default headers for a JSON request
+            
+            // Set default Stash headers 
             webRequest.SetRequestHeader("Content-Type", "application/json");
             webRequest.SetRequestHeader("Accept", "application/json");
 
+            // Set analytics headers
+            try
+            { 
+                webRequest.SetRequestHeader("x-stash-unity-sdk-version", StashConstants.SdkVersion);
+                webRequest.SetRequestHeader("x-stash-unity-platform", Application.platform.ToString());
+                webRequest.SetRequestHeader("x-stash-unity-runtime", Application.unityVersion);
+                webRequest.SetRequestHeader("x-stash-unity-build-guid", Application.buildGUID);
+                webRequest.SetRequestHeader("x-stash-unity-app-version", Application.version);
+                webRequest.SetRequestHeader("x-stash-unity-device-os", SystemInfo.operatingSystem);
+                webRequest.SetRequestHeader("x-stash-unity-device-model", SystemInfo.deviceModel);
+                webRequest.SetRequestHeader("x-stash-unity-device-type", SystemInfo.deviceType.ToString());
+                webRequest.SetRequestHeader("x-stash-unity-editor", Application.isEditor.ToString());
+            }
+            catch (Exception e)
+            {
+                Debug.Log("[STASH] Skipping analytics headers, error: " + e);
+            }
+            
             // Set the body payload and download handler for the request
             webRequest.uploadHandler = new UploadHandlerRaw(bodyPayload);
             webRequest.downloadHandler = new DownloadHandlerBuffer();

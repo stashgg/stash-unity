@@ -2,6 +2,9 @@ namespace Stash.Core
 {
     public class StashConstants
     {
+        //TODO: Switch to package file.
+        public const string SdkVersion = "0.9.0";
+        
         //Root URLs
         public const string RootUrl = "https://api.stash.gg";
         public const string RootUrlTest = "https://test-api.stash.gg";
