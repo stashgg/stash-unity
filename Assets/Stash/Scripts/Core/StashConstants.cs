@@ -19,6 +19,8 @@ namespace Stash.Core
         public const string LoginAppleGameCenter = "/sdk/custom_login/approve_apple_game_center";
         public const string LoginGooglePlayGames = "/sdk/custom_login/google_play";
         public const string LoginFacebook = "/sdk/custom_login/facebook_auth";
-        
+
+        //Launcher
+        public const string LauncherCheckout = "/sdk/launcher/payment/generate_add_to_cart_url";
     }
 }

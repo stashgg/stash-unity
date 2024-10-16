@@ -17,8 +17,17 @@ public class DeeplinkExample : MonoBehaviour
     private string _stashChallenge;
     private const string InternalPlayerId = "TEST_PLAYER_ID";
 
-    private void Awake()
+    private async void Awake()
     {
+        try{
+            CheckoutResponse response = await StashLauncher.Checkout("ITEM_ID", "ID_PLAYER", "ID_TOKEN", StashEnvironment.Test);
+        }
+        catch (StashRequestError e)
+        {
+            Console.WriteLine(e);
+            throw;
+        }
+
         //Event handler "OnDeepLinkActivated" is invoked every time the game is launched or resumed via the Stash’s deep link. 
         if (Instance == null)
         {
