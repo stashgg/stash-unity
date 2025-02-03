@@ -85,7 +85,7 @@ namespace Stash.Core
 
             //Set the Stash launcher headers if they are available
             #if UNITY_EDITOR || UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX
-            string launcherMachineId = Environment.GetEnvironmentVariable("STASH_LAUNCHER_INSTANCE");
+            string launcherMachineId = Environment.GetEnvironmentVariable("STASH_MID");
             if (!string.IsNullOrEmpty(launcherMachineId))
             {
                 Debug.Log($"Stash Launcher Instance Set: {launcherMachineId}");
