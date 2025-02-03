@@ -82,14 +82,28 @@ namespace Stash.Core
                     webRequest.SetRequestHeader(header.Key, header.Value);
                 }
             }
-            
+
+            //Set the Stash launcher headers if they are available
+            #if UNITY_EDITOR || UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX
+            string launcherMachineId = Environment.GetEnvironmentVariable("STASH_LAUNCHER_INSTANCE");
+            if (!string.IsNullOrEmpty(launcherMachineId))
+            {
+                Debug.Log($"Stash Launcher Instance Set: {launcherMachineId}");
+                webRequest.SetRequestHeader("x-stash-grpc-mid", launcherMachineId);
+            }
+            else
+            {
+                Debug.LogWarning("Game is not executed from Stash Launcher, session header will not be set.");
+            }
+            #endif
+
             // Set default Stash headers 
             webRequest.SetRequestHeader("Content-Type", "application/json");
             webRequest.SetRequestHeader("Accept", "application/json");
 
             // Set analytics headers
             try
-            { 
+            {
                 webRequest.SetRequestHeader("x-stash-unity-sdk-version", StashConstants.SdkVersion);
                 webRequest.SetRequestHeader("x-stash-unity-platform", Application.platform.ToString());
                 webRequest.SetRequestHeader("x-stash-unity-runtime", Application.unityVersion);
@@ -104,7 +118,7 @@ namespace Stash.Core
             {
                 Debug.Log("[STASH] Skipping analytics headers, error: " + e);
             }
-            
+
             // Set the body payload and download handler for the request
             webRequest.uploadHandler = new UploadHandlerRaw(bodyPayload);
             webRequest.downloadHandler = new DownloadHandlerBuffer();
