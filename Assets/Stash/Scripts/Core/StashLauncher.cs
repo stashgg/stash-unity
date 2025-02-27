@@ -30,7 +30,7 @@ namespace Stash.Core
                 }
             };
             
-            string requestUrl = environment.GetRootUrl() + StashConstants.LauncherLoyaltyUrl + "?playerId=" + playerId;
+            string requestUrl = environment.GetRootUrl() + StashConstants.LauncherLoyaltyUrl;
             Response result = await RestClient.Post(requestUrl, JsonUtility.ToJson(requestBody), new List<RequestHeader> { authorizationHeader });
 
             if (result.StatusCode == 200)
