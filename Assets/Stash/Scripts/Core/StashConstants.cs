@@ -7,7 +7,7 @@ namespace Stash.Core
         
         //Root URLs
         public const string RootUrl = "https://api.stash.gg";
-        public const string RootUrlTest = "https://test-api.stash.gg";
+        public const string RootUrlTest = "https://test-api.stashstaging.com";
         
         //Account Linking 
         public const string LinkAccount = "/sdk/link_code/link";
