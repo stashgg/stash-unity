@@ -1,0 +1,106 @@
+.section {
+    margin-bottom: 20px;
+    background-color: rgb(50, 50, 50);
+    border-radius: 5px;
+    padding: 15px;
+}
+
+.section-title {
+    font-size: 18px;
+    -unity-font-style: bold;
+    color: rgb(255, 255, 255);
+    margin-bottom: 10px;
+}
+
+.unity-text-field {
+    margin-bottom: 10px;
+}
+
+.unity-text-field > .unity-label {
+    min-width: 150px;
+    color: rgb(200, 200, 200);
+}
+
+.unity-text-field > .unity-base-text-field__input {
+    background-color: rgb(60, 60, 60);
+    border-width: 1px;
+    border-color: rgb(100, 100, 100);
+    color: rgb(220, 220, 220);
+    padding: 5px;
+    border-radius: 3px;
+}
+
+.unity-integer-field {
+    margin-bottom: 10px;
+}
+
+.unity-integer-field > .unity-label {
+    min-width: 150px;
+    color: rgb(200, 200, 200);
+}
+
+.unity-integer-field > .unity-base-field__input {
+    background-color: rgb(60, 60, 60);
+    border-width: 1px;
+    border-color: rgb(100, 100, 100);
+    color: rgb(220, 220, 220);
+    border-radius: 3px;
+}
+
+.item-container {
+    background-color: rgb(60, 60, 60);
+    border-radius: 3px;
+    padding: 10px;
+    margin-top: 10px;
+    margin-bottom: 15px;
+}
+
+.button-primary {
+    background-color: rgb(65, 137, 199);
+    border-width: 0;
+    border-radius: 5px;
+    padding: 10px 20px;
+    color: rgb(255, 255, 255);
+    -unity-font-style: bold;
+    transition-duration: 0.2s;
+    margin-top: 10px;
+}
+
+.button-primary:hover {
+    background-color: rgb(85, 157, 219);
+}
+
+.button-secondary {
+    background-color: rgb(100, 177, 69);
+    border-width: 0;
+    border-radius: 5px;
+    padding: 10px 20px;
+    color: rgb(255, 255, 255);
+    -unity-font-style: bold;
+    transition-duration: 0.2s;
+    margin-top: 10px;
+}
+
+.button-secondary:hover {
+    background-color: rgb(120, 197, 89);
+}
+
+.button-delete {
+    background-color: rgb(199, 68, 68);
+    border-width: 0;
+    border-radius: 3px;
+    padding: 5px 10px;
+    color: rgb(255, 255, 255);
+    -unity-font-style: bold;
+    transition-duration: 0.2s;
+    margin-top: 0;
+    font-size: 12px;
+}
+
+.button-delete:hover {
+    background-color: rgb(219, 85, 85);
+}
+
+.unity-scroll-view {
+    max-height: 100%;
+} 

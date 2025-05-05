@@ -23,5 +23,8 @@ namespace Stash.Core
         //Launcher
         public const string LauncherCheckout = "/sdk/launcher/payment/generate_add_to_cart_url";
         public const string LauncherLoyaltyUrl = "/sdk/generate_loyalty_url";
+        
+        //Checkout 
+        public const string CheckoutLinks = "/sdk/checkout_links/create";
     }
 }
