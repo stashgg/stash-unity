@@ -66,7 +66,7 @@ namespace Stash.Core
             if (result.StatusCode == 200)
             {
                 try
-                {
+    {
                     // Parse the response data into a CheckoutResponse object
                     CheckoutResponse checkoutResponse = JsonUtility.FromJson<CheckoutResponse>(result.Data);
                     return (checkoutResponse.url, checkoutResponse.id);
@@ -111,7 +111,7 @@ namespace Stash.Core
             // Convert the items to a JSON array string
             string itemsJson = "[";
             for (int i = 0; i < items.Length; i++)
-            {
+        {
                 var item = items[i];
                 itemsJson += $"{{\"id\":\"{item.id}\",\"pricePerItem\":\"{item.pricePerItem}\",\"quantity\":{item.quantity},\"imageUrl\":\"{item.imageUrl}\",\"name\":\"{item.name}\",\"description\":\"{item.description}\"}}";
                 

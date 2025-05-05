@@ -3,6 +3,9 @@
     background-color: rgb(50, 50, 50);
     border-radius: 5px;
     padding: 15px;
+    min-width: 280px;
+    width: auto;
+    box-sizing: border-box;
 }
 
 .section-title {
@@ -12,47 +15,127 @@
     margin-bottom: 10px;
 }
 
-.unity-text-field {
+.title {
+    font-size: 24px;
+    -unity-font-style: bold;
+    color: rgb(255, 255, 255);
+    margin-bottom: 20px;
+    -unity-text-align: upper-center;
+}
+
+.row-container {
+    flex-direction: column;
+    width: auto;
+    box-sizing: border-box;
+}
+
+.section-header {
+    margin-bottom: 5px;
+}
+
+.item-title {
+    font-size: 16px;
+    -unity-font-style: bold;
+    color: rgb(220, 220, 220);
+}
+
+.input-field {
     margin-bottom: 10px;
+}
+
+/* Mobile-responsive styles */
+@media (max-width: 600px) {
+    .input-field .unity-label {
+        font-size: 14px;
+        margin-bottom: 4px;
+    }
+    
+    .section {
+        padding: 10px;
+    }
+    
+    .title {
+        font-size: 20px;
+    }
+    
+    .section-title {
+        font-size: 16px;
+    }
+    
+    .unity-text-field,
+    .unity-integer-field {
+        margin-bottom: 15px;
+    }
+}
+
+.unity-text-field {
+    margin-bottom: 20px;
+    width: auto;
+    min-width: 0;
+    flex-direction: column;
+    box-sizing: border-box;
+    padding-right: 0;
 }
 
 .unity-text-field > .unity-label {
-    min-width: 150px;
+    min-width: auto;
+    width: auto;
     color: rgb(200, 200, 200);
+    margin-bottom: 5px;
+    font-size: 14px;
 }
 
 .unity-text-field > .unity-base-text-field__input {
+    width: auto;
+    min-width: 0;
     background-color: rgb(60, 60, 60);
     border-width: 1px;
     border-color: rgb(100, 100, 100);
     color: rgb(220, 220, 220);
-    padding: 5px;
+    padding: 8px 5px;
     border-radius: 3px;
+    min-height: 30px;
+    box-sizing: border-box;
 }
 
 .unity-integer-field {
-    margin-bottom: 10px;
+    margin-bottom: 20px;
+    width: auto;
+    min-width: 0;
+    flex-direction: column;
+    box-sizing: border-box;
+    padding-right: 0;
 }
 
 .unity-integer-field > .unity-label {
-    min-width: 150px;
+    min-width: auto;
+    width: auto;
     color: rgb(200, 200, 200);
+    margin-bottom: 5px;
+    font-size: 14px;
 }
 
 .unity-integer-field > .unity-base-field__input {
+    width: auto;
+    min-width: 0;
     background-color: rgb(60, 60, 60);
     border-width: 1px;
     border-color: rgb(100, 100, 100);
     color: rgb(220, 220, 220);
     border-radius: 3px;
+    min-height: 30px;
+    box-sizing: border-box;
 }
 
+/* Additional styles for item containers to handle full-width fields */
 .item-container {
     background-color: rgb(60, 60, 60);
     border-radius: 3px;
-    padding: 10px;
+    padding: 15px;
     margin-top: 10px;
     margin-bottom: 15px;
+    width: auto;
+    box-sizing: border-box;
 }
 
 .button-primary {
@@ -101,6 +184,157 @@
     background-color: rgb(219, 85, 85);
 }
 
+/* Mobile-friendly button styles for better touch targets */
+.mobile-friendly-button {
+    min-height: 40px;
+    min-width: 80px;
+    font-size: 14px;
+}
+
+.response-field {
+    margin-bottom: 15px;
+}
+
+.response-field > .unity-base-text-field__input {
+    min-height: 60px;
+    white-space: normal;
+    word-wrap: break-word;
+}
+
+.main-scroll-view {
+    flex-grow: 1;
+}
+
+/* Default scrollbar styling for desktop */
+.main-scroll-view .unity-scroller {
+    width: 18px;
+    margin: 2px;
+}
+
+.main-scroll-view .unity-scroller .unity-slider .unity-base-slider__dragger {
+    width: 10px;
+    border-radius: 5px;
+    background-color: rgb(65, 137, 199); /* Match primary button color */
+    margin-left: 4px;
+}
+
+.main-scroll-view .unity-scroller .unity-slider:hover .unity-base-slider__dragger {
+    background-color: rgb(85, 157, 219); /* Lighter shade on hover */
+}
+
+/* Mobile scrollbar styling */
+.narrow-screen .main-scroll-view .unity-scroller,
+.portrait .main-scroll-view .unity-scroller {
+    width: 8px;
+    opacity: 0.7;
+    margin: 1px;
+}
+
+.narrow-screen .main-scroll-view .unity-scroller .unity-slider .unity-base-slider__dragger,
+.portrait .main-scroll-view .unity-scroller .unity-slider .unity-base-slider__dragger {
+    width: 6px;
+    border-radius: 3px;
+    background-color: rgb(65, 137, 199);
+    margin-left: 1px;
+}
+
+/* Mobile-friendly scrolling behavior */
+.narrow-screen .unity-scroll-view,
+.portrait .unity-scroll-view {
+    -unity-scroll-view-scroll-deceleration-rate: 0.135; /* Smooth mobile scrolling */
+}
+
+@media (max-width: 600px) {
+    .main-scroll-view .unity-scroller {
+        width: 8px;
+        opacity: 0.7;
+        margin: 1px;
+    }
+    
+    .main-scroll-view .unity-scroller .unity-slider .unity-base-slider__dragger {
+        width: 6px;
+        border-radius: 3px;
+        background-color: rgb(65, 137, 199);
+        margin-left: 1px;
+    }
+}
+
+/* Media queries for responsive layout */
+@media (max-width: 480px) {
+    .section {
+        padding: 8px;
+    }
+    
+    .button-primary, 
+    .button-secondary {
+        padding: 12px 16px;
+    }
+    
+    .unity-text-field > .unity-label,
+    .unity-integer-field > .unity-label {
+        min-width: 100px;
+        font-size: 14px;
+    }
+}
+
 .unity-scroll-view {
     max-height: 100%;
+}
+
+/* Mobile-friendly styles */
+.narrow-screen .unity-text-field > .unity-base-text-field__input,
+.narrow-screen .unity-integer-field > .unity-base-field__input {
+    min-height: 40px; /* Larger touch targets for mobile */
+    font-size: 16px; /* Larger font for better readability */
+}
+
+/* Tab styles */
+.tab-buttons {
+    flex-direction: row;
+    justify-content: space-around;
+    margin-bottom: 15px;
+    border-radius: 5px;
+    overflow: hidden;
+    background-color: rgb(50, 50, 50);
+}
+
+.tab-button {
+    flex-grow: 1;
+    background-color: rgb(60, 60, 60);
+    border-width: 0;
+    border-radius: 0;
+    padding: 12px 10px;
+    color: rgb(180, 180, 180);
+    -unity-font-style: normal;
+    transition-duration: 0.2s;
+    margin: 0;
+    border-bottom: 2px solid transparent;
+}
+
+.tab-button:hover {
+    background-color: rgb(70, 70, 70);
+    color: rgb(220, 220, 220);
+}
+
+.tab-button-active {
+    background-color: rgb(50, 50, 50);
+    color: rgb(255, 255, 255);
+    -unity-font-style: bold;
+    border-bottom: 2px solid rgb(65, 137, 199);
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content-active {
+    display: flex;
+}
+
+/* Responsive tabs for mobile */
+@media (max-width: 600px) {
+    .tab-button {
+        padding: 10px 5px;
+        font-size: 14px;
+    }
 } 

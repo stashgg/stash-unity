@@ -2,9 +2,12 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Runtime.InteropServices;
 using Stash.Core;
 using UnityEngine;
 using UnityEngine.UIElements;
+using System.Text;
+using System.Linq;
 
 namespace Stash.Sample
 {
@@ -12,378 +15,506 @@ namespace Stash.Sample
     {
         [SerializeField] public UIDocument uiDocument;
         
-        // Text fields for user information
-        private TextField userIdField;
-        private TextField emailField;
-        private TextField displayNameField;
-        private TextField avatarUrlField;
-        private TextField profileUrlField;
-        
-        // Text fields for shop information
-        private TextField shopHandleField;
-        private TextField currencyField;
-        private TextField apiKeyField;
-        
-        // Items container
-        private VisualElement itemsContainer;
-        private Button addItemButton;
-        
-        // Response fields
-        private TextField checkoutUrlField;
-        private TextField checkoutIdField;
-        
-        // Buttons and containers
+        private VisualElement root;
         private Button createCheckoutButton;
         private Button openBrowserButton;
+        private Button openIOSViewButton;
+        private Button addItemButton;
         private VisualElement responseContainer;
-
-        // Counter for unique item IDs
-        private int nextItemIndex = 1; // Start with 1 because we already have Item0
-
-        // Ensures UI is only initialized once
-        private bool uiInitialized = false;
+        private TextField checkoutUrlField;
+        private TextField checkoutIdField;
+        private VisualElement itemsContainer;
+        private readonly List<VisualElement> itemElements = new List<VisualElement>();
         
+        // Tab navigation
+        private Button userTabButton;
+        private Button shopTabButton;
+        private Button itemsTabButton;
+        private VisualElement userSection;
+        private VisualElement shopSection;
+        private VisualElement itemsSection;
+
+        // iOS native methods
+        #if UNITY_IOS
+        [DllImport("__Internal")]
+        private static extern void _OpenURLInSafariVC(string url);
+        #endif
+
         private void Start()
         {
-            // Directly initialize without adding a loader component
-            // Start a coroutine to check for UI initialization
-            StartCoroutine(WaitForUIInitialization());
-        }
-
-        private IEnumerator WaitForUIInitialization()
-        {
-            // Wait for two frames to ensure everything is set up
-            yield return null;
-            yield return null;
-
-            // Wait until UI Document is ready
-            int attempts = 0;
-            while ((uiDocument == null || uiDocument.rootVisualElement == null) && attempts < 20)
-            {
-                Debug.Log("Waiting for UI Document to initialize...");
-                yield return new WaitForSeconds(0.1f);
-                attempts++;
-            }
-
-            if (uiDocument == null || uiDocument.rootVisualElement == null)
-            {
-                Debug.LogError("UI Document failed to initialize after multiple attempts.");
-                yield break;
-            }
-
-            // Initialize the UI
-            InitializeUI();
-        }
-        
-        private void InitializeUI()
-        {
-            if (uiInitialized)
-            {
-                return;
-            }
-
-            Debug.Log("Initializing UI elements...");
-            
             if (uiDocument == null)
             {
-                Debug.LogError("UIDocument is null!");
+                Debug.LogError("UIDocument is not assigned.");
                 return;
             }
             
-            if (uiDocument.rootVisualElement == null)
+            root = uiDocument.rootVisualElement;
+            if (root == null)
             {
-                Debug.LogError("Root visual element is null!");
+                Debug.LogError("Root VisualElement not found.");
                 return;
             }
             
-            var root = uiDocument.rootVisualElement;
+            // Get all UI elements and set up event handlers
+            SetupUI();
+            SetupEventHandlers();
+        }
+        
+        private void SetupUI()
+        {
+            // Tab elements
+            userTabButton = root.Q<Button>("UserTabButton");
+            shopTabButton = root.Q<Button>("ShopTabButton");
+            itemsTabButton = root.Q<Button>("ItemsTabButton");
+            userSection = root.Q<VisualElement>("UserSection");
+            shopSection = root.Q<VisualElement>("ShopSection");
+            itemsSection = root.Q<VisualElement>("ItemsSection");
             
-            // Initialize user information fields
-            userIdField = root.Q<TextField>("UserID");
-            emailField = root.Q<TextField>("Email");
-            displayNameField = root.Q<TextField>("DisplayName");
-            avatarUrlField = root.Q<TextField>("AvatarURL");
-            profileUrlField = root.Q<TextField>("ProfileURL");
-            
-            // Initialize shop information fields
-            shopHandleField = root.Q<TextField>("ShopHandle");
-            currencyField = root.Q<TextField>("Currency");
-            apiKeyField = root.Q<TextField>("ApiKey");
-            
-            // Initialize items container and add button
-            itemsContainer = root.Q<VisualElement>("ItemsContainer");
-            addItemButton = root.Q<Button>("AddItemButton");
-            
-            // Initialize response fields
-            checkoutUrlField = root.Q<TextField>("CheckoutURL");
-            checkoutIdField = root.Q<TextField>("CheckoutID");
-            
-            // Initialize buttons and containers
+            // Other UI elements
             createCheckoutButton = root.Q<Button>("CreateCheckoutButton");
             openBrowserButton = root.Q<Button>("OpenBrowserButton");
+            openIOSViewButton = root.Q<Button>("OpenIOSViewButton");
+            addItemButton = root.Q<Button>("AddItemButton");
             responseContainer = root.Q<VisualElement>("ResponseContainer");
+            checkoutUrlField = root.Q<TextField>("CheckoutURL");
+            checkoutIdField = root.Q<TextField>("CheckoutID");
+            itemsContainer = root.Q<VisualElement>("ItemsContainer");
             
-            if (createCheckoutButton == null)
+            // Set initial state
+            responseContainer.style.display = DisplayStyle.None;
+            openBrowserButton.SetEnabled(false);
+            openIOSViewButton.SetEnabled(false);
+            
+            // Set iOS button visibility based on platform
+            #if !UNITY_IOS
+            if (openIOSViewButton != null)
             {
-                Debug.LogError("Create Checkout Button not found in the UI! Check element name in UXML.");
-                return;
+                openIOSViewButton.style.display = DisplayStyle.None;
             }
+            #endif
             
-            if (addItemButton == null)
+            // Get the existing item as a template
+            VisualElement itemTemplate = itemsContainer.Q<VisualElement>("Item0");
+            if (itemTemplate != null)
             {
-                Debug.LogError("Add Item Button not found in the UI! Check element name in UXML.");
-                return;
-            }
-            
-            // Clear any existing callbacks to avoid duplicates
-            createCheckoutButton.clickable = null;
-            addItemButton.clickable = null;
-            
-            // Register event handlers
-            createCheckoutButton.clickable = new Clickable(CreateCheckoutLink);
-            addItemButton.clickable = new Clickable(AddNewItem);
-            
-            // Initialize the first item's remove button
-            InitializeRemoveButton(0);
-            
-            if (openBrowserButton != null)
-            {
-                openBrowserButton.clickable = null;
-                openBrowserButton.clickable = new Clickable(OpenCheckoutInBrowser);
-            }
-
-            // Set flag to indicate UI is initialized
-            uiInitialized = true;
-            
-            // Log UI element references to debug
-            Debug.Log($"UI initialized successfully! Create button: {createCheckoutButton != null}, Open browser button: {openBrowserButton != null}");
-            
-            // For debugging: Add a simple callback
-            createCheckoutButton.RegisterCallback<ClickEvent>(evt => 
-            {
-                Debug.Log("Button clicked via callback!");
-            });
-        }
-        
-        private void AddNewItem()
-        {
-            Debug.Log("Adding new item...");
-            
-            // Clone the first item element as a template
-            var templateItem = itemsContainer.Q<VisualElement>($"Item0");
-            if (templateItem == null)
-            {
-                Debug.LogError("Template item not found!");
-                return;
-            }
-            
-            // Create a new item with a unique index
-            var newItemIndex = nextItemIndex++;
-            var newItem = new VisualElement();
-            newItem.name = $"Item{newItemIndex}";
-            newItem.AddToClassList("item-container");
-            
-            // Add header with label and remove button
-            var header = new VisualElement();
-            header.style.flexDirection = FlexDirection.Row;
-            header.style.justifyContent = Justify.SpaceBetween;
-            header.style.alignItems = Align.Center;
-            header.style.marginBottom = 5;
-            
-            var label = new Label($"Item {newItemIndex + 1}");
-            label.style.fontSize = 16;
-            label.style.unityFontStyleAndWeight = FontStyle.Bold;
-            label.style.color = new Color(0.86f, 0.86f, 0.86f);
-            
-            var removeButton = new Button();
-            removeButton.text = "Remove";
-            removeButton.name = $"RemoveItem{newItemIndex}";
-            removeButton.AddToClassList("button-delete");
-            removeButton.style.marginTop = 0;
-            
-            header.Add(label);
-            header.Add(removeButton);
-            newItem.Add(header);
-            
-            // Add form fields
-            var itemIdField = new TextField("Item ID");
-            itemIdField.name = $"ItemID{newItemIndex}";
-            itemIdField.value = $"item_id_{newItemIndex}";
-            
-            var priceField = new TextField("Price Per Item");
-            priceField.name = $"PricePerItem{newItemIndex}";
-            priceField.value = "199";
-            
-            var quantityField = new IntegerField("Quantity");
-            quantityField.name = $"Quantity{newItemIndex}";
-            quantityField.value = 1;
-            
-            var imageUrlField = new TextField("Image URL");
-            imageUrlField.name = $"ItemImageURL{newItemIndex}";
-            imageUrlField.value = "https://api.braincloudservers.com/files/portal/g/15152/metadata/products/battle_pass.png";
-            
-            var nameField = new TextField("Name");
-            nameField.name = $"ItemName{newItemIndex}";
-            nameField.value = $"item_name_{newItemIndex}";
-            
-            var descField = new TextField("Description");
-            descField.name = $"ItemDescription{newItemIndex}";
-            descField.value = $"item_description_{newItemIndex}";
-            
-            // Add all fields to the new item
-            newItem.Add(itemIdField);
-            newItem.Add(priceField);
-            newItem.Add(quantityField);
-            newItem.Add(imageUrlField);
-            newItem.Add(nameField);
-            newItem.Add(descField);
-            
-            // Add to the container
-            itemsContainer.Add(newItem);
-            
-            // Register remove button click event
-            removeButton.clickable = new Clickable(() => RemoveItem(newItemIndex));
-            
-            Debug.Log($"New item added with index {newItemIndex}");
-        }
-        
-        private void RemoveItem(int itemIndex)
-        {
-            Debug.Log($"Removing item {itemIndex}...");
-            
-            var itemToRemove = itemsContainer.Q<VisualElement>($"Item{itemIndex}");
-            if (itemToRemove != null)
-            {
-                itemsContainer.Remove(itemToRemove);
-                Debug.Log($"Item {itemIndex} removed successfully");
-            }
-            else
-            {
-                Debug.LogError($"Could not find item with index {itemIndex}");
+                itemElements.Add(itemTemplate);
             }
         }
         
-        private void InitializeRemoveButton(int itemIndex)
+        private void SetupEventHandlers()
         {
-            var removeButton = itemsContainer.Q<Button>($"RemoveItem{itemIndex}");
+            // Tab button events
+            userTabButton.clicked += () => SwitchTab("user");
+            shopTabButton.clicked += () => SwitchTab("shop");
+            itemsTabButton.clicked += () => SwitchTab("items");
+            
+            // Other button events
+            createCheckoutButton.clicked += CreateCheckoutLink;
+            openBrowserButton.clicked += OpenInBrowser;
+            
+            if (openIOSViewButton != null)
+            {
+                openIOSViewButton.clicked += OpenInIOSWebView;
+            }
+            
+            addItemButton.clicked += AddItem;
+            
+            // Setup remove button for existing item
+            if (itemElements.Count > 0)
+            {
+                SetupRemoveItemButton(itemElements[0], 0);
+            }
+        }
+        
+        private void SwitchTab(string tabName)
+        {
+            // Reset all tabs
+            userTabButton.RemoveFromClassList("tab-button-active");
+            shopTabButton.RemoveFromClassList("tab-button-active");
+            itemsTabButton.RemoveFromClassList("tab-button-active");
+            
+            userSection.RemoveFromClassList("tab-content-active");
+            shopSection.RemoveFromClassList("tab-content-active");
+            itemsSection.RemoveFromClassList("tab-content-active");
+            
+            // Activate selected tab
+            switch (tabName)
+            {
+                case "user":
+                    userTabButton.AddToClassList("tab-button-active");
+                    userSection.AddToClassList("tab-content-active");
+                    break;
+                case "shop":
+                    shopTabButton.AddToClassList("tab-button-active");
+                    shopSection.AddToClassList("tab-content-active");
+                    break;
+                case "items":
+                    itemsTabButton.AddToClassList("tab-button-active");
+                    itemsSection.AddToClassList("tab-content-active");
+                    break;
+            }
+            
+            Debug.Log($"Switched to {tabName} tab");
+        }
+        
+        private void AddItem()
+        {
+            if (itemElements.Count > 0)
+            {
+                // Get the template item
+                VisualElement template = itemElements[0];
+                
+                // Create a new index for the item
+                int newIndex = itemElements.Count;
+                
+                // Clone the template
+                VisualElement newItem = template.CloneElement();
+                newItem.name = $"Item{newIndex}";
+                
+                // Update the label
+                var itemTitle = newItem.Q<Label>(className: "item-title");
+                if (itemTitle != null)
+                {
+                    itemTitle.text = $"Item {newIndex + 1}";
+                }
+                
+                // Update names of all field elements within the new item
+                UpdateFieldNames(newItem, newIndex);
+                
+                // Set up the remove button
+                SetupRemoveItemButton(newItem, newIndex);
+                
+                // Add the new item to the container and to our list
+                itemsContainer.Add(newItem);
+                itemElements.Add(newItem);
+                
+                Debug.Log($"Added item {newIndex + 1}");
+            }
+        }
+        
+        private void UpdateFieldNames(VisualElement item, int index)
+        {
+            // Find all TextField and IntegerField elements and update their names
+            var textFields = item.Query<TextField>().ToList();
+            foreach (var field in textFields)
+            {
+                string baseName = field.name;
+                if (baseName.EndsWith("0"))
+                {
+                    string newName = baseName.Substring(0, baseName.Length - 1) + index;
+                    field.name = newName;
+                }
+            }
+            
+            var intFields = item.Query<IntegerField>().ToList();
+            foreach (var field in intFields)
+            {
+                string baseName = field.name;
+                if (baseName.EndsWith("0"))
+                {
+                    string newName = baseName.Substring(0, baseName.Length - 1) + index;
+                    field.name = newName;
+                }
+            }
+            
+            // Update the name of the remove button
+            var removeButton = item.Q<Button>(name: $"RemoveItem0");
             if (removeButton != null)
             {
-                removeButton.clickable = null;
-                removeButton.clickable = new Clickable(() => RemoveItem(itemIndex));
-            }
-            else
-            {
-                Debug.LogWarning($"Remove button for item {itemIndex} not found");
+                removeButton.name = $"RemoveItem{index}";
             }
         }
         
-        private List<StashCheckout.CheckoutItemData> GatherAllItems()
+        private void SetupRemoveItemButton(VisualElement item, int index)
+        {
+            var removeButton = item.Q<Button>(name: $"RemoveItem{index}");
+            if (removeButton != null)
+            {
+                removeButton.clicked += () => RemoveItem(index);
+            }
+        }
+        
+        private void RemoveItem(int index)
+        {
+            if (index < itemElements.Count)
+            {
+                // Remove the item from the visual container
+                VisualElement itemToRemove = itemElements[index];
+                itemsContainer.Remove(itemToRemove);
+                
+                // Remove from our list
+                itemElements.RemoveAt(index);
+                
+                // Renumber the remaining items
+                for (int i = 0; i < itemElements.Count; i++)
+                {
+                    var item = itemElements[i];
+                    item.name = $"Item{i}";
+                    
+                    // Update title
+                    var itemTitle = item.Q<Label>(className: "item-title");
+                    if (itemTitle != null)
+                    {
+                        itemTitle.text = $"Item {i + 1}";
+                    }
+                    
+                    // Update field names
+                    UpdateFieldNames(item, i);
+                    
+                    // Update remove button
+                    var removeButton = item.Q<Button>(name: $"RemoveItem{i}");
+                    if (removeButton != null)
+                    {
+                        // Remove any existing handlers
+                        removeButton.clicked -= () => RemoveItem(i);
+                        
+                        // Add new handler
+                        int capturedIndex = i; // Capture the current index to avoid closure issues
+                        removeButton.clicked += () => RemoveItem(capturedIndex);
+                    }
+                }
+                
+                Debug.Log($"Removed item at index {index}");
+            }
+        }
+        
+        private async void CreateCheckoutLink()
+        {
+            try
+            {
+                // Build checkout request from UI fields
+                var items = GatherItemsData();
+                
+                string userId = GetFieldValue("UserID");
+                string email = GetFieldValue("Email");
+                string displayName = GetFieldValue("DisplayName");
+                string avatarUrl = GetFieldValue("AvatarURL");
+                string profileUrl = GetFieldValue("ProfileURL");
+                string shopHandle = GetFieldValue("ShopHandle");
+                string currency = GetFieldValue("Currency");
+                string apiKey = GetFieldValue("ApiKey");
+                
+                // Call the Stash API
+                var result = await StashCheckout.CreateCheckoutLinkWithItems(
+                    userId,
+                    email,
+                    displayName,
+                    avatarUrl,
+                    profileUrl,
+                    shopHandle,
+                    currency,
+                    items.ToArray(),
+                    apiKey
+                );
+                
+                // Display the result
+                DisplayCheckoutResponse(result.url, result.id);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error creating checkout link: {ex.Message}");
+                DisplayError($"Error: {ex.Message}");
+            }
+        }
+        
+        private List<StashCheckout.CheckoutItemData> GatherItemsData()
         {
             var items = new List<StashCheckout.CheckoutItemData>();
             
-            // Find all item containers
-            for (int i = 0; i < nextItemIndex; i++)
+            for (int i = 0; i < itemElements.Count; i++)
             {
-                var itemContainer = itemsContainer.Q<VisualElement>($"Item{i}");
-                if (itemContainer == null) continue; // Skip if this item has been removed
-                
-                var itemIdField = itemContainer.Q<TextField>($"ItemID{i}");
-                var priceField = itemContainer.Q<TextField>($"PricePerItem{i}");
-                var quantityField = itemContainer.Q<IntegerField>($"Quantity{i}");
-                var imageUrlField = itemContainer.Q<TextField>($"ItemImageURL{i}");
-                var nameField = itemContainer.Q<TextField>($"ItemName{i}");
-                var descField = itemContainer.Q<TextField>($"ItemDescription{i}");
-                
-                if (itemIdField != null && priceField != null && quantityField != null && 
-                    imageUrlField != null && nameField != null && descField != null)
+                var item = new StashCheckout.CheckoutItemData
                 {
-                    var item = new StashCheckout.CheckoutItemData
-                    {
-                        id = itemIdField.value,
-                        pricePerItem = priceField.value,
-                        quantity = quantityField.value,
-                        imageUrl = imageUrlField.value,
-                        name = nameField.value,
-                        description = descField.value
-                    };
-                    
-                    items.Add(item);
-                    Debug.Log($"Added item {i} to checkout request: {item.name}");
-                }
+                    id = GetFieldValue($"ItemID{i}"),
+                    pricePerItem = GetFieldValue($"PricePerItem{i}"),
+                    quantity = int.Parse(GetFieldValue($"Quantity{i}")),
+                    imageUrl = GetFieldValue($"ItemImageURL{i}"),
+                    name = GetFieldValue($"ItemName{i}"),
+                    description = GetFieldValue($"ItemDescription{i}")
+                };
+                
+                items.Add(item);
             }
             
             return items;
         }
         
-        private async void CreateCheckoutLink()
+        private void DisplayCheckoutResponse(string url, string id)
         {
-            Debug.Log("Creating checkout link with multiple items...");
+            // Update UI with the response information
+            checkoutUrlField.value = url;
+            checkoutIdField.value = id;
             
-            try
+            // Show the response container
+            responseContainer.style.display = DisplayStyle.Flex;
+            
+            // Enable the browser buttons
+            openBrowserButton.SetEnabled(true);
+            
+            if (openIOSViewButton != null)
             {
-                // Gather all items from the UI
-                var items = GatherAllItems();
-                
-                if (items.Count == 0)
-                {
-                    Debug.LogError("No items found to add to checkout!");
-                    return;
-                }
-                
-                // Create a checkout link with all items
-                var result = await StashCheckout.CreateCheckoutLinkWithItems(
-                    userIdField.value,
-                    emailField.value,
-                    displayNameField.value,
-                    avatarUrlField.value,
-                    profileUrlField.value,
-                    shopHandleField.value,
-                    currencyField.value,
-                    items.ToArray(),
-                    apiKeyField.value
-                );
-                
-                // Display the result
-                checkoutUrlField.value = result.url;
-                checkoutIdField.value = result.id;
-                responseContainer.style.display = DisplayStyle.Flex;
-                
-                Debug.Log($"Checkout link created successfully with {items.Count} items: {result.url}");
+                openIOSViewButton.SetEnabled(true);
             }
-            catch (Exception ex)
+            
+            // Automatically open the URL in browser
+            if (!string.IsNullOrEmpty(url))
             {
-                Debug.LogError($"Error creating checkout link: {ex.Message}");
-                
-                // Display error in the UI
-                if (checkoutUrlField != null)
-                {
-                    checkoutUrlField.value = $"Error: {ex.Message}";
-                    
-                    if (checkoutIdField != null)
-                    {
-                        checkoutIdField.value = "N/A";
-                    }
-                    
-                    if (responseContainer != null)
-                    {
-                        responseContainer.style.display = DisplayStyle.Flex;
-                    }
-                }
+                #if UNITY_IOS && !UNITY_EDITOR
+                OpenInIOSWebView();
+                #else
+                StashCheckout.OpenUrlInBrowser(url);
+                #endif
+                Debug.Log($"Automatically opening checkout URL: {url}");
+            }
+            
+            Debug.Log("Checkout link generated successfully");
+        }
+        
+        private void DisplayError(string errorMessage)
+        {
+            // Show error in the checkout URL field
+            checkoutUrlField.value = errorMessage;
+            checkoutIdField.value = string.Empty;
+            
+            // Show the response container
+            responseContainer.style.display = DisplayStyle.Flex;
+            
+            // Disable the browser buttons
+            openBrowserButton.SetEnabled(false);
+            
+            if (openIOSViewButton != null)
+            {
+                openIOSViewButton.SetEnabled(false);
             }
         }
         
-        private void OpenCheckoutInBrowser()
+        private void OpenInBrowser()
         {
-            Debug.Log("Opening browser...");
-            if (checkoutUrlField != null && !string.IsNullOrEmpty(checkoutUrlField.value) && !checkoutUrlField.value.StartsWith("Error:"))
+            if (!string.IsNullOrEmpty(checkoutUrlField.value))
             {
-                Debug.Log($"Opening URL: {checkoutUrlField.value}");
                 StashCheckout.OpenUrlInBrowser(checkoutUrlField.value);
             }
-            else
+        }
+        
+        private void OpenInIOSWebView()
+        {
+            if (string.IsNullOrEmpty(checkoutUrlField.value)) return;
+            
+            #if UNITY_IOS && !UNITY_EDITOR
+            try
             {
-                Debug.LogWarning("Cannot open URL: No valid checkout URL available");
+                _OpenURLInSafariVC(checkoutUrlField.value);
+                Debug.Log($"Opening URL in iOS Safari View: {checkoutUrlField.value}");
             }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error opening URL in iOS Safari View: {ex.Message}");
+                // Fallback to regular browser open
+                StashCheckout.OpenUrlInBrowser(checkoutUrlField.value);
+            }
+            #else
+            // Fallback to regular browser open on non-iOS platforms
+            Debug.Log("Safari View is only available on iOS. Opening in regular browser instead.");
+            StashCheckout.OpenUrlInBrowser(checkoutUrlField.value);
+            #endif
+        }
+        
+        private string GetFieldValue(string fieldName)
+        {
+            var textField = root.Q<TextField>(fieldName);
+            if (textField != null)
+            {
+                return textField.value;
+            }
+            
+            var intField = root.Q<IntegerField>(fieldName);
+            if (intField != null)
+            {
+                return intField.value.ToString();
+            }
+            
+            return string.Empty;
+        }
+    }
+    
+    // Helper extension method to clone a VisualElement
+    public static class VisualElementExtensions
+    {
+        public static VisualElement CloneElement(this VisualElement original)
+        {
+            // Create a new element of the same type
+            var clone = new VisualElement();
+            clone.name = original.name;
+            
+            // Copy classes
+            foreach (var className in original.GetClasses())
+            {
+                clone.AddToClassList(className);
+            }
+            
+            // Copy style (this is a simplified approach)
+            clone.style.width = original.style.width;
+            clone.style.height = original.style.height;
+            clone.style.marginTop = original.style.marginTop;
+            clone.style.marginRight = original.style.marginRight;
+            clone.style.marginBottom = original.style.marginBottom;
+            clone.style.marginLeft = original.style.marginLeft;
+            clone.style.paddingTop = original.style.paddingTop;
+            clone.style.paddingRight = original.style.paddingRight;
+            clone.style.paddingBottom = original.style.paddingBottom;
+            clone.style.paddingLeft = original.style.paddingLeft;
+            
+            // Clone child elements
+            foreach (var child in original.Children())
+            {
+                VisualElement clonedChild;
+                
+                // Special handling for different element types
+                if (child is Label label)
+                {
+                    var clonedLabel = new Label(label.text);
+                    clonedLabel.name = label.name;
+                    clonedChild = clonedLabel;
+                }
+                else if (child is Button button)
+                {
+                    var clonedButton = new Button();
+                    clonedButton.text = button.text;
+                    clonedButton.name = button.name;
+                    clonedChild = clonedButton;
+                }
+                else if (child is TextField textField)
+                {
+                    var clonedTextField = new TextField();
+                    clonedTextField.name = textField.name;
+                    clonedTextField.label = textField.label;
+                    clonedTextField.value = textField.value;
+                    clonedTextField.multiline = textField.multiline;
+                    clonedChild = clonedTextField;
+                }
+                else if (child is IntegerField intField)
+                {
+                    var clonedIntField = new IntegerField();
+                    clonedIntField.name = intField.name;
+                    clonedIntField.label = intField.label;
+                    clonedIntField.value = intField.value;
+                    clonedChild = clonedIntField;
+                }
+                else
+                {
+                    clonedChild = child.CloneElement();
+                }
+                
+                // Copy classes to the cloned child
+                foreach (var className in child.GetClasses())
+                {
+                    clonedChild.AddToClassList(className);
+                }
+                
+                clone.Add(clonedChild);
+            }
+            
+            return clone;
         }
     }
 } 
