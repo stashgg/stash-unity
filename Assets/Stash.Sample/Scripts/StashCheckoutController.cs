@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 using Stash.Core;
+using Stash.Scripts.Core;
 using UnityEngine;
 using UnityEngine.UIElements;
 using System.Text;
@@ -33,6 +34,10 @@ namespace Stash.Sample
         private VisualElement userSection;
         private VisualElement shopSection;
         private VisualElement itemsSection;
+        
+        // Store checkout data for curl command
+        private string lastRequestBody;
+        private string lastApiKey;
 
         // iOS native methods
         #if UNITY_IOS
@@ -294,6 +299,10 @@ namespace Stash.Sample
                 string currency = GetFieldValue("Currency");
                 string apiKey = GetFieldValue("ApiKey");
                 
+                // Store the request body and API key for curl command generation
+                lastRequestBody = $"{{\"externalUser\":{{\"id\":\"{userId}\",\"validatedEmail\":\"{email}\",\"displayName\":\"{displayName}\",\"avatarIconUrl\":\"{avatarUrl}\",\"profileUrl\":\"{profileUrl}\"}},\"shopHandle\":\"{shopHandle}\",\"currency\":\"{currency}\",\"items\":{GenerateItemsJson(items)}}}";
+                lastApiKey = apiKey;
+                
                 // Call the Stash API
                 var result = await StashCheckout.CreateCheckoutLinkWithItems(
                     userId,
@@ -315,6 +324,25 @@ namespace Stash.Sample
                 Debug.LogError($"Error creating checkout link: {ex.Message}");
                 DisplayError($"Error: {ex.Message}");
             }
+        }
+        
+        private string GenerateItemsJson(List<StashCheckout.CheckoutItemData> items)
+        {
+            StringBuilder sb = new StringBuilder("[");
+            
+            for (int i = 0; i < items.Count; i++)
+            {
+                var item = items[i];
+                sb.Append($"{{\"id\":\"{item.id}\",\"pricePerItem\":\"{item.pricePerItem}\",\"quantity\":{item.quantity},\"imageUrl\":\"{item.imageUrl}\",\"name\":\"{item.name}\",\"description\":\"{item.description}\"}}");
+                
+                if (i < items.Count - 1)
+                {
+                    sb.Append(",");
+                }
+            }
+            
+            sb.Append("]");
+            return sb.ToString();
         }
         
         private List<StashCheckout.CheckoutItemData> GatherItemsData()
@@ -359,6 +387,11 @@ namespace Stash.Sample
             // Automatically open the URL in browser
             if (!string.IsNullOrEmpty(url))
             {
+                // Generate and copy curl command to clipboard
+                string curlCommand = GenerateCurlCommand(url);
+                CopyToClipboard(curlCommand);
+                Debug.Log($"Curl command copied to clipboard: {curlCommand}");
+                
                 #if UNITY_IOS && !UNITY_EDITOR
                 OpenInIOSWebView();
                 #else
@@ -368,6 +401,46 @@ namespace Stash.Sample
             }
             
             Debug.Log("Checkout link generated successfully");
+        }
+        
+        private string GenerateCurlCommand(string url)
+        {
+            if (string.IsNullOrEmpty(lastRequestBody) || string.IsNullOrEmpty(lastApiKey))
+            {
+                return $"curl -X GET \"{url}\"";
+            }
+            
+            // Escape double quotes in the request body for the curl command
+            string escapedBody = lastRequestBody.Replace("\"", "\\\"");
+            
+            // Get the API endpoint
+            string apiEndpoint = Stash.Core.StashConstants.CheckoutLinks;
+            string baseUrl = Stash.Scripts.Core.StashEnvironmentAdapter.GetRootUrl(StashEnvironment.Test);
+            
+            // Construct the curl command with all headers and payload
+            StringBuilder curlBuilder = new StringBuilder();
+            curlBuilder.Append("curl -X POST ");
+            curlBuilder.Append($"\"{baseUrl}{apiEndpoint}\" ");
+            curlBuilder.Append("-H \"Content-Type: application/json\" ");
+            curlBuilder.Append("-H \"Accept: application/json\" ");
+            curlBuilder.Append($"-H \"X-Stash-Api-Key: {lastApiKey}\" ");
+            curlBuilder.Append($"-H \"x-stash-unity-sdk-version: {StashConstants.SdkVersion}\" ");
+            curlBuilder.Append($"-H \"x-stash-unity-platform: {Application.platform}\" ");
+            curlBuilder.Append($"-H \"x-stash-unity-runtime: {Application.unityVersion}\" ");
+            curlBuilder.Append($"-H \"x-stash-unity-build-guid: {Application.buildGUID}\" ");
+            curlBuilder.Append($"-H \"x-stash-unity-app-version: {Application.version}\" ");
+            curlBuilder.Append($"-H \"x-stash-unity-device-os: {SystemInfo.operatingSystem}\" ");
+            curlBuilder.Append($"-H \"x-stash-unity-device-model: {SystemInfo.deviceModel}\" ");
+            curlBuilder.Append($"-H \"x-stash-unity-device-type: {SystemInfo.deviceType}\" ");
+            curlBuilder.Append($"-H \"x-stash-unity-editor: {Application.isEditor}\" ");
+            curlBuilder.Append($"-d \"{escapedBody}\"");
+            
+            return curlBuilder.ToString();
+        }
+        
+        private void CopyToClipboard(string text)
+        {
+            GUIUtility.systemCopyBuffer = text;
         }
         
         private void DisplayError(string errorMessage)
@@ -392,6 +465,11 @@ namespace Stash.Sample
         {
             if (!string.IsNullOrEmpty(checkoutUrlField.value))
             {
+                // Generate and copy curl command to clipboard
+                string curlCommand = GenerateCurlCommand(checkoutUrlField.value);
+                CopyToClipboard(curlCommand);
+                Debug.Log($"Curl command copied to clipboard: {curlCommand}");
+                
                 StashCheckout.OpenUrlInBrowser(checkoutUrlField.value);
             }
         }
@@ -399,6 +477,11 @@ namespace Stash.Sample
         private void OpenInIOSWebView()
         {
             if (string.IsNullOrEmpty(checkoutUrlField.value)) return;
+            
+            // Generate and copy curl command to clipboard
+            string curlCommand = GenerateCurlCommand(checkoutUrlField.value);
+            CopyToClipboard(curlCommand);
+            Debug.Log($"Curl command copied to clipboard: {curlCommand}");
             
             #if UNITY_IOS && !UNITY_EDITOR
             try
