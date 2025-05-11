@@ -1,0 +1,58 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="UnityEngine.UIElements" editor="UnityEditor.UIElements" schemaLocation="UnityEngine.UIElements ../UIElementsSchema/UnityEngine.UIElements.xsd" editor-extension-mode="False">
+    <Style src="project://database/Assets/Stash.Samples/UI%20Toolkit/StoreUI/StoreUI.uss?fileID=7433441132597879392&amp;guid=6554e5a4da3944a0eb1ec160d6b1bd9a&amp;type=3#StoreUI" />
+    <ui:VisualElement name="store-container" class="store-container">
+        <ui:VisualElement name="header-bar" class="header-bar">
+            <ui:VisualElement name="title-container" class="title-container" style="justify-content: flex-start;">
+                <ui:Label text="Stash SDK" name="app-title" class="app-title" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement name="tabs-container" class="tabs-container">
+            <ui:Button text="User" name="user-tab-button" class="tab-button tab-selected" />
+            <ui:Button text="IAP" name="store-tab-button" class="tab-button" />
+        </ui:VisualElement>
+        <ui:VisualElement name="tab-content" class="tab-content">
+            <ui:VisualElement name="user-tab-content" class="tab-panel" style="display: flex;">
+                <ui:VisualElement name="user-profile" class="user-profile">
+                    <ui:Label text="User Profile" name="profile-title" class="section-title" />
+                    <ui:VisualElement name="login-container" class="login-container">
+                        <ui:Button text="Login" name="login-button" display-tooltip-when-elided="true" class="login-button" />
+                        <ui:Label text="Not logged in" name="profile-status" class="profile-status" />
+                    </ui:VisualElement>
+                    <ui:VisualElement name="profile-info" class="profile-info">
+                        <ui:VisualElement name="profile-card" class="profile-card">
+                            <ui:VisualElement name="profile-header" class="profile-card-header">
+                                <ui:Label text="User Name" name="profile-name" class="profile-name" />
+                            </ui:VisualElement>
+                            <ui:VisualElement name="profile-details" class="profile-details">
+                                <ui:VisualElement name="detail-row" class="detail-row">
+                                    <ui:Label text="User ID:" class="detail-label" />
+                                    <ui:Label text="--" name="user-id-value" class="detail-value" />
+                                </ui:VisualElement>
+                                <ui:VisualElement name="detail-row" class="detail-row">
+                                    <ui:Label text="Email:" class="detail-label" />
+                                    <ui:Label text="--" name="email-value" class="detail-value" />
+                                </ui:VisualElement>
+                                <ui:VisualElement name="detail-row" class="detail-row">
+                                    <ui:Label text="Expiry:" class="detail-label" />
+                                    <ui:Label text="--" name="token-expiry-value" class="detail-value" />
+                                </ui:VisualElement>
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                        <ui:VisualElement name="attributes-card" class="profile-card">
+                            <ui:Label text="Additional Attributes" class="card-title" />
+                            <ui:ScrollView name="attributes-scroll" class="attributes-scroll">
+                                <ui:VisualElement name="attributes-container" class="attributes-container" />
+                            </ui:ScrollView>
+                        </ui:VisualElement>
+                        <ui:Button text="Force Refresh" name="refresh-token-button" class="refresh-button" style="display: none;" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
+            <ui:VisualElement name="store-tab-content" class="tab-panel" style="display: none;">
+                <ui:ScrollView name="items-scroll-view" class="items-scroll-view">
+                    <ui:VisualElement name="items-container" class="items-container" />
+                </ui:ScrollView>
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>
