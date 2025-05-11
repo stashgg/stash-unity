@@ -9,6 +9,6 @@ EditorBuildSettings:
     path: Assets/Stash.Samples/Scenes/StashSample.unity
     guid: 9fc0d4010bbf28b4594072e72b8655ab
   - enabled: 1
-    path: Assets/Stash.Samples/Scenes/StashPayPopup.unity
+    path: Assets/Stash.Samples/Scenes/StashSample.unity
     guid: 70dcec3dffb0e4d5192db4d3bf206c0b
   m_configObjects: {}
