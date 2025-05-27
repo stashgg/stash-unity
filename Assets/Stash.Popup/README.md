@@ -56,7 +56,7 @@ public class YourClass : MonoBehaviour
 }
 ```
 
-3. If the payment is successfull, validate the purchase using the Stash API on the game backend.
+3. If the payment is successful, validate the purchase using the Stash API on the game backend.
 
 ### Platform Support
 
