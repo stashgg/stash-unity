@@ -22,7 +22,7 @@ All components are optional, you can mix and match based on your needs.
 |---------------|-----------------------------------------------------------------------------|
 | Stash.Core    | Provides core functionalities and API wrappers for Stash.                   |
 | Stash.Popup   | Offers a customizable card-style popup for Stash Pay.                       |
-| Stash.Samples | Includes sample scenes and scripts for using the Stash SDK.                 |
+| Stash.Samples | Includes sample scene using the Stash SDK.                 |
 
 
 ## Installation
