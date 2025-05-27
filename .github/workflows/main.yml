@@ -58,9 +58,21 @@ jobs:
         run: |
           cp .github/workflows/exportOptions.plist build/iOS/
       - if: matrix.targetPlatform == 'iOS'
+        name: Debug Build Directory
+        run: |
+          cd build/iOS
+          pwd
+          ls -la
+      - if: matrix.targetPlatform == 'iOS'
         name: Build and Archive iOS App
         run: |
           cd build/iOS
+          if [ ! -d "Unity-iPhone.xcodeproj" ]; then
+            echo "Unity-iPhone.xcodeproj not found in $(pwd)"
+            echo "Available files:"
+            ls -la
+            exit 1
+          fi
           xcodebuild -project Unity-iPhone.xcodeproj -scheme Unity-iPhone -configuration Release -sdk iphoneos build archive -archivePath ./build/Unity-iPhone.xcarchive
           xcodebuild -exportArchive -archivePath ./build/Unity-iPhone.xcarchive -exportOptionsPlist exportOptions.plist -exportPath ./build
       - if: matrix.targetPlatform == 'iOS'
