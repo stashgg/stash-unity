@@ -1,8 +1,11 @@
 using System.IO;
 using UnityEditor;
 using UnityEditor.Callbacks;
-using UnityEditor.iOS.Xcode;
 using UnityEngine;
+
+#if UNITY_IOS
+using UnityEditor.iOS.Xcode;
+#endif
 
 public class AddWebKitFramework
 {
@@ -10,6 +13,7 @@ public class AddWebKitFramework
     [PostProcessBuild(1)]
     public static void OnPostProcessBuild(BuildTarget buildTarget, string buildPath)
     {
+#if UNITY_IOS
         if (buildTarget == BuildTarget.iOS)
         {
             Debug.Log("Adding Stash Pay Popup framework to Xcode project...");
@@ -47,5 +51,12 @@ public class AddWebKitFramework
             
             Debug.Log("Stash Pay Popup framework successfully added to Xcode project.");
         }
+#else
+        // Skip iOS-specific processing for non-iOS platforms
+        if (buildTarget == BuildTarget.iOS)
+        {
+            Debug.LogWarning("iOS build support is not available. Stash Pay Popup iOS features will not be available.");
+        }
+#endif
     }
 } 
