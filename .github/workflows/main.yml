@@ -56,17 +56,17 @@ jobs:
       - if: matrix.targetPlatform == 'iOS'
         name: Copy exportOptions.plist
         run: |
-          cp .github/workflows/exportOptions.plist build/iOS/
+          cp .github/workflows/exportOptions.plist build/iOS/iOS/
       - if: matrix.targetPlatform == 'iOS'
         name: Debug Build Directory
         run: |
-          cd build/iOS
+          cd build/iOS/iOS
           pwd
           ls -la
       - if: matrix.targetPlatform == 'iOS'
         name: Build and Archive iOS App
         run: |
-          cd build/iOS
+          cd build/iOS/iOS
           if [ ! -d "Unity-iPhone.xcodeproj" ]; then
             echo "Unity-iPhone.xcodeproj not found in $(pwd)"
             echo "Available files:"
