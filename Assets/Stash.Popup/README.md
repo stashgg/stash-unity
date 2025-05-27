@@ -1,3 +1,8 @@
+
+<p align="center">
+  <img src="https://i.ibb.co/RRfh8df/2025-05-27-13-33-27-High-Res-Screenshot-portrait.png" width="50%" />
+</p>
+
 # Stash.Popup
 
 A Unity plugin that provides a customizable card-style popup for Stash Pay. The plugin uses native WebKit implementation on iOS to provide a native looking
@@ -52,12 +57,6 @@ public class YourClass : MonoBehaviour
 
 3. If the payment is successfull, validate the purchase using the Stash API on the game backend.
 
-### Events
-
-The plugin provides two main events:
-
-1. `OnSafariViewDismissed`: Triggered when the card is dismissed.
-2. `OnPaymentSuccess`: Triggered when a payment is successful.```
 
 ### Platform Support
 
