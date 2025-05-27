@@ -1,6 +1,6 @@
 
 <p align="center">
-  <img src="https://i.ibb.co/RRfh8df/2025-05-27-13-33-27-High-Res-Screenshot-portrait.png" width="50%" />
+  <img src="https://i.ibb.co/RRfh8df/2025-05-27-13-33-27-High-Res-Screenshot-portrait.png" width="70%" />
 </p>
 
 # Stash.Popup
