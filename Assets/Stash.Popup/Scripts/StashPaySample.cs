@@ -65,6 +65,18 @@ namespace StashPopup
         [Tooltip("Product description")]
         [SerializeField] private string productDescription = "This is an example product";
         
+        [Header("Card Configuration")]
+        [Tooltip("Position mode for the card")]
+        [SerializeField] private Stash.Samples.CardPositionMode positionMode = Stash.Samples.CardPositionMode.BottomSheet;
+        
+        [Tooltip("Height of the card as percentage of screen (0.1 to 0.9)")]
+        [Range(0.1f, 0.9f)]
+        [SerializeField] private float cardHeightRatio = 0.4f;
+        
+        [Tooltip("Vertical position for custom mode (0.0 = top, 0.5 = middle, 1.0 = bottom)")]
+        [Range(0.0f, 1.0f)]
+        [SerializeField] private float customVerticalPosition = 0.5f;
+        
         [Header("Events")]
         [Tooltip("Events triggered when the StashPayCard is opened")]
         [SerializeField] private UnityEvent onCardOpened;
@@ -95,27 +107,12 @@ namespace StashPopup
         /// </summary>
         private async Task<string> GenerateCheckoutUrl()
         {
-            // Create a checkout item with the specified product information
-            var checkoutItem = new StashCheckout.CheckoutItemData
-            {
-                id = productId,
-                pricePerItem = pricePerItem,
-                quantity = quantity,
-                imageUrl = productImageUrl,
-                name = productName,
-                description = productDescription
-            };
-            
-            // Generate the checkout URL using the Stash Checkout API
-            var (url, id) = await StashCheckout.CreateCheckoutLinkWithItems(
+            // Generate the checkout URL using the Stash Checkout API (simplified method)
+            var (url, id) = await StashCheckout.CreateCheckoutLink(
                 externalUserId,
                 userEmail,
-                displayName,
-                avatarIconUrl,
-                profileUrl,
                 shopHandle,
-                currency,
-                new StashCheckout.CheckoutItemData[] { checkoutItem },
+                productId,
                 apiKey,
                 environment
             );
@@ -131,6 +128,9 @@ namespace StashPopup
         {
             try
             {
+                // Configure the card based on selected mode
+                ConfigureCardPosition();
+                
                 // Generate or use cached checkout URL
                 if (string.IsNullOrEmpty(generatedCheckoutUrl))
                 {
@@ -145,6 +145,36 @@ namespace StashPopup
             {
                 Debug.LogError($"[Stash] Error generating checkout URL: {ex.Message}");
                 // No fallback - just log the error without displaying the card
+            }
+        }
+        
+        /// <summary>
+        /// Configure the card position based on the selected mode
+        /// </summary>
+        private void ConfigureCardPosition()
+        {
+            switch (positionMode)
+            {
+                case Stash.Samples.CardPositionMode.BottomSheet:
+                    StashPayCard.Instance.ConfigureAsBottomSheet(cardHeightRatio);
+                    Debug.Log($"[Stash] Configured card as bottom sheet with height ratio {cardHeightRatio}");
+                    break;
+                    
+                case Stash.Samples.CardPositionMode.CenterDialog:
+                    StashPayCard.Instance.ConfigureAsDialog(cardHeightRatio);
+                    Debug.Log($"[Stash] Configured card as center dialog with height ratio {cardHeightRatio}");
+                    break;
+                    
+                case Stash.Samples.CardPositionMode.FullScreen:
+                    StashPayCard.Instance.ConfigureAsFullScreen(cardHeightRatio);
+                    Debug.Log($"[Stash] Configured card as fullscreen with height ratio {cardHeightRatio}");
+                    break;
+                    
+                case Stash.Samples.CardPositionMode.Custom:
+                    StashPayCard.Instance.SetCardHeightRatio(cardHeightRatio);
+                    StashPayCard.Instance.SetCardVerticalPosition(customVerticalPosition);
+                    Debug.Log($"[Stash] Configured card with custom position: height ratio {cardHeightRatio}, vertical position {customVerticalPosition}");
+                    break;
             }
         }
         

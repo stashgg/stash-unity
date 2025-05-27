@@ -21,28 +21,20 @@ namespace Stash.Core
         }
         
         /// <summary>
-        /// Creates a checkout link for Stash payments.
+        /// Creates a checkout link for Stash payments using the new simplified API.
         /// </summary>
-        /// <param name="externalUserId">The external user ID.</param>
+        /// <param name="userId">The user ID.</param>
         /// <param name="validatedEmail">The validated email of the user.</param>
-        /// <param name="displayName">The display name of the user.</param>
-        /// <param name="avatarIconUrl">The URL of the user's avatar icon.</param>
-        /// <param name="profileUrl">The URL of the user's profile.</param>
         /// <param name="shopHandle">The handle of the shop.</param>
-        /// <param name="currency">The currency to use for the checkout.</param>
-        /// <param name="items">The list of items as JSON string.</param>
+        /// <param name="itemId">The ID of the item to purchase.</param>
         /// <param name="apiKey">The Stash API key.</param>
         /// <param name="environment">The Stash environment (defaults to Test).</param>
         /// <returns>A response containing the URL and ID.</returns>
         public static async Task<(string url, string id)> CreateCheckoutLink(
-            string externalUserId,
+            string userId,
             string validatedEmail,
-            string displayName,
-            string avatarIconUrl,
-            string profileUrl,
             string shopHandle,
-            string currency,
-            string itemsJson,
+            string itemId,
             string apiKey,
             StashEnvironment environment = StashEnvironment.Test)
         {
@@ -53,8 +45,8 @@ namespace Stash.Core
                 Value = apiKey
             };
 
-            // Create the complete request body JSON string
-            string requestBody = $"{{\"externalUser\":{{\"id\":\"{externalUserId}\",\"validatedEmail\":\"{validatedEmail}\",\"displayName\":\"{displayName}\",\"avatarIconUrl\":\"{avatarIconUrl}\",\"profileUrl\":\"{profileUrl}\"}},\"shopHandle\":\"{shopHandle}\",\"currency\":\"{currency}\",\"items\":{itemsJson}}}";
+            // Create the request body JSON string with the new simplified structure
+            string requestBody = $"{{\"user\":{{\"id\":\"{userId}\",\"validated_email\":\"{validatedEmail}\",\"platform\":\"IOS\"}},\"shop_handle\":\"{shopHandle}\",\"item_id\":\"{itemId}\"}}";
 
             // Set the URL for the checkout link creation endpoint
             string requestUrl = environment.GetRootUrl() + StashConstants.CheckoutLinks;
@@ -66,7 +58,7 @@ namespace Stash.Core
             if (result.StatusCode == 200)
             {
                 try
-    {
+                {
                     // Parse the response data into a CheckoutResponse object
                     CheckoutResponse checkoutResponse = JsonUtility.FromJson<CheckoutResponse>(result.Data);
                     return (checkoutResponse.url, checkoutResponse.id);
@@ -84,15 +76,17 @@ namespace Stash.Core
 
         /// <summary>
         /// Creates a checkout link for Stash payments with structured item data.
+        /// This method is kept for backward compatibility but now uses the simplified API.
+        /// Only the first item from the array will be used.
         /// </summary>
         /// <param name="externalUserId">The external user ID.</param>
         /// <param name="validatedEmail">The validated email of the user.</param>
-        /// <param name="displayName">The display name of the user.</param>
-        /// <param name="avatarIconUrl">The URL of the user's avatar icon.</param>
-        /// <param name="profileUrl">The URL of the user's profile.</param>
+        /// <param name="displayName">The display name of the user (ignored in new API).</param>
+        /// <param name="avatarIconUrl">The URL of the user's avatar icon (ignored in new API).</param>
+        /// <param name="profileUrl">The URL of the user's profile (ignored in new API).</param>
         /// <param name="shopHandle">The handle of the shop.</param>
-        /// <param name="currency">The currency to use for the checkout.</param>
-        /// <param name="items">Array of checkout items.</param>
+        /// <param name="currency">The currency to use for the checkout (ignored in new API).</param>
+        /// <param name="items">Array of checkout items (only the first item's ID will be used).</param>
         /// <param name="apiKey">The Stash API key.</param>
         /// <param name="environment">The Stash environment (defaults to Test).</param>
         /// <returns>A response containing the URL and ID.</returns>
@@ -108,30 +102,20 @@ namespace Stash.Core
             string apiKey,
             StashEnvironment environment = StashEnvironment.Test)
         {
-            // Convert the items to a JSON array string
-            string itemsJson = "[";
-            for (int i = 0; i < items.Length; i++)
-        {
-                var item = items[i];
-                itemsJson += $"{{\"id\":\"{item.id}\",\"pricePerItem\":\"{item.pricePerItem}\",\"quantity\":{item.quantity},\"imageUrl\":\"{item.imageUrl}\",\"name\":\"{item.name}\",\"description\":\"{item.description}\"}}";
-                
-                if (i < items.Length - 1)
-                {
-                    itemsJson += ",";
-                }
+            if (items == null || items.Length == 0)
+            {
+                throw new ArgumentException("At least one item must be provided");
             }
-            itemsJson += "]";
 
-            // Call the main method with the items JSON
+            // Use the first item's ID for the new API
+            string itemId = items[0].id;
+
+            // Call the new simplified method
             return await CreateCheckoutLink(
                 externalUserId,
                 validatedEmail,
-                displayName,
-                avatarIconUrl,
-                profileUrl,
                 shopHandle,
-                currency,
-                itemsJson,
+                itemId,
                 apiKey,
                 environment);
         }

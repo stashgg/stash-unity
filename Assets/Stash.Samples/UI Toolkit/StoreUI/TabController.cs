@@ -12,8 +12,10 @@ public class TabController : MonoBehaviour
     
     private Button userTabButton;
     private Button storeTabButton;
+    private Button settingsTabButton;
     private VisualElement userTabContent;
     private VisualElement storeTabContent;
+    private VisualElement settingsTabContent;
     private bool initialized = false;
     
     private void Awake()
@@ -79,20 +81,24 @@ public class TabController : MonoBehaviour
         // Get tab buttons
         userTabButton = root.Q<Button>("user-tab-button");
         storeTabButton = root.Q<Button>("store-tab-button");
+        settingsTabButton = root.Q<Button>("settings-tab-button");
         
         // Get tab content panels
         userTabContent = root.Q<VisualElement>("user-tab-content");
         storeTabContent = root.Q<VisualElement>("store-tab-content");
+        settingsTabContent = root.Q<VisualElement>("settings-tab-content");
         
         // Log what we found
         Debug.Log($"TabController: Found elements - " +
                  $"User Tab Button: {(userTabButton != null ? "Yes" : "No")}, " +
                  $"IAP Tab Button: {(storeTabButton != null ? "Yes" : "No")}, " +
+                 $"Settings Tab Button: {(settingsTabButton != null ? "Yes" : "No")}, " +
                  $"User Tab Content: {(userTabContent != null ? "Yes" : "No")}, " +
-                 $"IAP Tab Content: {(storeTabContent != null ? "Yes" : "No")}");
+                 $"IAP Tab Content: {(storeTabContent != null ? "Yes" : "No")}, " +
+                 $"Settings Tab Content: {(settingsTabContent != null ? "Yes" : "No")}");
         
-        if (userTabButton == null || storeTabButton == null || 
-            userTabContent == null || storeTabContent == null)
+        if (userTabButton == null || storeTabButton == null || settingsTabButton == null ||
+            userTabContent == null || storeTabContent == null || settingsTabContent == null)
         {
             Debug.LogError("Tab UI elements not found!");
             return false;
@@ -109,8 +115,13 @@ public class TabController : MonoBehaviour
             SelectTab("store");
         };
         
+        settingsTabButton.clicked += () => {
+            Debug.Log("TabController: Settings tab button clicked");
+            SelectTab("settings");
+        };
+        
         // Set initial state
-        SelectTab("user");
+        SelectTab("store");
         
         initialized = true;
         Debug.Log("TabController: Initialized successfully");
@@ -133,8 +144,8 @@ public class TabController : MonoBehaviour
             }
         }
         
-        if (userTabButton == null || storeTabButton == null ||
-            userTabContent == null || storeTabContent == null)
+        if (userTabButton == null || storeTabButton == null || settingsTabButton == null ||
+            userTabContent == null || storeTabContent == null || settingsTabContent == null)
         {
             Debug.LogWarning("TabController: Tab elements are null, can't switch tabs");
             return;
@@ -145,10 +156,12 @@ public class TabController : MonoBehaviour
         // Update tab button styles
         userTabButton.RemoveFromClassList("tab-selected");
         storeTabButton.RemoveFromClassList("tab-selected");
+        settingsTabButton.RemoveFromClassList("tab-selected");
         
         // Hide all tab content
         userTabContent.style.display = DisplayStyle.None;
         storeTabContent.style.display = DisplayStyle.None;
+        settingsTabContent.style.display = DisplayStyle.None;
         
         // Show the selected tab
         switch (tabName.ToLower())
@@ -165,6 +178,12 @@ public class TabController : MonoBehaviour
                 Debug.Log("TabController: Store tab selected and activated");
                 break;
                 
+            case "settings":
+                settingsTabButton.AddToClassList("tab-selected");
+                settingsTabContent.style.display = DisplayStyle.Flex;
+                Debug.Log("TabController: Settings tab selected and activated");
+                break;
+                
             default:
                 Debug.LogWarning($"Unknown tab name: {tabName}");
                 break;
@@ -173,5 +192,6 @@ public class TabController : MonoBehaviour
         // Force visual refresh
         userTabButton.MarkDirtyRepaint();
         storeTabButton.MarkDirtyRepaint();
+        settingsTabButton.MarkDirtyRepaint();
     }
 } 

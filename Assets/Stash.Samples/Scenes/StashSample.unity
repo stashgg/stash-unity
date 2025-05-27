@@ -367,6 +367,7 @@ GameObject:
   - component: {fileID: 844212192}
   - component: {fileID: 844212191}
   - component: {fileID: 844212193}
+  - component: {fileID: 844212194}
   m_Layer: 5
   m_Name: UIDocument
   m_TagString: Untagged
@@ -419,6 +420,18 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   storeUIDocument: {fileID: 844212191}
   tabController: {fileID: 0}
+--- !u!114 &844212194
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 844212190}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e58996589375a4f118d254b46c699196, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &1463800467
 GameObject:
   m_ObjectHideFlags: 0
@@ -450,30 +463,30 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   storeUIDocument: {fileID: 844212191}
   itemImages:
-  - {fileID: 2800000, guid: f71a1bc68fd7f441ab21c65d2992463d, type: 3}
-  - {fileID: 2800000, guid: 7b19f20398d7b4d2b858ca1b1af59fc1, type: 3}
-  - {fileID: 2800000, guid: 2542b350565ee4ed3b1fc6cf508e1f40, type: 3}
-  - {fileID: 2800000, guid: d1086255788cf41c8992ddd01003d75d, type: 3}
+  - {fileID: 2800000, guid: ebfd6e9a9b69b47cfa7e9e6d888338a0, type: 3}
+  - {fileID: 2800000, guid: e5ab7684f20a1450495259eee97d062f, type: 3}
+  - {fileID: 2800000, guid: 94ed31e8f29e44368a5516ee31a491ee, type: 3}
+  - {fileID: 2800000, guid: 259eab66b29a649f38e71639272e139b, type: 3}
   storeItems:
-  - id: premium_sword
-    name: Premium Sword
-    description: Increases attack power by 50.
-    pricePerItem: 9.99
+  - id: fistful_of_potions
+    name: Fistful Of Potions
+    description: 
+    pricePerItem: 15.99
     imageUrl: https://api.braincloudservers.com/files/portal/g/15152/metadata/products/small_resource_shipment_1.png
-  - id: coin_pack
-    name: 50 Coins
-    description: A pack of 50 coins.
-    pricePerItem: 2.99
+  - id: barrel_of_potions
+    name: Barel Of Potions
+    description: 
+    pricePerItem: 35.99
     imageUrl: https://portalx.braincloudservers.com/files/portal/g/15152/metadata/itemDefinitions/coin.png
-  - id: health_potion
-    name: Health Potion
-    description: A potion to boost your health.
-    pricePerItem: 1.99
+  - id: battle_pass
+    name: Battle Pass
+    description: 
+    pricePerItem: 34.99
     imageUrl: https://storage.googleapis.com/stash-demo-f9550.firebasestorage.app/contents/e2dab049-5225-4bc4-9f2b-42dc44900b67.png
-  - id: magic_potion
-    name: Magic Potion
-    description: A potion to boost your mana.
-    pricePerItem: 0.99
+  - id: small_resource_shipment_1
+    name: Resource Shipment
+    description: 
+    pricePerItem: 19.99
     imageUrl: https://portalx.braincloudservers.com/files/portal/g/15152/metadata/itemDefinitions/potion.png
   apiKey: p0SVSU3awmdDv8VUPFZ_adWz_uC81xXsEY95Gg7WSwx9TZAJ5_ch-ePXK2Xh3B6o
   environment: 0

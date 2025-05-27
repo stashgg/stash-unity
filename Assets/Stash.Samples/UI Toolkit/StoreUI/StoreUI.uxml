@@ -7,11 +7,11 @@
             </ui:VisualElement>
         </ui:VisualElement>
         <ui:VisualElement name="tabs-container" class="tabs-container">
-            <ui:Button text="User" name="user-tab-button" class="tab-button tab-selected" />
-            <ui:Button text="IAP" name="store-tab-button" class="tab-button" />
+            <ui:Button text="User" name="user-tab-button" class="tab-button" />
+            <ui:Button text="IAP" name="store-tab-button" class="tab-button tab-selected" />
         </ui:VisualElement>
         <ui:VisualElement name="tab-content" class="tab-content">
-            <ui:VisualElement name="user-tab-content" class="tab-panel" style="display: flex;">
+            <ui:VisualElement name="user-tab-content" class="tab-panel" style="display: none;">
                 <ui:VisualElement name="user-profile" class="user-profile">
                     <ui:Label text="User Profile" name="profile-title" class="section-title" />
                     <ui:VisualElement name="login-container" class="login-container">
@@ -48,10 +48,53 @@
                     </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>
-            <ui:VisualElement name="store-tab-content" class="tab-panel" style="display: none;">
+            <ui:VisualElement name="store-tab-content" class="tab-panel" style="display: flex;">
                 <ui:ScrollView name="items-scroll-view" class="items-scroll-view">
+                    <ui:VisualElement name="card-settings-container" class="card-settings-container" style="display: none;">
+                        <ui:VisualElement class="settings-header">
+                            <ui:Label text="Card Display Settings" class="settings-title" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="settings-controls">
+                            <ui:VisualElement class="control-row">
+                                <ui:Label text="Display Style" class="control-label" />
+                                <ui:DropdownField name="card-position-mode" class="control-dropdown" />
+                            </ui:VisualElement>
+                            <ui:VisualElement class="control-row">
+                                <ui:Label text="Height" class="control-label" />
+                                <ui:SliderInt name="card-height-slider" low-value="60" high-value="100" value="55" class="control-slider" />
+                                <ui:Label name="height-value" text="55%" class="value-label" />
+                            </ui:VisualElement>
+                            <ui:VisualElement name="card-position-slider-container" class="control-row">
+                                <ui:Label text="Position" class="control-label" />
+                                <ui:SliderInt name="card-position-slider" low-value="0" high-value="100" value="50" class="control-slider" />
+                                <ui:Label name="position-value" text="50%" class="value-label" />
+                            </ui:VisualElement>
+                            <ui:VisualElement name="card-width-slider-container" class="control-row">
+                                <ui:Label text="Width" class="control-label" />
+                                <ui:SliderInt name="card-width-slider" low-value="10" high-value="100" value="90" class="control-slider" />
+                                <ui:Label name="width-value" text="90%" class="value-label" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                    <ui:VisualElement name="url-testing-container" class="url-testing-container" style="display: none;">
+                        <ui:VisualElement class="settings-header">
+                            <ui:Label text="URL Testing" class="settings-title" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="settings-controls">
+                            <ui:VisualElement class="control-row">
+                                <ui:Label text="Custom URL" class="control-label" />
+                                <ui:TextField name="custom-url-input" placeholder-text="https://example.com" value="https://stash.gg" class="url-input" />
+                            </ui:VisualElement>
+                            <ui:VisualElement class="control-row">
+                                <ui:Button name="test-url-button" text="Test URL with Current Settings" class="test-url-button" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                    </ui:VisualElement>
                     <ui:VisualElement name="items-container" class="items-container" />
                 </ui:ScrollView>
+            </ui:VisualElement>
+            <ui:VisualElement name="settings-tab" class="tab-content">
+                <ui:Label text="Settings" class="tab-title" />
             </ui:VisualElement>
         </ui:VisualElement>
     </ui:VisualElement>

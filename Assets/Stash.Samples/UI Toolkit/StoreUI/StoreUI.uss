@@ -493,3 +493,202 @@
     border-width: 1px;
     border-color: rgba(255, 215, 0, 0.3);
 }
+
+.settings-section {
+    margin: 16px;
+    padding: 16px;
+    background-color: rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+}
+
+.settings-section-title {
+    font-size: 18px;
+    -unity-font-style: bold;
+    margin-bottom: 16px;
+    color: var(--unity-colors-default-text);
+}
+
+.settings-row {
+    flex-direction: column;
+    margin-bottom: 16px;
+}
+
+.settings-row > Label {
+    margin-bottom: 4px;
+    color: var(--unity-colors-default-text);
+}
+
+.settings-dropdown {
+    min-width: 200px;
+    height: 24px;
+    background-color: var(--unity-colors-button-background);
+    border-width: 1px;
+    border-color: var(--unity-colors-button-border);
+    border-radius: 4px;
+}
+
+.settings-slider {
+    min-width: 200px;
+    margin-top: 4px;
+}
+
+#card-position-slider-container {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top-width: 1px;
+    border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+.card-settings-container {
+    background-color: rgba(30, 30, 30, 0.7);
+    border-radius: 8px;
+    margin: 16px;
+    margin-bottom: 24px;
+    padding: 16px;
+    border-width: 1px;
+    border-color: rgba(255, 215, 0, 0.2);
+}
+
+.settings-header {
+    border-bottom-width: 2px;
+    border-bottom-color: rgba(255, 215, 0, 0.2);
+    padding-bottom: 12px;
+    margin-bottom: 16px;
+}
+
+.settings-title {
+    color: rgb(255, 215, 0);
+    font-size: 16px;
+    -unity-font-style: bold;
+}
+
+.settings-controls {
+    flex-direction: column;
+    gap: 12px;
+}
+
+.control-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 0;
+}
+
+.control-label {
+    color: rgb(200, 200, 200);
+    font-size: 14px;
+    min-width: 80px;
+    margin-right: 12px;
+}
+
+.control-dropdown {
+    flex-grow: 1;
+    max-width: 200px;
+    height: 24px;
+    background-color: rgba(60, 60, 60, 0.8);
+    border-width: 1px;
+    border-color: rgba(255, 215, 0, 0.3);
+    border-radius: 4px;
+    color: white;
+}
+
+.control-dropdown:hover {
+    border-color: rgba(255, 215, 0, 0.5);
+}
+
+.control-slider {
+    flex-grow: 1;
+    max-width: 200px;
+    margin-right: 8px;
+}
+
+.value-label {
+    color: rgb(255, 215, 0);
+    font-size: 14px;
+    min-width: 40px;
+    -unity-text-align: upper-right;
+}
+
+#card-position-slider-container {
+    opacity: 0.5;
+    transition-duration: 0.2s;
+}
+
+#card-position-slider-container.visible {
+    opacity: 1;
+}
+
+#card-width-slider-container {
+    opacity: 0.5;
+    transition-duration: 0.2s;
+}
+
+#card-width-slider-container.visible {
+    opacity: 1;
+}
+
+.url-testing-container {
+    background-color: rgba(30, 30, 30, 0.7);
+    border-radius: 8px;
+    margin: 16px;
+    margin-bottom: 24px;
+    padding: 16px;
+    border-width: 1px;
+    border-color: rgba(76, 175, 80, 0.2);
+}
+
+.url-input {
+    flex-grow: 1;
+    max-width: 400px;
+    height: 32px;
+    background-color: rgba(240, 240, 240, 0.95);
+    border-width: 1px;
+    border-color: rgba(76, 175, 80, 0.3);
+    border-radius: 4px;
+    color: black;
+    padding: 4px 8px;
+    font-size: 14px;
+}
+
+.url-input:hover {
+    border-color: rgba(76, 175, 80, 0.5);
+    background-color: rgba(250, 250, 250, 0.98);
+}
+
+.url-input:focus {
+    border-color: rgba(76, 175, 80, 0.8);
+    background-color: rgb(255, 255, 255);
+}
+
+.test-url-button {
+    background-color: rgb(76, 175, 80);
+    color: white;
+    padding: 8px 16px;
+    border-width: 1px;
+    border-color: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    font-size: 14px;
+    -unity-font-style: bold;
+    transition-duration: 0.2s;
+    min-width: 200px;
+    height: 32px;
+    justify-content: center;
+    align-self: center;
+}
+
+.test-url-button:hover {
+    background-color: rgb(56, 142, 60);
+    translate: 0 -1px;
+    border-color: rgba(76, 175, 80, 0.8);
+}
+
+.test-url-button:active {
+    background-color: rgb(46, 120, 50);
+    translate: 0 1px;
+}
+
+.test-url-button:disabled {
+    background-color: rgba(76, 175, 80, 0.5);
+    color: rgba(255, 255, 255, 0.5);
+    translate: 0 0;
+}

@@ -8,6 +8,9 @@ using System;
 using System.Threading.Tasks;
 using System.Collections;
 using UnityEngine.Networking;
+using Canvas = UnityEngine.Canvas;
+using CanvasScaler = UnityEngine.UI.CanvasScaler;
+using Button = UnityEngine.UIElements.Button; // Specify we want UI Toolkit buttons
 
 public class StashStoreUIController : MonoBehaviour
 {
@@ -35,6 +38,10 @@ public class StashStoreUIController : MonoBehaviour
     private VisualElement root;
     private List<Button> buyButtons = new List<Button>();
     
+    // URL Testing elements
+    private TextField customUrlInput;
+    private Button testUrlButton;
+    
     // Delegate for purchase callbacks
     public delegate void PurchaseCompletedDelegate(string itemId, bool success);
     public event PurchaseCompletedDelegate OnPurchaseCompleted;
@@ -54,8 +61,14 @@ public class StashStoreUIController : MonoBehaviour
         // Setup store UI elements
         UpdateUIFromStoreItems();
         
+        // Setup URL testing
+        SetupURLTesting();
+        
         // Make sure StashPayCard exists in the scene
         StashPayCard.Instance.gameObject.name = "StashPayCard";
+        
+        // Subscribe to payment success events
+        StashPayCard.Instance.OnPaymentSuccess += OnPaymentSuccessDetected;
     }
     
     private void ValidateAndInitializeStoreItems()
@@ -203,44 +216,35 @@ public class StashStoreUIController : MonoBehaviour
     
     private async void OpenStashCheckout(int itemIndex)
     {
-        // Check if user is authenticated
-        if (AuthenticationManager.Instance != null && !AuthenticationManager.Instance.IsAuthenticated())
-        {
-            Debug.LogWarning("User not authenticated. Please login before purchasing.");
-            
-            // Show login dialog instead of highlighting login button
-            ShowLoginRequiredMessage();
-            
-            // Reset button state
-            SetButtonLoadingState(buyButtons[itemIndex], false);
-            return;
-        }
-        
         try
         {
             StoreItem item = storeItems[itemIndex];
             
-            // Create a checkout item with the specified product information
-            var checkoutItem = new StashCheckout.CheckoutItemData
+            string userId;
+            string email;
+            
+            // Check if user is authenticated
+            if (AuthenticationManager.Instance != null && AuthenticationManager.Instance.IsAuthenticated())
             {
-                id = item.id,
-                pricePerItem = item.pricePerItem,
-                quantity = 1,
-                imageUrl = item.imageUrl,
-                name = item.name,
-                description = item.description
-            };
+                // Use authenticated user data
+                UserData userData = AuthenticationManager.Instance.GetUserData();
+                userId = userData.UserId;
+                email = userData.Email;
+            }
+            else
+            {
+                // Generate random credentials for unauthenticated users
+                userId = $"guest_{Guid.NewGuid().ToString("N").Substring(0, 8)}";
+                email = $"guest_{Guid.NewGuid().ToString("N").Substring(0, 8)}@example.com";
+                Debug.Log($"[Stash] Using generated guest credentials - UserId: {userId}, Email: {email}");
+            }
             
             // Generate the checkout URL using the Stash Checkout API
-            var (url, id) = await StashCheckout.CreateCheckoutLinkWithItems(
-                externalUserId,
-                userEmail,
-                displayName,
-                avatarIconUrl,
-                profileUrl,
+            var (url, id) = await StashCheckout.CreateCheckoutLink(
+                userId,
+                email,
                 shopHandle,
-                currency,
-                new StashCheckout.CheckoutItemData[] { checkoutItem },
+                item.id,
                 apiKey,
                 environment
             );
@@ -251,6 +255,9 @@ public class StashStoreUIController : MonoBehaviour
             
             Debug.Log($"[Stash] Generated checkout URL: {url} with ID: {id}");
             
+            // Apply current UI card settings before opening
+            ApplyUICardSettings();
+            
             // Open the checkout URL in the StashPayCard
             StashPayCard.Instance.OpenURL(url, () => OnBrowserClosed());
         }
@@ -260,6 +267,211 @@ public class StashStoreUIController : MonoBehaviour
             // Reset button state on error
             SetButtonLoadingState(buyButtons[itemIndex], false);
             HandleFailedPurchase(itemIndex);
+        }
+    }
+    
+    /// <summary>
+    /// Reads the current UI card settings and applies them to the StashPayCard
+    /// </summary>
+    private void ApplyUICardSettings()
+    {
+        // Find the settings tab controller component
+        var settingsController = FindObjectOfType<Stash.Samples.SettingsTabInit>();
+        if (settingsController != null)
+        {
+            // Get the current configuration from the UI
+            var config = settingsController.GetCurrentCardConfiguration();
+            
+            // Apply the configuration to the StashPayCard
+            ApplyCardConfiguration(config);
+            
+            Debug.Log($"[Stash] Applied UI card settings: {config.mode}, Height: {config.heightRatio:F2}, Position: {config.customPosition:F2}");
+            return;
+        }
+        
+        // Fallback to the old method if settings controller is not found
+        ApplyUICardSettingsFallback();
+    }
+    
+    /// <summary>
+    /// Applies card configuration using the CardConfigurationData structure
+    /// </summary>
+    private void ApplyCardConfiguration(Stash.Samples.CardConfigurationData config)
+    {
+        switch (config.mode)
+        {
+            case Stash.Samples.CardPositionMode.BottomSheet:
+                StashPayCard.Instance.ConfigureAsBottomSheet(config.heightRatio);
+                break;
+            
+            case Stash.Samples.CardPositionMode.CenterDialog:
+                StashPayCard.Instance.ConfigureAsDialog(config.heightRatio);
+                break;
+            
+            case Stash.Samples.CardPositionMode.FullScreen:
+                StashPayCard.Instance.ConfigureAsFullScreen(config.heightRatio);
+                break;
+            
+            case Stash.Samples.CardPositionMode.Custom:
+                StashPayCard.Instance.SetCardHeightRatio(config.heightRatio);
+                StashPayCard.Instance.SetCardVerticalPosition(config.customPosition);
+                StashPayCard.Instance.SetCardWidthRatio(config.customWidth);
+                break;
+            
+            default:
+                // Fallback to bottom sheet
+                StashPayCard.Instance.ConfigureAsBottomSheet(config.heightRatio);
+                break;
+        }
+    }
+    
+    /// <summary>
+    /// Fallback method for applying card settings when SettingsTabInit is not available
+    /// </summary>
+    private void ApplyUICardSettingsFallback()
+    {
+        // Find the card settings container in the store tab
+        var storeTabContent = root.Q<VisualElement>("store-tab-content");
+        if (storeTabContent == null) return;
+        
+        var cardSettingsContainer = storeTabContent.Q<VisualElement>("card-settings-container");
+        if (cardSettingsContainer == null) return;
+        
+        // Get the UI controls
+        var positionDropdown = cardSettingsContainer.Q<DropdownField>("card-position-mode");
+        var heightSlider = cardSettingsContainer.Q<SliderInt>("card-height-slider");
+        var positionSlider = cardSettingsContainer.Q<SliderInt>("card-position-slider");
+        var widthSlider = cardSettingsContainer.Q<SliderInt>("card-width-slider");
+        
+        if (positionDropdown == null || heightSlider == null) return;
+        
+        // Convert height from percentage to ratio
+        float heightRatio = heightSlider.value / 100f;
+        
+        // Parse the dropdown value to determine the mode
+        string selectedValue = positionDropdown.value?.Replace(" ", "") ?? "";
+        
+        if (System.Enum.TryParse<Stash.Samples.CardPositionMode>(selectedValue, out var mode))
+        {
+            var config = new Stash.Samples.CardConfigurationData(
+                mode, 
+                heightRatio, 
+                positionSlider?.value / 100f ?? 0.5f,
+                widthSlider?.value / 100f ?? 0.9f
+            );
+            
+            ApplyCardConfiguration(config);
+        }
+        else
+        {
+            // Default fallback
+            StashPayCard.Instance.ConfigureAsBottomSheet(heightRatio);
+        }
+        
+        Debug.Log($"[Stash] Applied UI card settings (fallback): {selectedValue}, Height: {heightRatio:F2}");
+    }
+    
+    /// <summary>
+    /// Sets up the URL testing functionality
+    /// </summary>
+    private void SetupURLTesting()
+    {
+        // Find the URL testing elements
+        var storeTabContent = root.Q<VisualElement>("store-tab-content");
+        if (storeTabContent == null) return;
+        
+        var urlTestingContainer = storeTabContent.Q<VisualElement>("url-testing-container");
+        if (urlTestingContainer == null) return;
+        
+        // Get the URL input field
+        customUrlInput = urlTestingContainer.Q<TextField>("custom-url-input");
+        
+        // Get the test button
+        testUrlButton = urlTestingContainer.Q<Button>("test-url-button");
+        
+        if (testUrlButton != null)
+        {
+            testUrlButton.clicked += OnTestUrlButtonClicked;
+        }
+        
+        // Set up validation for URL input
+        if (customUrlInput != null)
+        {
+            customUrlInput.RegisterValueChangedCallback(evt => ValidateUrlInput(evt.newValue));
+            // Validate initial value
+            ValidateUrlInput(customUrlInput.value);
+        }
+    }
+    
+    /// <summary>
+    /// Validates the URL input and updates button state
+    /// </summary>
+    private void ValidateUrlInput(string url)
+    {
+        if (testUrlButton == null) return;
+        
+        bool isValidUrl = !string.IsNullOrWhiteSpace(url) && 
+                         (url.StartsWith("http://") || url.StartsWith("https://") || 
+                          (!url.Contains("://") && url.Contains(".")));
+        
+        testUrlButton.SetEnabled(isValidUrl);
+        
+        if (!isValidUrl && !string.IsNullOrWhiteSpace(url))
+        {
+            // Visual feedback for invalid URL could be added here
+        }
+    }
+    
+    /// <summary>
+    /// Handles the test URL button click
+    /// </summary>
+    private void OnTestUrlButtonClicked()
+    {
+        if (customUrlInput == null || string.IsNullOrWhiteSpace(customUrlInput.value))
+        {
+            Debug.LogWarning("[Stash] No URL entered for testing");
+            return;
+        }
+        
+        string testUrl = customUrlInput.value.Trim();
+        
+        // Ensure URL has protocol
+        if (!testUrl.StartsWith("http://") && !testUrl.StartsWith("https://"))
+        {
+            testUrl = "https://" + testUrl;
+        }
+        
+        Debug.Log($"[Stash] Testing URL: {testUrl}");
+        
+        // Apply current UI card settings before opening
+        ApplyUICardSettings();
+        
+        // Disable button temporarily to prevent multiple clicks
+        testUrlButton.SetEnabled(false);
+        testUrlButton.text = "Opening...";
+        
+        // Open the URL in StashPayCard
+        StashPayCard.Instance.OpenURL(testUrl, () => OnTestUrlClosed());
+    }
+    
+    /// <summary>
+    /// Called when the test URL browser is closed
+    /// </summary>
+    private void OnTestUrlClosed()
+    {
+        Debug.Log("[Stash] Test URL browser closed");
+        
+        // Re-enable the test button
+        if (testUrlButton != null)
+        {
+            testUrlButton.SetEnabled(true);
+            testUrlButton.text = "Test URL with Current Settings";
+            
+            // Re-validate URL input in case it changed
+            if (customUrlInput != null)
+            {
+                ValidateUrlInput(customUrlInput.value);
+            }
         }
     }
     
@@ -546,6 +758,180 @@ public class StashStoreUIController : MonoBehaviour
         public string total;
         public string tax;
     }
+
+    private void OnPaymentSuccessDetected()
+    {
+        Debug.Log("[Stash] Payment success detected from iOS - showing celebration!");
+        
+        try
+        {
+            // Ensure we're on the main thread for UI operations
+            if (this != null && gameObject != null)
+            {
+                // Get the current item details
+                StoreItem currentItem = storeItems[currentItemIndex];
+                
+                // Show enhanced success popup with confetti
+                ShowSuccessPopup(
+                    currentItem.name,
+                    currency,
+                    currentItem.pricePerItem,
+                    "0", // No tax info available at this point
+                    DateTimeOffset.Now.ToUnixTimeMilliseconds().ToString()
+                );
+                
+                // Also show confetti effect
+                ShowSuccessPopupWithConfetti("Payment successful!", "Your purchase has been completed successfully!");
+            }
+            else
+            {
+                Debug.LogWarning("[Stash] Cannot show celebration - component or GameObject is null");
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[Stash] Error showing payment success celebration: {ex.Message}");
+        }
+    }
+    
+    private void ShowSuccessPopupWithConfetti(string title, string message)
+    {
+        try
+        {
+            // Create confetti system that renders in front of UI
+            GameObject confettiGO = new GameObject("ConfettiSystem");
+            
+            // Add Canvas component for UI rendering
+            Canvas confettiCanvas = confettiGO.AddComponent<Canvas>();
+            confettiCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            confettiCanvas.sortingOrder = 1000; // Very high sorting order to render in front of everything
+            
+            // Add CanvasScaler for consistent scaling
+            CanvasScaler scaler = confettiGO.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920, 1080);
+            
+            // Position the confetti container at the top of the screen
+            RectTransform rectTransform = confettiGO.GetComponent<RectTransform>();
+            rectTransform.anchorMin = new Vector2(0, 1); // Top-left anchor
+            rectTransform.anchorMax = new Vector2(1, 1); // Top-right anchor
+            rectTransform.anchoredPosition = new Vector2(0, 100); // Slightly above screen
+            rectTransform.sizeDelta = new Vector2(0, 200); // Full width, 200px height
+            
+            // Create multiple confetti emitters across the screen width
+            for (int i = 0; i < 5; i++)
+            {
+                GameObject emitter = new GameObject($"ConfettiEmitter_{i}");
+                emitter.transform.SetParent(confettiGO.transform, false);
+                
+                RectTransform emitterRect = emitter.AddComponent<RectTransform>();
+                float xPos = (i / 4.0f) - 0.5f; // Spread across screen: -0.5 to 0.5
+                emitterRect.anchorMin = new Vector2(0.5f + xPos, 0.5f);
+                emitterRect.anchorMax = new Vector2(0.5f + xPos, 0.5f);
+                emitterRect.anchoredPosition = Vector2.zero;
+                
+                ParticleSystem confetti = emitter.AddComponent<ParticleSystem>();
+                
+                // Configure main module for UI-space confetti
+                var main = confetti.main;
+                main.startLifetime = 4.0f;
+                main.startSpeed = 300.0f; // Higher speed for UI space
+                main.startSize = 20.0f; // Larger size for UI space (pixels)
+                main.startColor = GetRandomConfettiColor(i);
+                main.maxParticles = 40; // Per emitter
+                main.simulationSpace = ParticleSystemSimulationSpace.Local;
+                
+                // Configure emission for staggered bursts
+                var emission = confetti.emission;
+                emission.rateOverTime = 0;
+                emission.SetBursts(new ParticleSystem.Burst[] {
+                    new ParticleSystem.Burst(i * 0.1f, 20), // Stagger the bursts
+                    new ParticleSystem.Burst(i * 0.1f + 0.3f, 25),
+                    new ParticleSystem.Burst(i * 0.1f + 0.6f, 15)
+                });
+                
+                // Configure shape for wide spread
+                var shape = confetti.shape;
+                shape.enabled = true;
+                shape.shapeType = ParticleSystemShapeType.Circle;
+                shape.radius = 50; // Spread radius in UI pixels
+                
+                // Configure velocity for falling effect
+                var velocityOverLifetime = confetti.velocityOverLifetime;
+                velocityOverLifetime.enabled = true;
+                velocityOverLifetime.space = ParticleSystemSimulationSpace.Local;
+                velocityOverLifetime.y = new ParticleSystem.MinMaxCurve(-400f, -200f); // Downward fall
+                velocityOverLifetime.x = new ParticleSystem.MinMaxCurve(-100f, 100f); // Side drift
+                
+                // Configure size over lifetime
+                var sizeOverLifetime = confetti.sizeOverLifetime;
+                sizeOverLifetime.enabled = true;
+                AnimationCurve sizeCurve = new AnimationCurve();
+                sizeCurve.AddKey(0, 1.0f);
+                sizeCurve.AddKey(0.3f, 1.3f); // Grow slightly
+                sizeCurve.AddKey(1, 0.8f); // Shrink at end
+                sizeOverLifetime.size = new ParticleSystem.MinMaxCurve(1.0f, sizeCurve);
+                
+                // Configure vibrant colors
+                var colorOverLifetime = confetti.colorOverLifetime;
+                colorOverLifetime.enabled = true;
+                Gradient gradient = new Gradient();
+                gradient.SetKeys(
+                    new GradientColorKey[] { 
+                        new GradientColorKey(GetRandomConfettiColor(i), 0.0f), 
+                        new GradientColorKey(GetRandomConfettiColor(i + 1), 0.5f),
+                        new GradientColorKey(GetRandomConfettiColor(i + 2), 1.0f)
+                    },
+                    new GradientAlphaKey[] { 
+                        new GradientAlphaKey(1.0f, 0.0f), 
+                        new GradientAlphaKey(1.0f, 0.7f),
+                        new GradientAlphaKey(0.0f, 1.0f) 
+                    }
+                );
+                colorOverLifetime.color = gradient;
+                
+                // Configure rotation for spinning effect
+                var rotationOverLifetime = confetti.rotationOverLifetime;
+                rotationOverLifetime.enabled = true;
+                rotationOverLifetime.z = new ParticleSystem.MinMaxCurve(-360f, 360f);
+                
+                // Play each emitter
+                confetti.Play();
+            }
+            
+            Debug.Log($"[Stash] UI-space confetti system created with 5 emitters");
+            Debug.Log($"[Stash] Canvas sorting order: {confettiCanvas.sortingOrder}");
+            Debug.Log($"[Stash] Confetti will render in front of UI elements");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[Stash] Error creating confetti effect: {ex.Message}");
+        }
+    }
+    
+    private Color GetRandomConfettiColor(int seed)
+    {
+        Color[] colors = {
+            Color.yellow,
+            Color.magenta,
+            Color.cyan,
+            Color.green,
+            Color.red,
+            new Color(1f, 0.5f, 0f), // Orange
+            new Color(0.5f, 0f, 1f), // Purple
+            new Color(1f, 0.75f, 0.8f) // Pink
+        };
+        return colors[seed % colors.Length];
+    }
+    
+    private void OnDestroy()
+    {
+        // Unsubscribe from payment success events
+        if (StashPayCard.Instance != null)
+        {
+            StashPayCard.Instance.OnPaymentSuccess -= OnPaymentSuccessDetected;
+        }
+    }
 }
 
 // Simple success popup class for showing purchase success messages
@@ -565,23 +951,23 @@ public class SuccessPopup : MonoBehaviour
         this.message = message;
         isShowing = true;
         
+        // Set up window rect
+        float width = 1200; // 4x bigger: was 300, now 1200
+        float height = 600;  // 4x bigger: was 150, now 600
+        windowRect = new Rect((Screen.width - width) / 2, (Screen.height - height) / 2, width, height);
+        
         // Set up styles
         titleStyle = new GUIStyle();
-        titleStyle.fontSize = 20;
+        titleStyle.fontSize = 80; // 4x bigger: was 20, now 80
         titleStyle.fontStyle = FontStyle.Bold;
         titleStyle.normal.textColor = Color.white;
         titleStyle.alignment = TextAnchor.MiddleCenter;
         
         messageStyle = new GUIStyle();
-        messageStyle.fontSize = 16;
+        messageStyle.fontSize = 64; // 4x bigger: was 16, now 64
         messageStyle.normal.textColor = Color.white;
         messageStyle.alignment = TextAnchor.MiddleCenter;
         messageStyle.wordWrap = true;
-        
-        // Set up window rect
-        float width = 300;
-        float height = 150;
-        windowRect = new Rect((Screen.width - width) / 2, (Screen.height - height) / 2, width, height);
         
         // Close after duration
         Destroy(gameObject, showDuration);
@@ -598,11 +984,44 @@ public class SuccessPopup : MonoBehaviour
             
             // Draw the content
             GUILayout.BeginArea(windowRect);
-            GUILayout.Space(20);
+            GUILayout.Space(80); // 4x bigger spacing: was 20, now 80
             GUILayout.Label(title, titleStyle);
-            GUILayout.Space(20);
+            GUILayout.Space(80); // 4x bigger spacing: was 20, now 80
             GUILayout.Label(message, messageStyle);
             GUILayout.EndArea();
+        }
+    }
+}
+
+// Enhanced success popup class with confetti support
+public class EnhancedSuccessPopup : SuccessPopup
+{
+    private bool showConfetti = false;
+    private ParticleSystem confettiSystem;
+    
+    public void Show(string title, string message, bool withConfetti = false)
+    {
+        showConfetti = withConfetti;
+        
+        // Note: UI confetti disabled in favor of world-space confetti effect
+        // The main confetti system in ShowConfettiEffect() handles the celebration
+        
+        // Call base class show method (not self!)
+        base.Show(title, message);
+    }
+    
+    private void CreateUIConfetti()
+    {
+        // This method is now disabled to prevent UI rendering issues
+        // The main world-space confetti system provides a better visual effect
+        Debug.Log("[Stash] UI confetti creation skipped - using world-space confetti instead");
+    }
+    
+    private void OnDestroy()
+    {
+        if (confettiSystem != null)
+        {
+            Destroy(confettiSystem.gameObject);
         }
     }
 } 
