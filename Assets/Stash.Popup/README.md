@@ -3,16 +3,18 @@
   <img src="https://i.ibb.co/RRfh8df/2025-05-27-13-33-27-High-Res-Screenshot-portrait.png" width="70%" />
 </p>
 
-# Stash.Popup
+# Stash Pay Popup
 
 A Unity plugin that provides a customizable card-style popup for Stash Pay. The plugin uses native WebKit implementation on iOS to provide a native looking
-IAP experience using Stash payment rails. Currently available for iOS devices.
+IAP experience using Stash payment rails. Currently available for iOS devices, with a browser fallback on other platforms.
 
 ## Requirements
 
 - Unity 2019.4 or later
-- iOS 9.0 or later (for iOS builds)
+- iOS 12.0 or later (for iOS builds)
 - Xcode 11.0 or later (for iOS builds)
+
+If you choose to support 
 
 ## Installation
 
@@ -25,10 +27,12 @@ IAP experience using Stash payment rails. Currently available for iOS devices.
 
 The plugin provides a singleton `StashPayCard` class that handles all interactions with the popup card. Here's how to use it:
 
-The general flow:
+**The general flow:**
 
-1. Request payment link on the game backend and forward the resulting link to the game client.
-2. Show the payment URL using the StashPayCard
+For detailed instructions on creating Stash Pay checkout links, consult the Stash documentation.
+
+1. Request payment link on the game backend and send the resulting link to the game client.
+2. Show the payment URL using the StashPayCard as follows:
 
 ```csharp
 using StashPopup;
