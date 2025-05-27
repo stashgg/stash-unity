@@ -38,10 +38,6 @@ public class StashStoreUIController : MonoBehaviour
     private VisualElement root;
     private List<Button> buyButtons = new List<Button>();
     
-    // URL Testing elements
-    private TextField customUrlInput;
-    private Button testUrlButton;
-    
     // Delegate for purchase callbacks
     public delegate void PurchaseCompletedDelegate(string itemId, bool success);
     public event PurchaseCompletedDelegate OnPurchaseCompleted;
@@ -61,14 +57,6 @@ public class StashStoreUIController : MonoBehaviour
         // Setup store UI elements
         UpdateUIFromStoreItems();
         
-        // Setup URL testing
-        SetupURLTesting();
-        
-        // Make sure StashPayCard exists in the scene
-        StashPayCard.Instance.gameObject.name = "StashPayCard";
-        
-        // Subscribe to payment success events
-        StashPayCard.Instance.OnPaymentSuccess += OnPaymentSuccessDetected;
     }
     
     private void ValidateAndInitializeStoreItems()
@@ -255,11 +243,8 @@ public class StashStoreUIController : MonoBehaviour
             
             Debug.Log($"[Stash] Generated checkout URL: {url} with ID: {id}");
             
-            // Apply current UI card settings before opening
-            ApplyUICardSettings();
-            
             // Open the checkout URL in the StashPayCard
-            StashPayCard.Instance.OpenURL(url, () => OnBrowserClosed());
+            StashPayCard.Instance.OpenURL(url, () => OnBrowserClosed(), () => OnPaymentSuccessDetected());
         }
         catch (Exception ex)
         {
@@ -270,210 +255,7 @@ public class StashStoreUIController : MonoBehaviour
         }
     }
     
-    /// <summary>
-    /// Reads the current UI card settings and applies them to the StashPayCard
-    /// </summary>
-    private void ApplyUICardSettings()
-    {
-        // Find the settings tab controller component
-        var settingsController = FindObjectOfType<Stash.Samples.SettingsTabInit>();
-        if (settingsController != null)
-        {
-            // Get the current configuration from the UI
-            var config = settingsController.GetCurrentCardConfiguration();
-            
-            // Apply the configuration to the StashPayCard
-            ApplyCardConfiguration(config);
-            
-            Debug.Log($"[Stash] Applied UI card settings: {config.mode}, Height: {config.heightRatio:F2}, Position: {config.customPosition:F2}");
-            return;
-        }
-        
-        // Fallback to the old method if settings controller is not found
-        ApplyUICardSettingsFallback();
-    }
     
-    /// <summary>
-    /// Applies card configuration using the CardConfigurationData structure
-    /// </summary>
-    private void ApplyCardConfiguration(Stash.Samples.CardConfigurationData config)
-    {
-        switch (config.mode)
-        {
-            case Stash.Samples.CardPositionMode.BottomSheet:
-                StashPayCard.Instance.ConfigureAsBottomSheet(config.heightRatio);
-                break;
-            
-            case Stash.Samples.CardPositionMode.CenterDialog:
-                StashPayCard.Instance.ConfigureAsDialog(config.heightRatio);
-                break;
-            
-            case Stash.Samples.CardPositionMode.FullScreen:
-                StashPayCard.Instance.ConfigureAsFullScreen(config.heightRatio);
-                break;
-            
-            case Stash.Samples.CardPositionMode.Custom:
-                StashPayCard.Instance.SetCardHeightRatio(config.heightRatio);
-                StashPayCard.Instance.SetCardVerticalPosition(config.customPosition);
-                StashPayCard.Instance.SetCardWidthRatio(config.customWidth);
-                break;
-            
-            default:
-                // Fallback to bottom sheet
-                StashPayCard.Instance.ConfigureAsBottomSheet(config.heightRatio);
-                break;
-        }
-    }
-    
-    /// <summary>
-    /// Fallback method for applying card settings when SettingsTabInit is not available
-    /// </summary>
-    private void ApplyUICardSettingsFallback()
-    {
-        // Find the card settings container in the store tab
-        var storeTabContent = root.Q<VisualElement>("store-tab-content");
-        if (storeTabContent == null) return;
-        
-        var cardSettingsContainer = storeTabContent.Q<VisualElement>("card-settings-container");
-        if (cardSettingsContainer == null) return;
-        
-        // Get the UI controls
-        var positionDropdown = cardSettingsContainer.Q<DropdownField>("card-position-mode");
-        var heightSlider = cardSettingsContainer.Q<SliderInt>("card-height-slider");
-        var positionSlider = cardSettingsContainer.Q<SliderInt>("card-position-slider");
-        var widthSlider = cardSettingsContainer.Q<SliderInt>("card-width-slider");
-        
-        if (positionDropdown == null || heightSlider == null) return;
-        
-        // Convert height from percentage to ratio
-        float heightRatio = heightSlider.value / 100f;
-        
-        // Parse the dropdown value to determine the mode
-        string selectedValue = positionDropdown.value?.Replace(" ", "") ?? "";
-        
-        if (System.Enum.TryParse<Stash.Samples.CardPositionMode>(selectedValue, out var mode))
-        {
-            var config = new Stash.Samples.CardConfigurationData(
-                mode, 
-                heightRatio, 
-                positionSlider?.value / 100f ?? 0.5f,
-                widthSlider?.value / 100f ?? 0.9f
-            );
-            
-            ApplyCardConfiguration(config);
-        }
-        else
-        {
-            // Default fallback
-            StashPayCard.Instance.ConfigureAsBottomSheet(heightRatio);
-        }
-        
-        Debug.Log($"[Stash] Applied UI card settings (fallback): {selectedValue}, Height: {heightRatio:F2}");
-    }
-    
-    /// <summary>
-    /// Sets up the URL testing functionality
-    /// </summary>
-    private void SetupURLTesting()
-    {
-        // Find the URL testing elements
-        var storeTabContent = root.Q<VisualElement>("store-tab-content");
-        if (storeTabContent == null) return;
-        
-        var urlTestingContainer = storeTabContent.Q<VisualElement>("url-testing-container");
-        if (urlTestingContainer == null) return;
-        
-        // Get the URL input field
-        customUrlInput = urlTestingContainer.Q<TextField>("custom-url-input");
-        
-        // Get the test button
-        testUrlButton = urlTestingContainer.Q<Button>("test-url-button");
-        
-        if (testUrlButton != null)
-        {
-            testUrlButton.clicked += OnTestUrlButtonClicked;
-        }
-        
-        // Set up validation for URL input
-        if (customUrlInput != null)
-        {
-            customUrlInput.RegisterValueChangedCallback(evt => ValidateUrlInput(evt.newValue));
-            // Validate initial value
-            ValidateUrlInput(customUrlInput.value);
-        }
-    }
-    
-    /// <summary>
-    /// Validates the URL input and updates button state
-    /// </summary>
-    private void ValidateUrlInput(string url)
-    {
-        if (testUrlButton == null) return;
-        
-        bool isValidUrl = !string.IsNullOrWhiteSpace(url) && 
-                         (url.StartsWith("http://") || url.StartsWith("https://") || 
-                          (!url.Contains("://") && url.Contains(".")));
-        
-        testUrlButton.SetEnabled(isValidUrl);
-        
-        if (!isValidUrl && !string.IsNullOrWhiteSpace(url))
-        {
-            // Visual feedback for invalid URL could be added here
-        }
-    }
-    
-    /// <summary>
-    /// Handles the test URL button click
-    /// </summary>
-    private void OnTestUrlButtonClicked()
-    {
-        if (customUrlInput == null || string.IsNullOrWhiteSpace(customUrlInput.value))
-        {
-            Debug.LogWarning("[Stash] No URL entered for testing");
-            return;
-        }
-        
-        string testUrl = customUrlInput.value.Trim();
-        
-        // Ensure URL has protocol
-        if (!testUrl.StartsWith("http://") && !testUrl.StartsWith("https://"))
-        {
-            testUrl = "https://" + testUrl;
-        }
-        
-        Debug.Log($"[Stash] Testing URL: {testUrl}");
-        
-        // Apply current UI card settings before opening
-        ApplyUICardSettings();
-        
-        // Disable button temporarily to prevent multiple clicks
-        testUrlButton.SetEnabled(false);
-        testUrlButton.text = "Opening...";
-        
-        // Open the URL in StashPayCard
-        StashPayCard.Instance.OpenURL(testUrl, () => OnTestUrlClosed());
-    }
-    
-    /// <summary>
-    /// Called when the test URL browser is closed
-    /// </summary>
-    private void OnTestUrlClosed()
-    {
-        Debug.Log("[Stash] Test URL browser closed");
-        
-        // Re-enable the test button
-        if (testUrlButton != null)
-        {
-            testUrlButton.SetEnabled(true);
-            testUrlButton.text = "Test URL with Current Settings";
-            
-            // Re-validate URL input in case it changed
-            if (customUrlInput != null)
-            {
-                ValidateUrlInput(customUrlInput.value);
-            }
-        }
-    }
     
     private void OnBrowserClosed()
     {
