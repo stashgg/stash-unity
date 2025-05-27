@@ -73,8 +73,8 @@ jobs:
             ls -la
             exit 1
           fi
-          xcodebuild -project Unity-iPhone.xcodeproj -scheme Unity-iPhone -configuration Release -sdk iphoneos build archive -archivePath ./build/Unity-iPhone.xcarchive
-          xcodebuild -exportArchive -archivePath ./build/Unity-iPhone.xcarchive -exportOptionsPlist exportOptions.plist -exportPath ./build
+          xcodebuild -project Unity-iPhone.xcodeproj -scheme Unity-iPhone -configuration Release -sdk iphoneos build archive -archivePath ./build/Unity-iPhone.xcarchive -allowProvisioningUpdates
+          xcodebuild -exportArchive -archivePath ./build/Unity-iPhone.xcarchive -exportOptionsPlist exportOptions.plist -exportPath ./build -allowProvisioningUpdates
       - if: matrix.targetPlatform == 'iOS'
         name: Upload to TestFlight
         run: |
