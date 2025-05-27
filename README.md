@@ -21,7 +21,7 @@ All components are optional, you can mix and match based on your needs.
 | Component     | Description                                                                 |
 |---------------|-----------------------------------------------------------------------------|
 | Stash.Core    | Provides core functionalities and API wrappers for Stash.                   |
-| Stash.Popup   | Offers a customizable card-style popup for Stash Pay.                       |
+| [Stash.Popup](https://github.com/stashgg/stash-unity/tree/main/Assets/Stash.Popup)   | Offers a customizable card-style popup for Stash Pay.                       |
 | Stash.Samples | Includes sample scene using the Stash SDK.                 |
 
 
