@@ -14,7 +14,7 @@ IAP experience using Stash payment rails. Currently available for iOS devices, w
 - iOS 12.0 or later (for iOS builds)
 - Xcode 11.0 or later (for iOS builds)
 
-Note: On legacy devices (> iOS 9) the popup falls back to the system browser.
+Note: On legacy devices (Below iOS 12) the popup falls back to the system browser.
 
 ## Installation
 

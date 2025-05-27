@@ -9,7 +9,6 @@
 // Mark WebKit framework as required
 __attribute__((constructor))
 static void InitializeWebKit() {
-    NSLog(@"Initializing WebKit framework");
 }
 
 // Define a Unity callback function typedef
@@ -29,7 +28,7 @@ static CGFloat _cardVerticalPosition = 1.0; // Default to bottom of screen (1.0)
 static CGFloat _cardWidthRatio = 1.0; // Default to 100% of screen width
 
 // Compile-time flag to disable iPad detection for debugging (set to 0 to disable iPad features)
-#define ENABLE_IPAD_SUPPORT 1  // Re-enable when ready to test
+#define ENABLE_IPAD_SUPPORT 1
 
 // Store original configuration for expand/collapse functionality
 static CGFloat _originalCardHeightRatio = 0.4;
@@ -96,71 +95,45 @@ static BOOL _isCardExpanded = NO;
 - (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
     
     NSURL *url = navigationAction.request.URL;
-    NSLog(@"WebView navigation requested to: %@", url.absoluteString);
     
-    // ========================================
-    // TEMPORARY PATCH - REMOVE WHEN NO LONGER NEEDED
-    // Auto-close card when URL contains "/success" - EARLY DETECTION
-    // ========================================
     if (url && [url.absoluteString containsString:@"redirect_status=succeeded"]) {
-        NSLog(@"SUCCESS URL DETECTED (early): %@ - calling payment success callback", url.absoluteString);
-        
-        // Allow the navigation to proceed first, then dismiss
         decisionHandler(WKNavigationActionPolicyAllow);
         
-        // Call payment success callback first, then dismiss after a brief delay
         if (_paymentSuccessCallback != NULL) {
-            NSLog(@"Calling payment success callback");
             dispatch_async(dispatch_get_main_queue(), ^{
                 _paymentSuccessCallback();
             });
         }
         
-        // Dismiss the card after payment success callback
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             if ([StashPayCardSafariDelegate sharedInstance].currentPresentedVC) {
                 [[StashPayCardSafariDelegate sharedInstance].currentPresentedVC dismissViewControllerAnimated:YES completion:^{
-                    NSLog(@"Card auto-dismissed after payment success");
                     [[StashPayCardSafariDelegate sharedInstance] callUnityCallbackOnce];
                 }];
             }
         });
         return;
     }
-    // ========================================
-    // END TEMPORARY PATCH
-    // ========================================
     
-    // Check if this is a normal link click (not the initial page load)
     if (navigationAction.navigationType == WKNavigationTypeLinkActivated) {
-        NSLog(@"Link was clicked, will call callback and open in external browser");
-        
-        // Forward to the next section for actual dismissal
         decisionHandler(WKNavigationActionPolicyCancel);
-        
-        // Open the URL in Safari
         [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
         
-        // We need to find the view controller after declaration to avoid the undeclared identifier error
         dispatch_async(dispatch_get_main_queue(), ^{
-            // Use main thread and delay slightly to ensure Safari delegate exists
             if ([StashPayCardSafariDelegate sharedInstance].currentPresentedVC) {
                 [[StashPayCardSafariDelegate sharedInstance].currentPresentedVC dismissViewControllerAnimated:YES completion:^{
                     [[StashPayCardSafariDelegate sharedInstance] callUnityCallbackOnce];
                 }];
             }
         });
-        
         return;
     }
     
-    // Allow all other navigations
     decisionHandler(WKNavigationActionPolicyAllow);
 }
 
 - (void)handleTimeout:(NSTimer*)timer {
     if (_webView.hidden) {
-        NSLog(@"Timeout occurred - showing WebView anyway");
         [self showWebViewAndRemoveLoading];
     }
 }
@@ -185,55 +158,20 @@ static BOOL _isCardExpanded = NO;
 }
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
-    NSLog(@"WebView did finish navigation");
-    
-    // ========================================
-    // TEMPORARY PATCH - REMOVE WHEN NO LONGER NEEDED
-    // Auto-close card when URL contains "/success"
-    // ========================================
-    NSURL *currentURL = webView.URL;
-    NSLog(@"DEBUG: Current URL after navigation finish: %@", currentURL ? currentURL.absoluteString : @"(nil)");
-    
-    if (currentURL && [currentURL.absoluteString containsString:@"/success"]) {
-        NSLog(@"SUCCESS URL DETECTED (late): %@ - auto-closing card", currentURL.absoluteString);
-        
-        // Dismiss the card and call the callback, similar to other dismissal methods
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if ([StashPayCardSafariDelegate sharedInstance].currentPresentedVC) {
-                [[StashPayCardSafariDelegate sharedInstance].currentPresentedVC dismissViewControllerAnimated:YES completion:^{
-                    NSLog(@"Card auto-dismissed due to success URL (late detection)");
-                    [[StashPayCardSafariDelegate sharedInstance] callUnityCallbackOnce];
-                }];
-            }
-        });
-        return; // Exit early, don't show webview
-    } else {
-        NSLog(@"DEBUG: No success URL detected. URL: %@", currentURL ? currentURL.absoluteString : @"(nil)");
-    }
-    // ========================================
-    // END TEMPORARY PATCH
-    // ========================================
-    
     [self showWebViewAndRemoveLoading];
 }
 
 - (void)webView:(WKWebView *)webView didCommitNavigation:(WKNavigation *)navigation {
-    NSLog(@"WebView did commit navigation");
 }
 
 - (void)webView:(WKWebView *)webView didStartProvisionalNavigation:(WKNavigation *)navigation {
-    NSLog(@"WebView started provisional navigation");
 }
 
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
-    NSLog(@"WebView navigation failed with error: %@", error);
-    // Still remove loading view on error
     [self showWebViewAndRemoveLoading];
 }
 
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
-    NSLog(@"WebView provisional navigation failed with error: %@", error);
-    // Still remove loading view on provisional error
     [self showWebViewAndRemoveLoading];
 }
 
@@ -250,46 +188,36 @@ static BOOL _isCardExpanded = NO;
 
 // Disable context menu completely (iOS 13+)
 - (void)webView:(WKWebView *)webView contextMenuConfigurationForElement:(WKContextMenuElementInfo *)elementInfo completionHandler:(void (^)(UIContextMenuConfiguration *))completionHandler API_AVAILABLE(ios(13.0)) {
-    NSLog(@"Context menu blocked for element: %@", elementInfo.linkURL ?: @"text/image");
-    // Return nil to disable context menu completely
     completionHandler(nil);
 }
 
 // Disable context menu commit (iOS 13+)
 - (void)webView:(WKWebView *)webView contextMenuForElement:(WKContextMenuElementInfo *)elementInfo willCommitWithAnimator:(id<UIContextMenuInteractionCommitAnimating>)animator API_AVAILABLE(ios(13.0)) {
-    NSLog(@"Context menu commit blocked");
-    // Do nothing to prevent context menu actions
 }
 
 // Block context menu will display (iOS 13+)
 - (void)webView:(WKWebView *)webView contextMenuConfigurationForElement:(WKContextMenuElementInfo *)elementInfo willDisplayMenuWithAnimator:(id<UIContextMenuInteractionAnimating>)animator API_AVAILABLE(ios(13.0)) {
-    NSLog(@"Context menu display blocked");
 }
 
 // Block context menu did end (iOS 13+)
 - (void)webView:(WKWebView *)webView contextMenuDidEndForElement:(WKContextMenuElementInfo *)elementInfo API_AVAILABLE(ios(13.0)) {
-    NSLog(@"Context menu end blocked");
 }
 
 // Disable file upload (prevents image selection dialogs)
 - (void)webView:(WKWebView *)webView runOpenPanelWithParameters:(WKOpenPanelParameters *)parameters initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(NSArray<NSURL *> *))completionHandler {
-    NSLog(@"File upload panel blocked");
     completionHandler(nil);
 }
 
 // Disable JavaScript alerts/prompts that might interfere
 - (void)webView:(WKWebView *)webView runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(void))completionHandler {
-    NSLog(@"JavaScript alert blocked: %@", message);
     completionHandler();
 }
 
 - (void)webView:(WKWebView *)webView runJavaScriptConfirmPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(BOOL))completionHandler {
-    NSLog(@"JavaScript confirm blocked: %@", message);
     completionHandler(NO);
 }
 
 - (void)webView:(WKWebView *)webView runJavaScriptTextInputPanelWithPrompt:(NSString *)prompt defaultText:(NSString *)defaultText initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(NSString *))completionHandler {
-    NSLog(@"JavaScript prompt blocked: %@", prompt);
     completionHandler(nil);
 }
 
@@ -309,7 +237,6 @@ static BOOL _isCardExpanded = NO;
 // Method to ensure callback is only called once
 - (void)callUnityCallbackOnce {
     if (!_callbackWasCalled && _safariViewDismissedCallback != NULL) {
-        NSLog(@"Calling Unity callback once");
         _callbackWasCalled = YES;
         dispatch_async(dispatch_get_main_queue(), ^{
             _safariViewDismissedCallback();
@@ -318,7 +245,6 @@ static BOOL _isCardExpanded = NO;
 }
 
 - (void)safariViewControllerDidFinish:(SFSafariViewController *)controller {
-    NSLog(@"Safari View Controller did finish");
     [self callUnityCallbackOnce];
 }
 
@@ -331,10 +257,8 @@ static BOOL _isCardExpanded = NO;
 }
 
 - (void)dismissButtonTapped:(UIButton *)button {
-    NSLog(@"Dismiss button tapped");
     if (self.currentPresentedVC) {
         [self.currentPresentedVC dismissViewControllerAnimated:YES completion:^{
-            NSLog(@"View controller dismissed via button tap");
             [self callUnityCallbackOnce];
         }];
     }
@@ -427,7 +351,6 @@ static BOOL _isCardExpanded = NO;
                     view.superview.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.0];
                 } completion:^(BOOL finished) {
                     [self.currentPresentedVC dismissViewControllerAnimated:NO completion:^{
-                        NSLog(@"View controller dismissed via gesture");
                         [self callUnityCallbackOnce];
                     }];
                 }];
@@ -472,8 +395,6 @@ static BOOL _isCardExpanded = NO;
 }
 
 - (void)fallbackToSafariVC:(NSURL *)url topController:(UIViewController *)topController {
-    NSLog(@"Falling back to SFSafariViewController");
-    
     SFSafariViewController* safariViewController = [[SFSafariViewController alloc] initWithURL:url];
     
     // Use automatic style which works better with Safari View Controller
@@ -488,7 +409,6 @@ static BOOL _isCardExpanded = NO;
     
     // Handle iPad with iPhone-like aspect ratio and centering
     if (isRunningOniPad()) {
-        NSLog(@"Detected iPad - using iPhone aspect ratio and centering");
         CGSize cardSize = calculateiPadCardSize(screenBounds);
         width = cardSize.width;
         height = cardSize.height;
@@ -596,7 +516,6 @@ static BOOL _isCardExpanded = NO;
         [[StashPayCardSafariDelegate sharedInstance] stopKeyboardObserving];
         
         if (_safariViewDismissedCallback != NULL) {
-            NSLog(@"Calling _safariViewDismissedCallback from safariViewDismissedCallback");
             _safariViewDismissedCallback();
         }
     };
@@ -606,8 +525,6 @@ static BOOL _isCardExpanded = NO;
 BOOL shouldUseFullScreenSafari() {
     // Consider it full-screen if height is close to 1.0 and width is 1.0
     BOOL isFullScreen = (_cardHeightRatio >= 0.95 && _cardWidthRatio >= 0.95);
-    NSLog(@"Full-screen check: height=%.2f, width=%.2f, isFullScreen=%@", 
-          _cardHeightRatio, _cardWidthRatio, isFullScreen ? @"YES" : @"NO");
     return isFullScreen;
 }
 
@@ -631,19 +548,16 @@ BOOL isRunningOniPad() {
     // Additional safety check for UIDevice availability
     Class UIDeviceClass = NSClassFromString(@"UIDevice");
     if (!UIDeviceClass) {
-        NSLog(@"UIDevice class not available, assuming iPhone");
         return NO;
     }
     
     // Safe access to current device
     UIDevice *currentDevice = [UIDevice currentDevice];
     if (!currentDevice) {
-        NSLog(@"UIDevice currentDevice returned nil, assuming iPhone");
         return NO;
     }
     
     BOOL isPad = (currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad);
-    NSLog(@"Device detection: %@", isPad ? @"iPad" : @"iPhone/iPod");
     return isPad;
 }
 
@@ -651,7 +565,6 @@ BOOL isRunningOniPad() {
 CGSize calculateiPadCardSize(CGRect screenBounds) {
     // Safety checks for valid screen bounds
     if (screenBounds.size.width <= 0 || screenBounds.size.height <= 0) {
-        NSLog(@"Invalid screen bounds: %.0fx%.0f, using fallback size", screenBounds.size.width, screenBounds.size.height);
         return CGSizeMake(400, 600); // Fallback iPhone-like size
     }
     
@@ -662,7 +575,6 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     
     // Safety check for aspect ratio
     if (iPhoneAspectRatio <= 0) {
-        NSLog(@"Invalid aspect ratio calculated, using fallback");
         return CGSizeMake(400, 600);
     }
     
@@ -672,7 +584,6 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     
     // Additional safety checks
     if (maxCardWidth <= 0 || maxCardHeight <= 0) {
-        NSLog(@"Invalid max dimensions calculated, using fallback");
         return CGSizeMake(400, 600);
     }
     
@@ -691,25 +602,18 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     
     // Final safety checks for reasonable sizes
     if (cardWidth < 100 || cardHeight < 100 || cardWidth > screenBounds.size.width || cardHeight > screenBounds.size.height) {
-        NSLog(@"Calculated card size out of reasonable bounds (%.0fx%.0f), using fallback", cardWidth, cardHeight);
         return CGSizeMake(400, 600);
     }
-    
-    NSLog(@"iPad card calculated size: %.0f x %.0f (iPhone aspect ratio: %.3f)", 
-          cardWidth, cardHeight, iPhoneAspectRatio);
     
     return CGSizeMake(cardWidth, cardHeight);
 }
 
 // Enhanced fallback method that handles both custom positioning and full-screen Safari
 - (void)presentSafariViewController:(NSURL *)url topController:(UIViewController *)topController {
-    NSLog(@"Presenting Safari View Controller");
-    
     SFSafariViewController* safariViewController = [[SFSafariViewController alloc] initWithURL:url];
     
     if (shouldUseFullScreenSafari()) {
         // Full-screen native Safari experience
-        NSLog(@"Using full-screen Safari presentation");
         safariViewController.modalPresentationStyle = UIModalPresentationFullScreen;
         
         // Set the delegate
@@ -717,7 +621,6 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
         
         // Present with animation for full-screen experience
         [topController presentViewController:safariViewController animated:YES completion:^{
-            NSLog(@"Full-screen Safari presented successfully");
         }];
         
         // Store reference for dismissal
@@ -732,7 +635,6 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
             [[StashPayCardSafariDelegate sharedInstance] stopKeyboardObserving];
             
             if (_safariViewDismissedCallback != NULL) {
-                NSLog(@"Calling _safariViewDismissedCallback from full-screen Safari");
                 _safariViewDismissedCallback();
             }
         };
@@ -761,16 +663,6 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
         UIView *parentView = cardView.superview;
         if (parentView && [parentView respondsToSelector:@selector(safeAreaInsets)]) {
             safeAreaInsets = parentView.safeAreaInsets;
-            NSLog(@"Safe area insets - top: %.2f, bottom: %.2f, left: %.2f, right: %.2f", 
-                  safeAreaInsets.top, safeAreaInsets.bottom, safeAreaInsets.left, safeAreaInsets.right);
-        } else {
-            // Fallback: try to get from the key window
-            UIWindow *keyWindow = [UIApplication sharedApplication].keyWindow;
-            if (keyWindow && [keyWindow respondsToSelector:@selector(safeAreaInsets)]) {
-                safeAreaInsets = keyWindow.safeAreaInsets;
-                NSLog(@"Using key window safe area insets - top: %.2f, bottom: %.2f", 
-                      safeAreaInsets.top, safeAreaInsets.bottom);
-            }
         }
     }
     
@@ -1008,7 +900,6 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     if (@available(iOS 13.0, *)) {
         UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
         isDarkMode = (currentStyle == UIUserInterfaceStyleDark);
-        NSLog(@"Drag tray UI style: %@", isDarkMode ? @"Dark" : @"Light");
     }
     
     // Add a subtle background gradient for better visibility over web content
@@ -1167,7 +1058,6 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
                     cardView.superview.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.0];
                 } completion:^(BOOL finished) {
                     [self.currentPresentedVC dismissViewControllerAnimated:NO completion:^{
-                        NSLog(@"Card dismissed via drag tray gesture");
                         [self callUnityCallbackOnce];
                     }];
                 }];
@@ -1197,7 +1087,6 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
         self.isObservingKeyboard = YES;
-        NSLog(@"Started keyboard observing");
     }
 }
 
@@ -1206,16 +1095,11 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
         [[NSNotificationCenter defaultCenter] removeObserver:self name:UIKeyboardWillShowNotification object:nil];
         [[NSNotificationCenter defaultCenter] removeObserver:self name:UIKeyboardWillHideNotification object:nil];
         self.isObservingKeyboard = NO;
-        NSLog(@"Stopped keyboard observing");
     }
 }
 
 - (void)keyboardWillShow:(NSNotification *)notification {
-    NSLog(@"Keyboard will show - auto-expanding card if not already expanded");
-    
-    // Only auto-expand if card is not already expanded
     if (!_isCardExpanded && self.currentPresentedVC) {
-        // Add a small delay to ensure keyboard animation doesn't conflict
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             [self expandCardToFullScreen];
         });
@@ -1223,11 +1107,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
 }
 
 - (void)keyboardWillHide:(NSNotification *)notification {
-    NSLog(@"Keyboard will hide - checking if should collapse card");
-    
-    // Only auto-collapse if card is currently expanded
     if (_isCardExpanded && self.currentPresentedVC) {
-        // Find the WebView in the view hierarchy
         WKWebView *webView = nil;
         for (UIView *subview in self.currentPresentedVC.view.subviews) {
             if ([subview isKindOfClass:NSClassFromString(@"WKWebView")]) {
@@ -1237,21 +1117,16 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
         }
         
         if (webView) {
-            // Check if there's an active select element
             [webView evaluateJavaScript:@"document.activeElement.tagName === 'SELECT'" completionHandler:^(id result, NSError *error) {
                 BOOL hasActiveSelect = [result boolValue];
                 
                 if (!hasActiveSelect) {
-                    // No active select element, safe to collapse
                     dispatch_async(dispatch_get_main_queue(), ^{
                         [self collapseCardToOriginal];
                     });
-                } else {
-                    NSLog(@"Select element is active, not collapsing card");
                 }
             }];
         } else {
-            // No WebView found, safe to collapse
             [self collapseCardToOriginal];
         }
     }
@@ -1260,12 +1135,8 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
 // WKScriptMessageHandler implementation for handling JavaScript window.close() calls
 - (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message {
     if ([message.name isEqualToString:@"windowClose"]) {
-        NSLog(@"JavaScript window.close() called - dismissing card");
-        
-        // Dismiss the card and call the callback, similar to other dismissal methods
         if (self.currentPresentedVC) {
             [self.currentPresentedVC dismissViewControllerAnimated:YES completion:^{
-                NSLog(@"Card dismissed via JavaScript window.close()");
                 [self callUnityCallbackOnce];
             }];
         }
@@ -1289,14 +1160,10 @@ UIView* CreateLoadingView(CGRect frame) {
     if (@available(iOS 13.0, *)) {
         UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
         isDarkMode = (currentStyle == UIUserInterfaceStyleDark);
-        NSLog(@"Current UI style: %@", isDarkMode ? @"Dark" : @"Light");
     }
     
     // Set the background color based on mode
     loadingView.backgroundColor = isDarkMode ? [UIColor blackColor] : [UIColor whiteColor];
-    
-    // Choose logo color based on mode (unused variable removed)
-    // UIColor *logoColor = isDarkMode ? [UIColor whiteColor] : [UIColor blackColor];
     
     // Calculate the reduced size (70% of original) with padding for animation
     float originalWidth = 295.0;
@@ -1375,7 +1242,6 @@ extern "C" {
     // Sets the callback function to be called when payment succeeds
     void _StashPayCardSetPaymentSuccessCallback(PaymentSuccessCallback callback) {
         _paymentSuccessCallback = callback;
-        NSLog(@"Payment success callback set");
     }
 
     // Sets the card configuration - height ratio and vertical position
@@ -1392,11 +1258,6 @@ extern "C" {
         _originalCardVerticalPosition = _cardVerticalPosition;
         _originalCardWidthRatio = _cardWidthRatio; // Keep current width ratio
         _isCardExpanded = NO; // Reset expansion state
-        
-        NSLog(@"Card configuration set - height ratio: %.2f, vertical position: %.2f", _cardHeightRatio, _cardVerticalPosition);
-        if (isRunningOniPad()) {
-            NSLog(@"iPad detected: Card will use iPhone aspect ratio and be centered regardless of position settings");
-        }
     }
 
     // Sets the card configuration with width support
@@ -1416,11 +1277,6 @@ extern "C" {
         _originalCardVerticalPosition = _cardVerticalPosition;
         _originalCardWidthRatio = _cardWidthRatio;
         _isCardExpanded = NO; // Reset expansion state
-        
-        NSLog(@"Card configuration set - height ratio: %.2f, vertical position: %.2f, width ratio: %.2f", _cardHeightRatio, _cardVerticalPosition, _cardWidthRatio);
-        if (isRunningOniPad()) {
-            NSLog(@"iPad detected: Card will use iPhone aspect ratio and be centered regardless of dimension settings");
-        }
     }
 
     // Opens a URL in Safari View Controller with delegation
@@ -1452,7 +1308,6 @@ extern "C" {
         if (@available(iOS 9.0, *)) {
             // Check if we should use full-screen Safari directly
             if (shouldUseFullScreenSafari()) {
-                NSLog(@"Full-screen mode detected, using native SFSafariViewController");
                 [[StashPayCardSafariDelegate sharedInstance] presentSafariViewController:url topController:topController];
                 return;
             }
@@ -1764,7 +1619,6 @@ extern "C" {
                                     // Only remove if it's the default text selection long press (0.5 second delay)
                                     if (longPress.minimumPressDuration <= 0.5) {
                                         [subview removeGestureRecognizer:recognizer];
-                                        NSLog(@"Removed text selection long press gesture recognizer");
                                     }
                                 }
                             }
@@ -1921,7 +1775,6 @@ extern "C" {
                             }
                             
                             if (_safariViewDismissedCallback != NULL) {
-                                NSLog(@"Calling _safariViewDismissedCallback from safariViewDismissedCallback");
                                 _safariViewDismissedCallback();
                             }
                         };
@@ -1929,7 +1782,6 @@ extern "C" {
                         // GUARANTEED FALLBACK: Show the WebView after 3 seconds no matter what
                         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
                             if (webView.hidden) {
-                                NSLog(@"Forcing webView display after timeout");
                                 webView.hidden = NO;
                                 loadingView.hidden = YES;
                             }
