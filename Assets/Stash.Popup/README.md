@@ -8,6 +8,8 @@
 A Unity plugin that provides a customizable card-style popup for Stash Pay. The plugin uses native WebKit implementation on iOS to provide a native looking
 IAP experience using Stash payment rails. Currently available for iOS devices, with a browser fallback on other platforms.
 
+Stash Pay Popup is a lightweight & independent module and does not require rest of the Stash SDK to be imported in the Unity project.
+
 ## Requirements
 
 - Unity 2019.4 or later
