@@ -5,14 +5,14 @@ on: [push, pull_request]
 jobs:
   buildForAllSupportedPlatforms:
     name: Build for ${{ matrix.targetPlatform }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.targetPlatform == 'iOS' && 'macos-latest' || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
         targetPlatform:
           - StandaloneWindows64 # Build a Windows 64-bit standalone.
           - Android # Build an Android .apk standalone app.
-          - WebGL # WebGL.
+          - iOS # Build an iOS app.
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,6 +25,21 @@ jobs:
           restore-keys: Library-
       - if: matrix.targetPlatform == 'Android'
         uses: jlumbroso/free-disk-space@v1.3.1
+      - if: matrix.targetPlatform == 'iOS'
+        name: Install Apple Certificate
+        uses: apple-actions/import-codesign-certs@v1
+        with:
+          p12-file-base64: ${{ secrets.IOS_P12_BASE64 }}
+          p12-password: ${{ secrets.IOS_P12_PASSWORD }}
+      - if: matrix.targetPlatform == 'iOS'
+        name: Install Provisioning Profile
+        uses: apple-actions/download-provisioning-profiles@v1
+        with:
+          bundle-id: ${{ secrets.IOS_BUNDLE_ID }}
+          profile-type: 'IOS_APP_STORE'
+          issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
       - uses: game-ci/unity-builder@v4
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
@@ -38,6 +53,21 @@ jobs:
           androidKeyaliasPass: ${{ secrets.ANDROID_KEYALIAS_PASS }}
         with:
           targetPlatform: ${{ matrix.targetPlatform }}
+      - if: matrix.targetPlatform == 'iOS'
+        name: Copy exportOptions.plist
+        run: |
+          cp .github/workflows/exportOptions.plist build/iOS/
+      - if: matrix.targetPlatform == 'iOS'
+        name: Build and Archive iOS App
+        run: |
+          cd build/iOS
+          xcodebuild -project Unity-iPhone.xcodeproj -scheme Unity-iPhone -configuration Release -sdk iphoneos build archive -archivePath ./build/Unity-iPhone.xcarchive
+          xcodebuild -exportArchive -archivePath ./build/Unity-iPhone.xcarchive -exportOptionsPlist exportOptions.plist -exportPath ./build
+      - if: matrix.targetPlatform == 'iOS' && github.ref == 'refs/heads/release'
+        name: Upload to TestFlight
+        run: |
+          cd build/iOS/build
+          xcrun altool --upload-app --type ios --file "Unity-iPhone.ipa" --apiKey "${{ secrets.APPSTORE_KEY_ID }}" --apiIssuer "${{ secrets.APPSTORE_ISSUER_ID }}"
       - uses: actions/upload-artifact@v4
         with:
           name: Build-${{ matrix.targetPlatform }}
