@@ -71,7 +71,7 @@ Android support coming soon.
 
 ### WebKit Build Issues
 
-If you face build errors associated with WebKit, such as :
+If you face xcode project build errors associated with WebKit, such as :
 
 ````
 Undefined symbol: _OBJC_CLASS_$_SFSafariViewController
@@ -81,7 +81,7 @@ make sure that:
 1. **WebKit.framework** & **SafariServices.framework** is included in your Unity project's iOS build settings
 2. The framework is properly linked in your Xcode project
 
-The plugin includes an editor script that automatically adds necessary framework to your iOS build settings. If you're experiencing issues:
+The plugin includes an editor script that automatically adds necessary framework to your iOS build settings. If you're still experiencing build issues:
 1. Check if the Stash.Popup folder is properly imported in your project
 2. Verify that the editor script is not being stripped from your build
 3. If issues persist, manually add WebKit.framework in Unity's iOS build settings
