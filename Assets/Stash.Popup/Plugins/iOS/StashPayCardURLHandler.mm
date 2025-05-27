@@ -175,10 +175,10 @@ static BOOL _isCardExpanded = NO;
         // Add 1 second delay before showing webview
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             [UIView animateWithDuration:0.3 animations:^{
-                _loadingView.alpha = 0.0;
+                self->_loadingView.alpha = 0.0;
             } completion:^(BOOL finished) {
-                _webView.hidden = NO;
-                [_loadingView removeFromSuperview];
+                self->_webView.hidden = NO;
+                [self->_loadingView removeFromSuperview];
             }];
         });
     }
@@ -350,8 +350,6 @@ static BOOL _isCardExpanded = NO;
     // For iPad, allow both directions since card is centered
     // For iPhone, determine allowed swipe direction based on card position
     BOOL isNearTop = _cardVerticalPosition < 0.1;
-    BOOL isNearBottom = _cardVerticalPosition > 0.9;
-    BOOL isInMiddle = !isNearTop && !isNearBottom;
     
     // iPad gets more flexible gesture handling
     BOOL allowUpward = isRunningOniPad() || isNearTop;
@@ -780,7 +778,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     CGRect fullScreenFrame = screenBounds; // Fill entire screen
     
     // Calculate safe area dimensions for positioning UI elements
-    CGFloat safeWidth = screenBounds.size.width - safeAreaInsets.left - safeAreaInsets.right;
+    // CGFloat safeWidth = screenBounds.size.width - safeAreaInsets.left - safeAreaInsets.right; // Unused variable removed
     CGFloat safeTop = safeAreaInsets.top;
     
     if (isRunningOniPad()) {
@@ -1112,7 +1110,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
             
         case UIGestureRecognizerStateEnded:
         case UIGestureRecognizerStateCancelled: {
-            CGFloat currentY = cardView.frame.origin.y;
+            // CGFloat currentY = cardView.frame.origin.y; // Unused variable removed
             CGFloat expandThreshold = height * 0.15; // 15% of card height upward
             CGFloat dismissThreshold = height * 0.3; // 30% of card height downward
             CGFloat expandVelocityThreshold = -600; // Upward velocity threshold
@@ -1297,8 +1295,8 @@ UIView* CreateLoadingView(CGRect frame) {
     // Set the background color based on mode
     loadingView.backgroundColor = isDarkMode ? [UIColor blackColor] : [UIColor whiteColor];
     
-    // Choose logo color based on mode
-    UIColor *logoColor = isDarkMode ? [UIColor whiteColor] : [UIColor blackColor];
+    // Choose logo color based on mode (unused variable removed)
+    // UIColor *logoColor = isDarkMode ? [UIColor whiteColor] : [UIColor blackColor];
     
     // Calculate the reduced size (70% of original) with padding for animation
     float originalWidth = 295.0;
@@ -1492,8 +1490,10 @@ extern "C" {
                 config.preferences = preferences;
                 
                 // Configure web view for better form handling
-                if (@available(iOS 13.0, *)) {
+                if (@available(iOS 14.0, *)) {
                     config.defaultWebpagePreferences.allowsContentJavaScript = YES;
+                }
+                if (@available(iOS 13.0, *)) {
                     config.defaultWebpagePreferences.preferredContentMode = WKContentModeRecommended;
                 }
                 
@@ -1943,7 +1943,11 @@ extern "C" {
             [[StashPayCardSafariDelegate sharedInstance] presentSafariViewController:url topController:topController];
         } else {
             // Fallback to opening in regular Safari for older iOS versions
-            [[UIApplication sharedApplication] openURL:url];
+            if (@available(iOS 10.0, *)) {
+                [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
+            } else {
+                [[UIApplication sharedApplication] openURL:url];
+            }
         }
     }
 } 
