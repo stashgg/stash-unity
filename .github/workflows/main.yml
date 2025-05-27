@@ -37,10 +37,9 @@ jobs:
         with:
           bundle-id: ${{ secrets.IOS_BUNDLE_ID }}
           profile-type: 'IOS_APP_STORE'
+          issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
-          api-key-content: ${{ secrets.APPSTORE_KEY_CONTENT }}
-          api-key-issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
       - uses: game-ci/unity-builder@v4
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
