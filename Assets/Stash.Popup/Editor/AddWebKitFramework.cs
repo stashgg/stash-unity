@@ -16,7 +16,7 @@ public class AddWebKitFramework
 #if UNITY_IOS
         if (buildTarget == BuildTarget.iOS)
         {
-            Debug.Log("Adding Stash Pay Popup framework to Xcode project...");
+            Debug.Log("Adding Stash Pay Popup frameworks to Xcode project...");
             
             // Get the .xcodeproj path
             string projectPath = Path.Combine(buildPath, "Unity-iPhone.xcodeproj/project.pbxproj");
@@ -29,14 +29,16 @@ public class AddWebKitFramework
             string mainTargetGuid = project.GetUnityMainTargetGuid();
             string frameworkTargetGuid = project.GetUnityFrameworkTargetGuid();
             
-            // Add WebKit.framework to both targets (required and weak linked)
+            // Add required frameworks to both targets
             project.AddFrameworkToProject(mainTargetGuid, "WebKit.framework", false);
             project.AddFrameworkToProject(frameworkTargetGuid, "WebKit.framework", false);
+            project.AddFrameworkToProject(mainTargetGuid, "SafariServices.framework", false);
+            project.AddFrameworkToProject(frameworkTargetGuid, "SafariServices.framework", false);
             
             // Write the changes to the project file
             File.WriteAllText(projectPath, project.WriteToString());
             
-            // Add required import to prefix header
+            // Add required imports to prefix header
             string prefixHeaderPath = Path.Combine(buildPath, "Classes/Prefix.pch");
             if (File.Exists(prefixHeaderPath))
             {
@@ -44,12 +46,12 @@ public class AddWebKitFramework
                 if (!prefixFileContent.Contains("#import <WebKit/WebKit.h>"))
                 {
                     prefixFileContent = prefixFileContent.Replace("#import <Foundation/Foundation.h>", 
-                                                                "#import <Foundation/Foundation.h>\n#import <WebKit/WebKit.h>");
+                                                                "#import <Foundation/Foundation.h>\n#import <WebKit/WebKit.h>\n#import <SafariServices/SafariServices.h>");
                     File.WriteAllText(prefixHeaderPath, prefixFileContent);
                 }
             }
             
-            Debug.Log("Stash Pay Popup framework successfully added to Xcode project.");
+            Debug.Log("Stash Pay Popup frameworks successfully added to Xcode project.");
         }
 #else
         // Skip iOS-specific processing for non-iOS platforms
