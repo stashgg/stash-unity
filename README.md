@@ -4,11 +4,6 @@ This package is designed to get your Unity project up and running with the Stash
 
 To get started, you need to import the latest package from the [releases](https://github.com/stashgg/stash-unity/releases) section and follow our [Unity guide](https://docs.stash.gg/docs/configure-unity-project).
 
-## Usage
-
-To interact with the Stash API and handle responses, the SDK offers the `StashAuth`, `StashLauncher`, and other classes (named according to the product you want to use).
-All classes are static, with no inheritance to [MonoBehaviour](https://docs.unity3d.com/Manual/class-MonoBehaviour.html), so there's need to place them in the scene, and can be called only when needed.
-
 ## Requirements
 
 The Stash package always targets the latest LTS version of Unity. We recommend you use the LTS version of Unity to build projects that are in production or about to ship. However, you should not encounter any issues when integrating or migrating into any other versions of Unity above the targeted release.
