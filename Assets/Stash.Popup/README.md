@@ -65,3 +65,17 @@ public class YourClass : MonoBehaviour
 
 Android support coming soon.
 
+## Troubleshooting
+
+### WebKit Build Issues
+
+If you encounter build errors related to WebKit, ensure that:
+1. WebKit.framework is included in your Unity project's iOS build settings
+2. The framework is properly linked in your Xcode project
+
+The plugin includes an editor script that automatically adds WebKit.framework to your iOS build settings. If you're experiencing issues:
+1. Check if the Stash.Popup folder is properly imported in your project
+2. Verify that the editor script is not being stripped from your build
+3. If issues persist, manually add WebKit.framework in Unity's iOS build settings
+
+
