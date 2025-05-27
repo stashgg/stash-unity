@@ -65,7 +65,7 @@ jobs:
         name: Build and Archive iOS App
         run: |
           cd build/iOS
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ env.BUILD_NUMBER }}" Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ env.BUILD_NUMBER }}" Unity-iPhone/Info.plist
           xcodebuild -project Unity-iPhone.xcodeproj -scheme Unity-iPhone -configuration Release -sdk iphoneos build archive -archivePath ./build/Unity-iPhone.xcarchive
           xcodebuild -exportArchive -archivePath ./build/Unity-iPhone.xcarchive -exportOptionsPlist exportOptions.plist -exportPath ./build
       - if: matrix.targetPlatform == 'iOS'
