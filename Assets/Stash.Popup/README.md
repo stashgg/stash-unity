@@ -25,14 +25,10 @@ Note: On legacy devices (> iOS 9) the popup falls back to the system browser.
 
 ### Basic Setup
 
-The plugin provides a singleton `StashPayCard` class that handles all interactions with the popup card. Here's how to use it:
-
-**The general flow:**
-
 For detailed instructions on creating Stash Pay checkout links, consult the Stash documentation.
 
 1. Request payment link on the game backend and send the resulting link to the game client.
-2. Show the payment URL using the StashPayCard as follows:
+2. The plugin provides a singleton `StashPayCard` class that handles all interactions with the popup card. Here's how to use it:
 
 ```csharp
 using StashPopup;
@@ -41,7 +37,8 @@ public class YourClass : MonoBehaviour
 {  
     void OpenPaymentCard()
     {
-        // Open a URL in the card popup
+        // Open the Stash Pay URL coming from the backend in the card.
+        // Card offers two callbacks - on dismiss and on successful payment.
         StashPayCard.Instance.OpenURL("STASH_PAY_URL", OnStashPayDismissed, OnStashPaySuccess);
     }
     
@@ -61,9 +58,10 @@ public class YourClass : MonoBehaviour
 
 3. If the payment is successfull, validate the purchase using the Stash API on the game backend.
 
-
 ### Platform Support
 
 - **iOS**: Full native implementation using WebKit.
 - **Unity Editor & Other Platforms**: Falls back to opening URL in the default browser.
+
+Android support coming soon.
 
