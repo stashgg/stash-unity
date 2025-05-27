@@ -37,9 +37,10 @@ jobs:
         with:
           bundle-id: ${{ secrets.IOS_BUNDLE_ID }}
           profile-type: 'IOS_APP_STORE'
-          issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
+          api-key-content: ${{ secrets.APPSTORE_KEY_CONTENT }}
+          api-key-issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
       - uses: game-ci/unity-builder@v4
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
@@ -58,12 +59,17 @@ jobs:
         run: |
           cp .github/workflows/exportOptions.plist build/iOS/
       - if: matrix.targetPlatform == 'iOS'
+        name: Generate Build Number
+        run: |
+          echo "BUILD_NUMBER=$(date +'%y%m%d%H%M')" >> $GITHUB_ENV
+      - if: matrix.targetPlatform == 'iOS'
         name: Build and Archive iOS App
         run: |
           cd build/iOS
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ env.BUILD_NUMBER }}" Info.plist
           xcodebuild -project Unity-iPhone.xcodeproj -scheme Unity-iPhone -configuration Release -sdk iphoneos build archive -archivePath ./build/Unity-iPhone.xcarchive
           xcodebuild -exportArchive -archivePath ./build/Unity-iPhone.xcarchive -exportOptionsPlist exportOptions.plist -exportPath ./build
-      - if: matrix.targetPlatform == 'iOS' && github.ref == 'refs/heads/release'
+      - if: matrix.targetPlatform == 'iOS'
         name: Upload to TestFlight
         run: |
           cd build/iOS/build
