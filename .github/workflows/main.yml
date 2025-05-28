@@ -97,6 +97,28 @@ jobs:
           PROFILE_UUID=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/ | head -1 | sed 's/.mobileprovision//')
           echo "Using provisioning profile: $PROFILE_UUID"
           
+          # Get provisioning profile details
+          echo "=== Provisioning Profile Details ==="
+          security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | plutil -p -
+          
+          # Extract bundle ID from provisioning profile
+          PROFILE_BUNDLE_ID=$(security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | plutil -extract Entitlements.application-identifier raw -)
+          echo "Provisioning profile bundle ID: $PROFILE_BUNDLE_ID"
+          
+          # Get the actual bundle ID (remove team prefix)
+          BUNDLE_ID=$(echo "$PROFILE_BUNDLE_ID" | sed 's/^DB5KZDZYT5\.//')
+          echo "Extracted bundle ID: $BUNDLE_ID"
+          
+          # Check and update the project bundle ID if needed
+          echo "=== Checking Unity Project Bundle ID ==="
+          CURRENT_BUNDLE_ID=$(xcodebuild -project Unity-iPhone.xcodeproj -target Unity-iPhone -showBuildSettings | grep PRODUCT_BUNDLE_IDENTIFIER | awk '{print $3}')
+          echo "Current project bundle ID: $CURRENT_BUNDLE_ID"
+          
+          if [ "$CURRENT_BUNDLE_ID" != "$BUNDLE_ID" ]; then
+            echo "Bundle ID mismatch! Updating project to use: $BUNDLE_ID"
+            sed -i '' "s/PRODUCT_BUNDLE_IDENTIFIER = .*/PRODUCT_BUNDLE_IDENTIFIER = $BUNDLE_ID;/g" Unity-iPhone.xcodeproj/project.pbxproj
+          fi
+          
           # Set up the development team and provisioning profile in the project
           sed -i '' 's/DEVELOPMENT_TEAM = "";/DEVELOPMENT_TEAM = "DB5KZDZYT5";/g' Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' Unity-iPhone.xcodeproj/project.pbxproj
