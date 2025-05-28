@@ -54,6 +54,16 @@ jobs:
           security find-identity -v -p codesigning
           ls -l ~/Library/MobileDevice/Provisioning\ Profiles/
 
+      - if: inputs.platform == 'iOS'
+        name: Verify Provisioning Profile Details
+        run: |
+          for profile in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
+            echo "Inspecting $profile"
+            security cms -D -i "$profile" | grep -A 1 'TeamIdentifier'
+            security cms -D -i "$profile" | grep -A 1 'com.apple.application-identifier'
+            echo "----------------------------------------"
+          done
+
       - uses: game-ci/unity-builder@v4
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
