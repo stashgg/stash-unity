@@ -43,107 +43,6 @@ jobs:
           issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
-      - if: inputs.platform == 'iOS'
-        name: Setup Apple Developer Account
-        run: |
-          # Create Xcode settings directory
-          mkdir -p ~/Library/Developer/Xcode/UserData/IDEWorkspaceSharedSettings.xcuserdatad
-          
-          # Create settings file
-          echo '<?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>IDELastDistributedNotificationAppWatchingEnabled</key>
-              <true/>
-              <key>IDELastMacOSXSDK</key>
-              <string>14.4</string>
-              <key>IDELastXcodeSystemLogLocation</key>
-              <string>/Users/runner/Library/Developer/Xcode/DerivedData/Unity-iPhone-crjxlrgppfabfnenstxvmismtxgy/Logs/Debug</string>
-              <key>IDEWorkspaceSharedSettings_AutocreateContextsIfNeeded</key>
-              <false/>
-          </dict>
-          </plist>' > ~/Library/Developer/Xcode/UserData/IDEWorkspaceSharedSettings.xcuserdatad/WorkspaceSettings.xcsettings
-          
-          # Create a temporary keychain
-          security create-keychain -p "" build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "" build.keychain
-          security set-keychain-settings build.keychain
-          
-          # Add the certificate to the keychain
-          echo "${{ secrets.IOS_P12_BASE64 }}" | base64 --decode > cert.p12
-          echo "Certificate file size: $(ls -l cert.p12)"
-          security import cert.p12 -k build.keychain -P "${{ secrets.IOS_P12_PASSWORD }}" -T /usr/bin/codesign
-          
-          # List all items in the keychain
-          echo "Listing all items in the keychain:"
-          security find-identity -v -p codesigning build.keychain
-          
-          # Show keychain settings
-          echo "Keychain settings:"
-          security show-keychain-info build.keychain
-          
-          # Set keychain settings
-          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
-          
-          # List available identities again
-          echo "Available identities after setup:"
-          security find-identity -v -p codesigning
-          
-          # Verify we have a distribution certificate
-          if ! security find-identity -v -p codesigning | grep -q "Apple Distribution"; then
-            echo "Error: No Apple Distribution certificate found. Please make sure you're using a distribution certificate for TestFlight uploads."
-            exit 1
-          fi
-          
-          # Clean up certificate file
-          rm -f cert.p12
-          
-          # Configure Xcode with Apple Developer account
-          mkdir -p ~/Library/Developer/Xcode/UserData
-          echo '<?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>IDEFirstLaunchExperienceCompleted</key>
-              <true/>
-              <key>IDELastMacOSXSDK</key>
-              <string>14.4</string>
-              <key>IDELastXcodeSystemLogLocation</key>
-              <string>/Users/runner/Library/Developer/Xcode/DerivedData/Unity-iPhone-crjxlrgppfabfnenstxvmismtxgy/Logs/Debug</string>
-              <key>IDEWorkspaceSharedSettings_AutocreateContextsIfNeeded</key>
-              <false/>
-              <key>AppleIDAccounts</key>
-              <array>
-                  <dict>
-                      <key>accountDescription</key>
-                      <string>${{ secrets.APPLE_ID }}</string>
-                      <key>accountName</key>
-                      <string>${{ secrets.APPLE_ID }}</string>
-                      <key>accountType</key>
-                      <string>AppleID</string>
-                      <key>identifier</key>
-                      <string>${{ secrets.APPSTORE_ISSUER_ID }}</string>
-                      <key>teamID</key>
-                      <string>${{ secrets.APPLE_TEAM_ID }}</string>
-                  </dict>
-              </array>
-          </dict>
-          </plist>' > ~/Library/Developer/Xcode/UserData/IDEWorkspaceSharedSettings.xcuserdatad/WorkspaceSettings.xcsettings
-          
-          # Create Xcode project settings
-          mkdir -p ~/Library/Developer/Xcode/UserData/IDEWorkspaceSharedSettings.xcuserdatad
-          echo '<?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>PreviewsEnabled</key>
-              <false/>
-              <key>IDEWorkspaceSharedSettings_AutocreateContextsIfNeeded</key>
-              <false/>
-          </dict>
-          </plist>' > ~/Library/Developer/Xcode/UserData/IDEWorkspaceSharedSettings.xcuserdatad/WorkspaceSettings.xcsettings
       - uses: game-ci/unity-builder@v4
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
@@ -158,25 +57,9 @@ jobs:
         with:
           targetPlatform: ${{ inputs.platform }}
       - if: inputs.platform == 'iOS'
-        name: Copy exportOptions.plist
-        run: |
-          cp .github/workflows/exportOptions.plist build/iOS/iOS/
-      - if: inputs.platform == 'iOS'
-        name: Debug Build Directory
-        run: |
-          cd build/iOS/iOS
-          pwd
-          ls -la
-      - if: inputs.platform == 'iOS'
         name: Build and Archive iOS App
         run: |
           cd build/iOS/iOS
-          if [ ! -d "Unity-iPhone.xcodeproj" ]; then
-            echo "Unity-iPhone.xcodeproj not found in $(pwd)"
-            echo "Available files:"
-            ls -la
-            exit 1
-          fi
           xcodebuild -project Unity-iPhone.xcodeproj -scheme Unity-iPhone -configuration Release -sdk iphoneos build archive -archivePath ./build/Unity-iPhone.xcarchive -allowProvisioningUpdates
           xcodebuild -exportArchive -archivePath ./build/Unity-iPhone.xcarchive -exportOptionsPlist exportOptions.plist -exportPath ./build -allowProvisioningUpdates
       - if: inputs.platform == 'iOS'
