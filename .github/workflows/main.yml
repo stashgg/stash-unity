@@ -118,33 +118,59 @@ jobs:
             sed -i '' "s/PRODUCT_BUNDLE_IDENTIFIER = .*/PRODUCT_BUNDLE_IDENTIFIER = $BUNDLE_ID;/g" Unity-iPhone.xcodeproj/project.pbxproj
           fi
           
-          # Set up the development team and provisioning profile in the project
-          sed -i '' 's/DEVELOPMENT_TEAM = "";/DEVELOPMENT_TEAM = "DB5KZDZYT5";/g' Unity-iPhone.xcodeproj/project.pbxproj
-          sed -i '' 's/DEVELOPMENT_TEAM = \"\";/DEVELOPMENT_TEAM = DB5KZDZYT5;/g' Unity-iPhone.xcodeproj/project.pbxproj
-          sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' Unity-iPhone.xcodeproj/project.pbxproj
-          sed -i '' "s/PROVISIONING_PROFILE_SPECIFIER = \"\";/PROVISIONING_PROFILE_SPECIFIER = \"$PROFILE_UUID\";/g" Unity-iPhone.xcodeproj/project.pbxproj
-          sed -i '' 's/CODE_SIGN_IDENTITY = "iPhone Developer";/CODE_SIGN_IDENTITY = "Apple Distribution";/g' Unity-iPhone.xcodeproj/project.pbxproj
-
-          # Verify project settings
-          echo "=== Project Build Settings (Post-modification) ==="
-          xcodebuild -project Unity-iPhone.xcodeproj -target Unity-iPhone -showBuildSettings | grep -E "(DEVELOPMENT_TEAM|CODE_SIGN|PROVISIONING_PROFILE)"
+          # Set up for Automatic Signing
+          # For the main Unity-iPhone target:
+          # - Set CODE_SIGN_STYLE to Automatic
+          # - Set DEVELOPMENT_TEAM
+          # - Set CODE_SIGN_IDENTITY to Apple Distribution (to guide automatic selection)
+          # - Ensure PROVISIONING_PROFILE_SPECIFIER is cleared or not set to a specific UUID
+          sed -i '' '
+          /productName = Unity-iPhone;/,$!b;
+          /buildConfigurationList = /{N;N;N;N;N;N;N;N;N; \
+          s/CODE_SIGN_STYLE = Manual;/CODE_SIGN_STYLE = Automatic;/g; \
+          s/CODE_SIGN_STYLE = \"Manual\";/CODE_SIGN_STYLE = Automatic;/g; \
+          s/PROVISIONING_PROFILE_SPECIFIER = \".*\";/PROVISIONING_PROFILE_SPECIFIER = \"\";/g; \
+          s/PROVISIONING_PROFILE_SPECIFIER = .*;/PROVISIONING_PROFILE_SPECIFIER = \"\";/g; \
+          s/CODE_SIGN_IDENTITY = \".*\";/CODE_SIGN_IDENTITY = \"Apple Distribution\";/g; \
+          s/CODE_SIGN_IDENTITY = .*;/CODE_SIGN_IDENTITY = \"Apple Distribution\";/g; \
+          s/DEVELOPMENT_TEAM = \".*\";/DEVELOPMENT_TEAM = DB5KZDZYT5;/g; \
+          s/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = DB5KZDZYT5;/g; \
+          }
+          ' Unity-iPhone.xcodeproj/project.pbxproj
           
-          # Build and archive
-          echo "Attempting to build and archive..."
+          # For the UnityFramework target:
+          # - Set CODE_SIGN_STYLE to Automatic
+          # - Set DEVELOPMENT_TEAM
+          # - Set CODE_SIGN_IDENTITY to Apple Developer (general for frameworks)
+          # - Ensure PROVISIONING_PROFILE_SPECIFIER is cleared
+          sed -i '' '
+          /productName = UnityFramework;/,$!b;
+          /buildConfigurationList = /{N;N;N;N;N;N;N;N;N; \
+          s/CODE_SIGN_STYLE = Manual;/CODE_SIGN_STYLE = Automatic;/g; \
+          s/CODE_SIGN_STYLE = \"Manual\";/CODE_SIGN_STYLE = Automatic;/g; \
+          s/PROVISIONING_PROFILE_SPECIFIER = \".*\";/PROVISIONING_PROFILE_SPECIFIER = \"\";/g; \
+          s/PROVISIONING_PROFILE_SPECIFIER = .*;/PROVISIONING_PROFILE_SPECIFIER = \"\";/g; \
+          s/CODE_SIGN_IDENTITY = \".*\";/CODE_SIGN_IDENTITY = \"Apple Developer\";/g; \
+          s/CODE_SIGN_IDENTITY = .*;/CODE_SIGN_IDENTITY = \"Apple Developer\";/g; \
+          s/DEVELOPMENT_TEAM = \".*\";/DEVELOPMENT_TEAM = DB5KZDZYT5;/g; \
+          s/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = DB5KZDZYT5;/g; \
+          }
+          ' Unity-iPhone.xcodeproj/project.pbxproj
+          
+          # Verify project settings
+          echo "=== Project (Unity-iPhone) Build Settings (Post-modification for Automatic Signing) ==="
+          xcodebuild -project Unity-iPhone.xcodeproj -target Unity-iPhone -showBuildSettings | grep -E "(DEVELOPMENT_TEAM|CODE_SIGN|PROVISIONING_PROFILE)"
+          echo "=== UnityFramework Build Settings (Post-modification for Automatic Signing) ==="
+          xcodebuild -project Unity-iPhone.xcodeproj -target UnityFramework -showBuildSettings | grep -E "(DEVELOPMENT_TEAM|CODE_SIGN|PROVISIONING_PROFILE)"
+          
+          # Build and archive with Automatic Signing
+          echo "Attempting to build and archive with Automatic Signing..."
           xcodebuild -project Unity-iPhone.xcodeproj \
             -scheme Unity-iPhone \
             -configuration Release \
             -sdk iphoneos \
             -archivePath ./build/Unity-iPhone.xcarchive \
             DEVELOPMENT_TEAM="DB5KZDZYT5" \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
-            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
-            # Settings for UnityFramework target
-            UnityFramework_CODE_SIGN_STYLE=Manual \
-            UnityFramework_CODE_SIGN_IDENTITY="Apple Distribution" \
-            UnityFramework_DEVELOPMENT_TEAM="DB5KZDZYT5" \
-            UnityFramework_PROVISIONING_PROFILE_SPECIFIER="" \
             archive
           
           # Export the archive
