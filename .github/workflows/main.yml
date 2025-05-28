@@ -64,6 +64,17 @@ jobs:
           echo "Available signing identities:"
           security find-identity -v -p codesigning
           echo ""
+          
+          # Check if we have a distribution certificate
+          if security find-identity -v -p codesigning | grep -q "Distribution"; then
+            echo "✅ Distribution certificate found"
+          else
+            echo "⚠️  WARNING: No Distribution certificate found. You have a Development certificate."
+            echo "   For App Store uploads, you need an Apple Distribution certificate."
+            echo "   Please update your IOS_P12_BASE64 secret with a Distribution certificate."
+          fi
+          
+          echo ""
           echo "Installed provisioning profiles:"
           ls -la ~/Library/MobileDevice/Provisioning\ Profiles/
           echo ""
@@ -97,22 +108,35 @@ jobs:
         run: |
           cd build/iOS/iOS
           
-          # Find the provisioning profile UUID
-          PROFILE_UUID=$(security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | grep -A1 'UUID' | grep -o '[0-9a-fA-F]\{8\}-[0-9a-fA-F]\{4\}-[0-9a-fA-F]\{4\}-[0-9a-fA-F]\{4\}-[0-9a-fA-F]\{12\}' | head -1)
-          echo "Using provisioning profile UUID: $PROFILE_UUID"
-          
-          # Configure Xcode project with team ID
+          # Try automatic signing first
+          echo "Attempting build with automatic signing..."
           xcodebuild -project Unity-iPhone.xcodeproj \
             -scheme Unity-iPhone \
             -configuration Release \
             -sdk iphoneos \
             -archivePath Unity-iPhone.xcarchive \
+            -allowProvisioningUpdates \
             DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
-            CODE_SIGN_STYLE="Manual" \
-            CODE_SIGN_IDENTITY="iPhone Distribution" \
-            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
             PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
-            archive
+            archive || {
+              echo "Automatic signing failed, trying manual signing..."
+              
+              # If automatic fails, try manual with the available certificate
+              PROFILE_UUID="de899058-6b99-45e4-82b8-846f08a30e45"
+              SIGNING_IDENTITY=$(security find-identity -v -p codesigning | grep -o '"[^"]*"' | head -1 | tr -d '"')
+              
+              xcodebuild -project Unity-iPhone.xcodeproj \
+                -scheme Unity-iPhone \
+                -configuration Release \
+                -sdk iphoneos \
+                -archivePath Unity-iPhone.xcarchive \
+                DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
+                CODE_SIGN_STYLE="Manual" \
+                CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
+                PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
+                PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
+                archive
+            }
           
           # Create export options plist
           cat > exportOptions.plist << EOF
@@ -124,13 +148,6 @@ jobs:
               <string>app-store</string>
               <key>teamID</key>
               <string>${{ secrets.IOS_TEAM_ID }}</string>
-              <key>signingStyle</key>
-              <string>manual</string>
-              <key>provisioningProfiles</key>
-              <dict>
-                  <key>com.stash.sdkdemo</key>
-                  <string>$PROFILE_UUID</string>
-              </dict>
               <key>uploadBitcode</key>
               <false/>
               <key>uploadSymbols</key>
@@ -143,7 +160,8 @@ jobs:
           xcodebuild -exportArchive \
             -archivePath Unity-iPhone.xcarchive \
             -exportOptionsPlist exportOptions.plist \
-            -exportPath export
+            -exportPath export \
+            -allowProvisioningUpdates
       
       # iOS: Upload to TestFlight
       - name: Upload to TestFlight
