@@ -78,15 +78,13 @@ jobs:
             -configuration Release \
             -sdk iphoneos \
             -archivePath ./build/Unity-iPhone.xcarchive \
-            DEVELOPMENT_TEAM="DC7Y8ZKSC8" \
-            CODE_SIGN_IDENTITY="Apple Development: Ondřej Řeháček (DC7Y8ZKSC8)" \
             archive
           
           xcodebuild -exportArchive \
             -archivePath ./build/Unity-iPhone.xcarchive \
             -exportOptionsPlist exportOptions.plist \
             -exportPath ./build
-            
+
       - if: inputs.platform == 'iOS'
         name: Upload to TestFlight
         uses: apple-actions/upload-testflight-build@v3
