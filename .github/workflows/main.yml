@@ -215,7 +215,7 @@ jobs:
         if: inputs.platform == 'iOS'
         uses: apple-actions/upload-testflight-build@v1
         with:
-          app-path: 'build/iOS/iOS/export/Unity-iPhone.ipa'
+          app-path: 'build/iOS/iOS/export/StashDemo.ipa'
           issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
