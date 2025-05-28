@@ -47,6 +47,9 @@ jobs:
         with:
           p12-file-base64: ${{ secrets.IOS_P12_BASE64 }}
           p12-password: ${{ secrets.IOS_P12_PASSWORD }}
+          create-keychain: true
+          keychain: signing_temp
+          keychain-password: ${{ secrets.IOS_P12_PASSWORD }}
       
       - name: Download iOS provisioning profiles
         if: inputs.platform == 'iOS'
@@ -126,30 +129,27 @@ jobs:
         run: |
           cd build/iOS/iOS
           
+          # Clean any existing build artifacts
+          xcodebuild clean -project Unity-iPhone.xcodeproj -scheme Unity-iPhone
+          
           # Create App Store Connect API key for Xcode
           mkdir -p ~/.appstoreconnect/private_keys
           echo "${{ secrets.APPSTORE_PRIVATE_KEY }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8
           
-          # Install provisioning profiles to Xcode
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/ 2>/dev/null || true
-          
-          # Find the first provisioning profile UUID
-          PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -1)
-          if [ -z "$PROFILE_PATH" ]; then
-            echo "Error: No provisioning profiles found!"
-            exit 1
-          fi
-          
-          # Extract profile UUID and app identifier
-          PROFILE_UUID=$(security cms -D -i "$PROFILE_PATH" | grep -A1 'UUID' | grep -o '[0-9a-fA-F]\{8\}-[0-9a-fA-F]\{4\}-[0-9a-fA-F]\{4\}-[0-9a-fA-F]\{4\}-[0-9a-fA-F]\{12\}')
-          echo "Using provisioning profile: $PROFILE_UUID"
+          # Set the default keychain
+          security default-keychain -s signing_temp.keychain
+          security unlock-keychain -p "${{ secrets.IOS_P12_PASSWORD }}" signing_temp.keychain
+          security set-keychain-settings -t 3600 -u signing_temp.keychain
           
           # Update project.pbxproj to set team ID for all targets
           sed -i '' "s/DevelopmentTeam = \"[^\"]*\"/DevelopmentTeam = \"${{ secrets.IOS_TEAM_ID }}\"/g" Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' "s/DevelopmentTeam = ;/DevelopmentTeam = \"${{ secrets.IOS_TEAM_ID }}\";/g" Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' "s/DEVELOPMENT_TEAM = \"[^\"]*\"/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\"/g" Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' "s/DEVELOPMENT_TEAM = ;/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\";/g" Unity-iPhone.xcodeproj/project.pbxproj
+          
+          # Also update code signing settings to be consistent
+          sed -i '' 's/CODE_SIGN_STYLE = Manual/CODE_SIGN_STYLE = Automatic/g' Unity-iPhone.xcodeproj/project.pbxproj
+          sed -i '' 's/CODE_SIGN_IDENTITY = "[^"]*"/CODE_SIGN_IDENTITY = "Apple Development"/g' Unity-iPhone.xcodeproj/project.pbxproj
           
           # Build with explicit settings
           xcodebuild -project Unity-iPhone.xcodeproj \
