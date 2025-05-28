@@ -78,13 +78,14 @@ jobs:
             -configuration Release \
             -sdk iphoneos \
             -archivePath ./build/Unity-iPhone.xcarchive \
+            -allowProvisioningUpdates \
             archive
           
           xcodebuild -exportArchive \
             -archivePath ./build/Unity-iPhone.xcarchive \
             -exportOptionsPlist exportOptions.plist \
             -exportPath ./build
-
+            
       - if: inputs.platform == 'iOS'
         name: Upload to TestFlight
         uses: apple-actions/upload-testflight-build@v3
