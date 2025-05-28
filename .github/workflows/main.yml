@@ -200,6 +200,16 @@ jobs:
             -authenticationKeyID ${{ secrets.APPSTORE_KEY_ID }} \
             -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }}
       
+      # iOS: List export contents for debugging
+      - name: List iOS export contents
+        if: inputs.platform == 'iOS'
+        run: |
+          echo "Contents of build/iOS/iOS/export:"
+          ls -la build/iOS/iOS/export/
+          echo ""
+          echo "Looking for IPA files:"
+          find build/iOS/iOS -name "*.ipa" -type f
+      
       # iOS: Upload to TestFlight
       - name: Upload to TestFlight
         if: inputs.platform == 'iOS'
