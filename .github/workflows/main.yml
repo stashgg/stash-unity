@@ -31,7 +31,7 @@ jobs:
 
       - if: inputs.platform == 'iOS'
         name: Install Apple Certificate
-        uses: apple-actions/import-codesign-certs@v1
+        uses: Apple-Actions/import-codesign-certs@v5.0.1
         with:
           p12-file-base64: ${{ secrets.IOS_P12_BASE64 }}
           p12-password: ${{ secrets.IOS_P12_PASSWORD }}
@@ -40,7 +40,7 @@ jobs:
 
       - if: inputs.platform == 'iOS'
         name: Install Provisioning Profile
-        uses: apple-actions/download-provisioning-profiles@v1
+        uses: Apple-Actions/download-provisioning-profiles@v4.0.0
         with:
           bundle-id: 'com.stash.sdkdemo'
           profile-type: 'IOS_APP_STORE'
@@ -66,7 +66,6 @@ jobs:
         name: Build and Archive iOS App
         run: |
           cd build/iOS/iOS
-          xcodebuild -resolvePackageDependencies -project Unity-iPhone.xcodeproj -scheme Unity-iPhone
           
           xcodebuild -project Unity-iPhone.xcodeproj \
             -scheme Unity-iPhone \
