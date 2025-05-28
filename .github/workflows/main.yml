@@ -75,6 +75,9 @@ jobs:
           
           # List available identities
           security find-identity -v -p codesigning
+          
+          # Clean up certificate file
+          rm -f cert.p12
       - uses: game-ci/unity-builder@v4
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
