@@ -68,10 +68,23 @@ jobs:
           # Check if we have a distribution certificate
           if security find-identity -v -p codesigning | grep -q "Distribution"; then
             echo "✅ Distribution certificate found"
+            echo "CERT_TYPE=distribution" >> $GITHUB_ENV
           else
             echo "⚠️  WARNING: No Distribution certificate found. You have a Development certificate."
             echo "   For App Store uploads, you need an Apple Distribution certificate."
             echo "   Please update your IOS_P12_BASE64 secret with a Distribution certificate."
+            echo ""
+            echo "   To get a Distribution certificate:"
+            echo "   1. Go to https://developer.apple.com/account/resources/certificates/list"
+            echo "   2. Click '+' to create a new certificate"
+            echo "   3. Select 'Apple Distribution' (NOT 'Apple Development')"
+            echo "   4. Follow the steps to create and download the certificate"
+            echo "   5. Import it to Keychain Access and export as .p12 with a password"
+            echo "   6. Convert to base64: base64 -i distribution.p12 | pbcopy"
+            echo "   7. Update your IOS_P12_BASE64 secret in GitHub"
+            echo ""
+            echo "CERT_TYPE=development" >> $GITHUB_ENV
+            exit 1  # Fail the build since we can't upload to App Store without distribution cert
           fi
           
           echo ""
@@ -108,37 +121,25 @@ jobs:
         run: |
           cd build/iOS/iOS
           
-          # Try automatic signing first
-          echo "Attempting build with automatic signing..."
+          # Update the Xcode project to set the correct team ID and bundle identifier
+          # This ensures all targets use automatic signing with the correct team
+          /usr/libexec/PlistBuddy -c "Set :objects:1D6058900D05DD3D006BFB54:attributes:TargetAttributes:1D6058900D05DD3D006BFB54:DevelopmentTeam ${{ secrets.IOS_TEAM_ID }}" Unity-iPhone.xcodeproj/project.pbxproj || true
+          /usr/libexec/PlistBuddy -c "Set :objects:1D6058900D05DD3D006BFB54:attributes:TargetAttributes:5623C57217FDCB0800090B9E:DevelopmentTeam ${{ secrets.IOS_TEAM_ID }}" Unity-iPhone.xcodeproj/project.pbxproj || true
+          
+          # Build with automatic signing
           xcodebuild -project Unity-iPhone.xcodeproj \
             -scheme Unity-iPhone \
             -configuration Release \
             -sdk iphoneos \
             -archivePath Unity-iPhone.xcarchive \
             -allowProvisioningUpdates \
+            -allowProvisioningDeviceRegistration \
             DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
             PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
-            archive || {
-              echo "Automatic signing failed, trying manual signing..."
-              
-              # If automatic fails, try manual with the available certificate
-              PROFILE_UUID="8c8a8452-9d35-446e-98fd-80c3a215a3f7"
-              SIGNING_IDENTITY=$(security find-identity -v -p codesigning | grep -o '"[^"]*"' | head -1 | tr -d '"')
-              
-              xcodebuild -project Unity-iPhone.xcodeproj \
-                -scheme Unity-iPhone \
-                -configuration Release \
-                -sdk iphoneos \
-                -archivePath Unity-iPhone.xcarchive \
-                DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
-                CODE_SIGN_STYLE="Manual" \
-                CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
-                PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
-                PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
-                archive
-            }
+            CODE_SIGN_STYLE="Automatic" \
+            archive
           
-          # Create export options plist
+          # Create export options plist for automatic signing
           cat > exportOptions.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -148,15 +149,19 @@ jobs:
               <string>app-store</string>
               <key>teamID</key>
               <string>${{ secrets.IOS_TEAM_ID }}</string>
+              <key>signingStyle</key>
+              <string>automatic</string>
               <key>uploadBitcode</key>
               <false/>
               <key>uploadSymbols</key>
               <true/>
+              <key>generateAppStoreInformation</key>
+              <false/>
           </dict>
           </plist>
           EOF
           
-          # Export IPA
+          # Export IPA with automatic signing
           xcodebuild -exportArchive \
             -archivePath Unity-iPhone.xcarchive \
             -exportOptionsPlist exportOptions.plist \
