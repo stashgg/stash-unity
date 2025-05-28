@@ -120,14 +120,67 @@ jobs:
           
           # Set up the development team and provisioning profile in the project
           sed -i '' 's/DEVELOPMENT_TEAM = "";/DEVELOPMENT_TEAM = "DB5KZDZYT5";/g' Unity-iPhone.xcodeproj/project.pbxproj
+          sed -i '' 's/DEVELOPMENT_TEAM = \"\";/DEVELOPMENT_TEAM = DB5KZDZYT5;/g' Unity-iPhone.xcodeproj/project.pbxproj
+          sed -i '' '/CODE_SIGN_STYLE = Automatic;/a\
+            CODE_SIGN_IDENTITY = "Apple Distribution";\
+            PROVISIONING_PROFILE_SPECIFIER = "$PROFILE_UUID";
+          ' Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' "s/PROVISIONING_PROFILE_SPECIFIER = \"\";/PROVISIONING_PROFILE_SPECIFIER = \"$PROFILE_UUID\";/g" Unity-iPhone.xcodeproj/project.pbxproj
-          
+          sed -i '' 's/CODE_SIGN_IDENTITY = "iPhone Developer";/CODE_SIGN_IDENTITY = "Apple Distribution";/g' Unity-iPhone.xcodeproj/project.pbxproj
+
+          # More targeted sed commands for Release configuration
+          # Find the section for Release build settings for the main target
+          # This is a bit complex due to pbxproj format, aiming to set it for the correct target and configuration
+          awk '
+          BEGIN {FS = "[=;]"} 
+          /Begin PBXNativeTarget section/,/End PBXNativeTarget section/ {
+            if ($0 ~ /productName = Unity-iPhone/) {
+              target_block=1
+            }
+            if (target_block && $0 ~ /buildConfigurationList =/) {
+              split($3,a," "); configuration_list_id=a[1]; 
+            }
+          }
+          /Begin XCConfigurationList section/,/End XCConfigurationList section/ {
+            if ($0 ~ configuration_list_id) {
+              config_list_block=1
+            }
+            if (config_list_block && $0 ~ /buildConfigurations = \(/) {
+              in_build_configs=1
+            }
+            if (config_list_block && in_build_configs && $0 ~ /\);/) {
+              in_build_configs=0; config_list_block=0
+            }
+            if (config_list_block && in_build_configs && $0 ~ /[A-Z0-9]+ \* name = Release \*\//) {
+               release_config_id=$1; gsub(/ /,"",release_config_id)
+            }
+          }
+          END {print release_config_id} 
+          ' Unity-iPhone.xcodeproj/project.pbxproj > release_config_id.txt
+          RELEASE_CONFIG_ID=$(cat release_config_id.txt)
+
+          if [ ! -z "$RELEASE_CONFIG_ID" ]; then
+            echo "Modifying Release configuration: $RELEASE_CONFIG_ID"
+            sed -i '' "/				$RELEASE_CONFIG_ID \*\//,/^\t\t\t\};/ { \
+                s/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g; \
+                s/CODE_SIGN_IDENTITY = \".*\";/CODE_SIGN_IDENTITY = \"Apple Distribution\";/g; \
+                s/CODE_SIGN_IDENTITY = .*;/CODE_SIGN_IDENTITY = \"Apple Distribution\";/g; \
+                s/PROVISIONING_PROFILE_SPECIFIER = \".*\";/PROVISIONING_PROFILE_SPECIFIER = \"$PROFILE_UUID\";/g; \
+                s/PROVISIONING_PROFILE_SPECIFIER = .*;/PROVISIONING_PROFILE_SPECIFIER = \"$PROFILE_UUID\";/g; \
+                s/DEVELOPMENT_TEAM = \".*\";/DEVELOPMENT_TEAM = \"DB5KZDZYT5\";/g; \
+                s/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = DB5KZDZYT5;/g; \
+            }" Unity-iPhone.xcodeproj/project.pbxproj
+          else
+            echo "Warning: Could not find Release configuration ID to apply specific settings."
+          fi
+
           # Verify project settings
-          echo "=== Project Build Settings ==="
+          echo "=== Project Build Settings (Post-modification) ==="
           xcodebuild -project Unity-iPhone.xcodeproj -target Unity-iPhone -showBuildSettings | grep -E "(DEVELOPMENT_TEAM|CODE_SIGN|PROVISIONING_PROFILE)"
           
           # Build and archive
+          echo "Attempting to build and archive..."
           xcodebuild -project Unity-iPhone.xcodeproj \
             -scheme Unity-iPhone \
             -configuration Release \
@@ -135,6 +188,7 @@ jobs:
             -archivePath ./build/Unity-iPhone.xcarchive \
             DEVELOPMENT_TEAM="DB5KZDZYT5" \
             CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
             archive
           
