@@ -93,8 +93,9 @@ jobs:
         run: |
           cd build/iOS/iOS
           
-          # Set up Xcode project with team ID
-          /usr/libexec/PlistBuddy -c "Set :objects:*:attributes:DEVELOPMENT_TEAM ${{ secrets.IOS_TEAM_ID }}" Unity-iPhone.xcodeproj/project.pbxproj || true
+          # Set up Xcode project with team ID using sed (more reliable than PlistBuddy wildcards)
+          sed -i '' "s/DEVELOPMENT_TEAM = \"\";/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\";/g" Unity-iPhone.xcodeproj/project.pbxproj
+          sed -i '' "s/DEVELOPMENT_TEAM = ;/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\";/g" Unity-iPhone.xcodeproj/project.pbxproj
           
           xcodebuild -resolvePackageDependencies -project Unity-iPhone.xcodeproj -scheme Unity-iPhone
           
