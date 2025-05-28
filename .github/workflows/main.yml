@@ -61,8 +61,8 @@ jobs:
           if ls "$PROFILES_PATH"/*.mobileprovision 1> /dev/null 2>&1; then
             for profile in "$PROFILES_PATH"/*.mobileprovision; do
               echo "Inspecting $profile"
-              security cms -D -i "$profile" | grep -A 1 'TeamIdentifier' || echo "Failed to decode TeamIdentifier"
-              security cms -D -i "$profile" | grep -A 1 'com.apple.application-identifier' || echo "Failed to decode application-identifier"
+              security cms -D -i "$profile" | grep -A 3 'TeamIdentifier' || echo "Failed to decode TeamIdentifier"
+              security cms -D -i "$profile" | grep -A 3 'com.apple.application-identifier' || echo "Failed to decode application-identifier"
               echo "----------------------------------------"
             done
           else
