@@ -124,38 +124,14 @@ jobs:
           # - Set DEVELOPMENT_TEAM
           # - Set CODE_SIGN_IDENTITY to Apple Distribution (to guide automatic selection)
           # - Ensure PROVISIONING_PROFILE_SPECIFIER is cleared or not set to a specific UUID
-          sed -i '' '
-          /productName = Unity-iPhone;/,$!b;
-          /buildConfigurationList = /{N;N;N;N;N;N;N;N;N; \
-          s/CODE_SIGN_STYLE = Manual;/CODE_SIGN_STYLE = Automatic;/g; \
-          s/CODE_SIGN_STYLE = \"Manual\";/CODE_SIGN_STYLE = Automatic;/g; \
-          s/PROVISIONING_PROFILE_SPECIFIER = \".*\";/PROVISIONING_PROFILE_SPECIFIER = \"\";/g; \
-          s/PROVISIONING_PROFILE_SPECIFIER = .*;/PROVISIONING_PROFILE_SPECIFIER = \"\";/g; \
-          s/CODE_SIGN_IDENTITY = \".*\";/CODE_SIGN_IDENTITY = \"Apple Distribution\";/g; \
-          s/CODE_SIGN_IDENTITY = .*;/CODE_SIGN_IDENTITY = \"Apple Distribution\";/g; \
-          s/DEVELOPMENT_TEAM = \".*\";/DEVELOPMENT_TEAM = DB5KZDZYT5;/g; \
-          s/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = DB5KZDZYT5;/g; \
-          }
-          ' Unity-iPhone.xcodeproj/project.pbxproj
+          sed -i '' '/productName = Unity-iPhone;/,$!b;/buildConfigurationList = /{N;N;N;N;N;N;N;N;N; s/CODE_SIGN_STYLE = Manual;/CODE_SIGN_STYLE = Automatic;/g; s/CODE_SIGN_STYLE = \"Manual\";/CODE_SIGN_STYLE = Automatic;/g; s/PROVISIONING_PROFILE_SPECIFIER = \".*\";/PROVISIONING_PROFILE_SPECIFIER = \"\";/g; s/PROVISIONING_PROFILE_SPECIFIER = .*;/PROVISIONING_PROFILE_SPECIFIER = \"\";/g; s/CODE_SIGN_IDENTITY = \".*\";/CODE_SIGN_IDENTITY = \"Apple Distribution\";/g; s/CODE_SIGN_IDENTITY = .*;/CODE_SIGN_IDENTITY = \"Apple Distribution\";/g; s/DEVELOPMENT_TEAM = \".*\";/DEVELOPMENT_TEAM = DB5KZDZYT5;/g; s/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = DB5KZDZYT5;/g;}' Unity-iPhone.xcodeproj/project.pbxproj
           
           # For the UnityFramework target:
           # - Set CODE_SIGN_STYLE to Automatic
           # - Set DEVELOPMENT_TEAM
           # - Set CODE_SIGN_IDENTITY to Apple Developer (general for frameworks)
           # - Ensure PROVISIONING_PROFILE_SPECIFIER is cleared
-          sed -i '' '
-          /productName = UnityFramework;/,$!b;
-          /buildConfigurationList = /{N;N;N;N;N;N;N;N;N; \
-          s/CODE_SIGN_STYLE = Manual;/CODE_SIGN_STYLE = Automatic;/g; \
-          s/CODE_SIGN_STYLE = \"Manual\";/CODE_SIGN_STYLE = Automatic;/g; \
-          s/PROVISIONING_PROFILE_SPECIFIER = \".*\";/PROVISIONING_PROFILE_SPECIFIER = \"\";/g; \
-          s/PROVISIONING_PROFILE_SPECIFIER = .*;/PROVISIONING_PROFILE_SPECIFIER = \"\";/g; \
-          s/CODE_SIGN_IDENTITY = \".*\";/CODE_SIGN_IDENTITY = \"Apple Developer\";/g; \
-          s/CODE_SIGN_IDENTITY = .*;/CODE_SIGN_IDENTITY = \"Apple Developer\";/g; \
-          s/DEVELOPMENT_TEAM = \".*\";/DEVELOPMENT_TEAM = DB5KZDZYT5;/g; \
-          s/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = DB5KZDZYT5;/g; \
-          }
-          ' Unity-iPhone.xcodeproj/project.pbxproj
+          sed -i '' '/productName = UnityFramework;/,$!b;/buildConfigurationList = /{N;N;N;N;N;N;N;N;N; s/CODE_SIGN_STYLE = Manual;/CODE_SIGN_STYLE = Automatic;/g; s/CODE_SIGN_STYLE = \"Manual\";/CODE_SIGN_STYLE = Automatic;/g; s/PROVISIONING_PROFILE_SPECIFIER = \".*\";/PROVISIONING_PROFILE_SPECIFIER = \"\";/g; s/PROVISIONING_PROFILE_SPECIFIER = .*;/PROVISIONING_PROFILE_SPECIFIER = \"\";/g; s/CODE_SIGN_IDENTITY = \".*\";/CODE_SIGN_IDENTITY = \"Apple Developer\";/g; s/CODE_SIGN_IDENTITY = .*;/CODE_SIGN_IDENTITY = \"Apple Developer\";/g; s/DEVELOPMENT_TEAM = \".*\";/DEVELOPMENT_TEAM = DB5KZDZYT5;/g; s/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = DB5KZDZYT5;/g;}' Unity-iPhone.xcodeproj/project.pbxproj
           
           # Verify project settings
           echo "=== Project (Unity-iPhone) Build Settings (Post-modification for Automatic Signing) ==="
