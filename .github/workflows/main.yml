@@ -58,6 +58,22 @@ jobs:
           api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
       
+      - name: Verify iOS setup
+        if: inputs.platform == 'iOS'
+        run: |
+          echo "Available signing identities:"
+          security find-identity -v -p codesigning
+          echo ""
+          echo "Installed provisioning profiles:"
+          ls -la ~/Library/MobileDevice/Provisioning\ Profiles/
+          echo ""
+          echo "Profile details:"
+          for profile in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
+            echo "Profile: $profile"
+            security cms -D -i "$profile" | grep -E 'TeamIdentifier|UUID|Name|com.stash.sdkdemo' -A1
+            echo "---"
+          done
+      
       # Build Unity project
       - name: Build Unity project
         uses: game-ci/unity-builder@v4
@@ -81,14 +97,21 @@ jobs:
         run: |
           cd build/iOS/iOS
           
+          # Find the provisioning profile UUID
+          PROFILE_UUID=$(security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | grep -A1 'UUID' | grep -o '[0-9a-fA-F]\{8\}-[0-9a-fA-F]\{4\}-[0-9a-fA-F]\{4\}-[0-9a-fA-F]\{4\}-[0-9a-fA-F]\{12\}' | head -1)
+          echo "Using provisioning profile UUID: $PROFILE_UUID"
+          
           # Configure Xcode project with team ID
           xcodebuild -project Unity-iPhone.xcodeproj \
             -scheme Unity-iPhone \
             -configuration Release \
             -sdk iphoneos \
             -archivePath Unity-iPhone.xcarchive \
-            -allowProvisioningUpdates \
             DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
+            CODE_SIGN_STYLE="Manual" \
+            CODE_SIGN_IDENTITY="iPhone Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
+            PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
             archive
           
           # Create export options plist
@@ -102,7 +125,12 @@ jobs:
               <key>teamID</key>
               <string>${{ secrets.IOS_TEAM_ID }}</string>
               <key>signingStyle</key>
-              <string>automatic</string>
+              <string>manual</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>com.stash.sdkdemo</key>
+                  <string>$PROFILE_UUID</string>
+              </dict>
               <key>uploadBitcode</key>
               <false/>
               <key>uploadSymbols</key>
@@ -115,8 +143,7 @@ jobs:
           xcodebuild -exportArchive \
             -archivePath Unity-iPhone.xcarchive \
             -exportOptionsPlist exportOptions.plist \
-            -exportPath export \
-            -allowProvisioningUpdates
+            -exportPath export
       
       # iOS: Upload to TestFlight
       - name: Upload to TestFlight
