@@ -35,6 +35,8 @@ jobs:
         with:
           p12-file-base64: ${{ secrets.IOS_P12_BASE64 }}
           p12-password: ${{ secrets.IOS_P12_PASSWORD }}
+          create-keychain: true
+          keychain-password: ${{ secrets.IOS_P12_PASSWORD }}
 
       - if: inputs.platform == 'iOS'
         name: Install Provisioning Profile
@@ -45,6 +47,14 @@ jobs:
           issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
+
+      - if: inputs.platform == 'iOS'
+        name: Setup Xcode Account
+        run: |
+          xcrun xcodebuild -list
+          xcrun xcodebuild -showsdks
+          xcrun xcodebuild -version
+          xcrun xcodebuild -list -json
 
       - uses: game-ci/unity-builder@v4
         env:
