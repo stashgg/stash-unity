@@ -1,18 +1,21 @@
 name: Build project
 
-on: [push, pull_request]
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to build for'
+        required: true
+        type: choice
+        options:
+          - StandaloneWindows64
+          - Android
+          - iOS
 
 jobs:
   buildForAllSupportedPlatforms:
-    name: Build for ${{ matrix.targetPlatform }}
-    runs-on: ${{ matrix.targetPlatform == 'iOS' && 'macos-latest' || 'ubuntu-latest' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        targetPlatform:
-          - StandaloneWindows64 # Build a Windows 64-bit standalone.
-          - Android # Build an Android .apk standalone app.
-          - iOS # Build an iOS app.
+    name: Build for ${{ inputs.platform }}
+    runs-on: ${{ inputs.platform == 'iOS' && 'macos-latest' || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -21,17 +24,17 @@ jobs:
       - uses: actions/cache@v3
         with:
           path: Library
-          key: Library-${{ matrix.targetPlatform }}
+          key: Library-${{ inputs.platform }}
           restore-keys: Library-
-      - if: matrix.targetPlatform == 'Android'
+      - if: inputs.platform == 'Android'
         uses: jlumbroso/free-disk-space@v1.3.1
-      - if: matrix.targetPlatform == 'iOS'
+      - if: inputs.platform == 'iOS'
         name: Install Apple Certificate
         uses: apple-actions/import-codesign-certs@v1
         with:
           p12-file-base64: ${{ secrets.IOS_P12_BASE64 }}
           p12-password: ${{ secrets.IOS_P12_PASSWORD }}
-      - if: matrix.targetPlatform == 'iOS'
+      - if: inputs.platform == 'iOS'
         name: Install Provisioning Profile
         uses: apple-actions/download-provisioning-profiles@v1
         with:
@@ -40,7 +43,7 @@ jobs:
           issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
-      - if: matrix.targetPlatform == 'iOS'
+      - if: inputs.platform == 'iOS'
         name: Setup Apple Developer Account
         run: |
           # Create Xcode settings directory
@@ -70,10 +73,22 @@ jobs:
           
           # Add the certificate to the keychain
           echo "${{ secrets.IOS_P12_BASE64 }}" | base64 --decode > cert.p12
+          echo "Certificate file size: $(ls -l cert.p12)"
           security import cert.p12 -k build.keychain -P "${{ secrets.IOS_P12_PASSWORD }}" -T /usr/bin/codesign
+          
+          # List all items in the keychain
+          echo "Listing all items in the keychain:"
+          security find-identity -v -p codesigning build.keychain
+          
+          # Show keychain settings
+          echo "Keychain settings:"
+          security show-keychain-info build.keychain
+          
+          # Set keychain settings
           security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
           
-          # List available identities
+          # List available identities again
+          echo "Available identities after setup:"
           security find-identity -v -p codesigning
           
           # Clean up certificate file
@@ -90,18 +105,18 @@ jobs:
           androidKeyaliasName: ${{ secrets.ANDROID_KEYALIAS_NAME }}
           androidKeyaliasPass: ${{ secrets.ANDROID_KEYALIAS_PASS }}
         with:
-          targetPlatform: ${{ matrix.targetPlatform }}
-      - if: matrix.targetPlatform == 'iOS'
+          targetPlatform: ${{ inputs.platform }}
+      - if: inputs.platform == 'iOS'
         name: Copy exportOptions.plist
         run: |
           cp .github/workflows/exportOptions.plist build/iOS/iOS/
-      - if: matrix.targetPlatform == 'iOS'
+      - if: inputs.platform == 'iOS'
         name: Debug Build Directory
         run: |
           cd build/iOS/iOS
           pwd
           ls -la
-      - if: matrix.targetPlatform == 'iOS'
+      - if: inputs.platform == 'iOS'
         name: Build and Archive iOS App
         run: |
           cd build/iOS/iOS
@@ -113,12 +128,12 @@ jobs:
           fi
           xcodebuild -project Unity-iPhone.xcodeproj -scheme Unity-iPhone -configuration Release -sdk iphoneos build archive -archivePath ./build/Unity-iPhone.xcarchive -allowProvisioningUpdates
           xcodebuild -exportArchive -archivePath ./build/Unity-iPhone.xcarchive -exportOptionsPlist exportOptions.plist -exportPath ./build -allowProvisioningUpdates
-      - if: matrix.targetPlatform == 'iOS'
+      - if: inputs.platform == 'iOS'
         name: Upload to TestFlight
         run: |
-          cd build/iOS/build
+          cd build/iOS/iOS/build
           xcrun altool --upload-app --type ios --file "Unity-iPhone.ipa" --apiKey "${{ secrets.APPSTORE_KEY_ID }}" --apiIssuer "${{ secrets.APPSTORE_ISSUER_ID }}"
       - uses: actions/upload-artifact@v4
         with:
-          name: Build-${{ matrix.targetPlatform }}
-          path: build/${{ matrix.targetPlatform }}
+          name: Build-${{ inputs.platform }}
+          path: build/${{ inputs.platform }}
