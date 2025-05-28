@@ -41,15 +41,48 @@ jobs:
         uses: jlumbroso/free-disk-space@v1.3.1
       
       # iOS: Setup certificates and provisioning profiles
+      - name: Clean iOS certificate state
+        if: inputs.platform == 'iOS'
+        run: |
+          # Create App Store Connect API key for certificate management
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "${{ secrets.APPSTORE_PRIVATE_KEY }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8
+          
+          # Delete any existing keychains that might have conflicting certificates
+          security list-keychains | grep -o '/[^"]*\.keychain' | xargs -I {} security delete-keychain {} 2>/dev/null || true
+          
+          # Reset the keychain list to system defaults
+          security list-keychains -s ~/Library/Keychains/login.keychain-db /Library/Keychains/System.keychain
+          
+          # Clear any cached Xcode signing state
+          rm -rf ~/Library/Developer/Xcode/DerivedData/*/Build/Intermediates.noindex/ArchiveIntermediates/*/IntermediateBuildFilesPath/XCBuildData/*.xcbuilddata 2>/dev/null || true
+          
+          echo "Certificate state cleaned successfully"
+      
       - name: Setup iOS certificates
         if: inputs.platform == 'iOS'
-        uses: Apple-Actions/import-codesign-certs@v3
-        with:
-          p12-file-base64: ${{ secrets.IOS_P12_BASE64 }}
-          p12-password: ${{ secrets.IOS_P12_PASSWORD }}
-          create-keychain: true
-          keychain: signing_temp
-          keychain-password: ${{ secrets.IOS_P12_PASSWORD }}
+        run: |
+          # Create a unique keychain to avoid conflicts
+          KEYCHAIN_NAME="build-$(date +%s).keychain"
+          KEYCHAIN_PASSWORD="${{ secrets.IOS_P12_PASSWORD }}"
+          
+          # Create and configure keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
+          security default-keychain -s "$KEYCHAIN_NAME"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
+          security set-keychain-settings -t 3600 -u "$KEYCHAIN_NAME"
+          
+          # Import certificate
+          echo "${{ secrets.IOS_P12_BASE64 }}" | base64 --decode > certificate.p12
+          security import certificate.p12 -k "$KEYCHAIN_NAME" -P "${{ secrets.IOS_P12_PASSWORD }}" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
+          
+          # Store keychain name for later steps
+          echo "KEYCHAIN_NAME=$KEYCHAIN_NAME" >> $GITHUB_ENV
+          echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
+          
+          # Clean up certificate file
+          rm certificate.p12
       
       - name: Download iOS provisioning profiles
         if: inputs.platform == 'iOS'
@@ -136,10 +169,9 @@ jobs:
           mkdir -p ~/.appstoreconnect/private_keys
           echo "${{ secrets.APPSTORE_PRIVATE_KEY }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8
           
-          # Set the default keychain
-          security default-keychain -s signing_temp.keychain
-          security unlock-keychain -p "${{ secrets.IOS_P12_PASSWORD }}" signing_temp.keychain
-          security set-keychain-settings -t 3600 -u signing_temp.keychain
+          # Ensure our keychain is active and unlocked
+          security default-keychain -s "$KEYCHAIN_NAME"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
           
           # Update project.pbxproj to set team ID for all targets
           sed -i '' "s/DevelopmentTeam = \"[^\"]*\"/DevelopmentTeam = \"${{ secrets.IOS_TEAM_ID }}\"/g" Unity-iPhone.xcodeproj/project.pbxproj
@@ -147,26 +179,53 @@ jobs:
           sed -i '' "s/DEVELOPMENT_TEAM = \"[^\"]*\"/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\"/g" Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' "s/DEVELOPMENT_TEAM = ;/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\";/g" Unity-iPhone.xcodeproj/project.pbxproj
           
-          # Also update code signing settings to be consistent
+          # Ensure code signing settings are consistent
           sed -i '' 's/CODE_SIGN_STYLE = Manual/CODE_SIGN_STYLE = Automatic/g' Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' 's/CODE_SIGN_IDENTITY = "[^"]*"/CODE_SIGN_IDENTITY = "Apple Development"/g' Unity-iPhone.xcodeproj/project.pbxproj
           
-          # Build with explicit settings
-          xcodebuild -project Unity-iPhone.xcodeproj \
-            -scheme Unity-iPhone \
-            -configuration Release \
-            -sdk iphoneos \
-            -archivePath Unity-iPhone.xcarchive \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8 \
-            -authenticationKeyID ${{ secrets.APPSTORE_KEY_ID }} \
-            -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }} \
-            DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
-            PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
-            CODE_SIGN_STYLE="Automatic" \
-            CODE_SIGNING_ALLOWED="YES" \
-            CODE_SIGNING_REQUIRED="YES" \
-            archive
+          # Build with retry logic
+          for attempt in 1 2 3; do
+            echo "Build attempt $attempt..."
+            
+            if xcodebuild -project Unity-iPhone.xcodeproj \
+              -scheme Unity-iPhone \
+              -configuration Release \
+              -sdk iphoneos \
+              -archivePath Unity-iPhone.xcarchive \
+              -allowProvisioningUpdates \
+              -allowProvisioningDeviceRegistration \
+              -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8 \
+              -authenticationKeyID ${{ secrets.APPSTORE_KEY_ID }} \
+              -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }} \
+              DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
+              PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
+              CODE_SIGN_STYLE="Automatic" \
+              CODE_SIGNING_ALLOWED="YES" \
+              CODE_SIGNING_REQUIRED="YES" \
+              archive; then
+              echo "Build succeeded on attempt $attempt"
+              break
+            else
+              if [ $attempt -eq 3 ]; then
+                echo "Build failed after 3 attempts"
+                exit 1
+              fi
+              echo "Build failed on attempt $attempt, retrying..."
+              
+              # On retry, clean up any certificate conflicts more aggressively
+              if [ $attempt -eq 2 ]; then
+                echo "Attempting to resolve certificate conflicts..."
+                # Force Xcode to revoke and recreate certificates by clearing more state
+                rm -rf ~/Library/Developer/Xcode/DerivedData/* 2>/dev/null || true
+                rm -rf ~/Library/Caches/com.apple.dt.Xcode* 2>/dev/null || true
+                
+                # Re-unlock keychain
+                security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
+              fi
+              
+              sleep 10
+            fi
+          done
           
           # Create export options plist
           cat > exportOptions.plist << EOF
