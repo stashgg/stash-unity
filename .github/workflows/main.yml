@@ -54,7 +54,7 @@ jobs:
             <key>method</key>
             <string>app-store</string>
             <key>teamID</key>
-            <string>${{ secrets.IOS_TEAM_ID }}</string>
+            <string>DB5KZDZYT5</string>
             <key>uploadBitcode</key>
             <false/>
             <key>uploadSymbols</key>
@@ -93,9 +93,18 @@ jobs:
           # Copy exportOptions.plist to the correct location
           cp ../../../exportOptions.plist .
           
-          # Set up the development team in the project
-          sed -i '' 's/DEVELOPMENT_TEAM = "";/DEVELOPMENT_TEAM = "${{ secrets.IOS_TEAM_ID }}";/g' Unity-iPhone.xcodeproj/project.pbxproj
+          # Get the provisioning profile UUID
+          PROFILE_UUID=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/ | head -1 | sed 's/.mobileprovision//')
+          echo "Using provisioning profile: $PROFILE_UUID"
+          
+          # Set up the development team and provisioning profile in the project
+          sed -i '' 's/DEVELOPMENT_TEAM = "";/DEVELOPMENT_TEAM = "DB5KZDZYT5";/g' Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' Unity-iPhone.xcodeproj/project.pbxproj
+          sed -i '' "s/PROVISIONING_PROFILE_SPECIFIER = \"\";/PROVISIONING_PROFILE_SPECIFIER = \"$PROFILE_UUID\";/g" Unity-iPhone.xcodeproj/project.pbxproj
+          
+          # Verify project settings
+          echo "=== Project Build Settings ==="
+          xcodebuild -project Unity-iPhone.xcodeproj -target Unity-iPhone -showBuildSettings | grep -E "(DEVELOPMENT_TEAM|CODE_SIGN|PROVISIONING_PROFILE)"
           
           # Build and archive
           xcodebuild -project Unity-iPhone.xcodeproj \
@@ -103,8 +112,9 @@ jobs:
             -configuration Release \
             -sdk iphoneos \
             -archivePath ./build/Unity-iPhone.xcarchive \
-            DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
+            DEVELOPMENT_TEAM="DB5KZDZYT5" \
             CODE_SIGN_STYLE=Manual \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
             archive
           
           # Export the archive
