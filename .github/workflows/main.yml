@@ -65,7 +65,7 @@ jobs:
       - if: inputs.platform == 'iOS'
         name: Build and Archive iOS App
         run: |
-
+          cd build/iOS/iOS
           xcodebuild -resolvePackageDependencies -project Unity-iPhone.xcodeproj -scheme Unity-iPhone
           
           xcodebuild -project Unity-iPhone.xcodeproj \
