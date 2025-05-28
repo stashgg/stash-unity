@@ -92,8 +92,8 @@ jobs:
           security find-identity -v -p codesigning
           
           # Verify we have a distribution certificate
-          if ! security find-identity -v -p codesigning | grep -q "iOS Distribution"; then
-            echo "Error: No iOS Distribution certificate found. Please make sure you're using an iOS Distribution certificate for TestFlight uploads."
+          if ! security find-identity -v -p codesigning | grep -q "Apple Distribution"; then
+            echo "Error: No Apple Distribution certificate found. Please make sure you're using a distribution certificate for TestFlight uploads."
             exit 1
           fi
           
