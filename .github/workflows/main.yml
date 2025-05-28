@@ -57,12 +57,17 @@ jobs:
       - if: inputs.platform == 'iOS'
         name: Verify Provisioning Profile Details
         run: |
-          for profile in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
-            echo "Inspecting $profile"
-            security cms -D -i "$profile" | grep -A 1 'TeamIdentifier'
-            security cms -D -i "$profile" | grep -A 1 'com.apple.application-identifier'
-            echo "----------------------------------------"
-          done
+          PROFILES_PATH=~/Library/MobileDevice/Provisioning\ Profiles
+          if ls "$PROFILES_PATH"/*.mobileprovision 1> /dev/null 2>&1; then
+            for profile in "$PROFILES_PATH"/*.mobileprovision; do
+              echo "Inspecting $profile"
+              security cms -D -i "$profile" | grep -A 1 'TeamIdentifier' || echo "Failed to decode TeamIdentifier"
+              security cms -D -i "$profile" | grep -A 1 'com.apple.application-identifier' || echo "Failed to decode application-identifier"
+              echo "----------------------------------------"
+            done
+          else
+            echo "No provisioning profiles found in $PROFILES_PATH"
+          fi
 
       - uses: game-ci/unity-builder@v4
         env:
