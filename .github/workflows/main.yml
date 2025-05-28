@@ -43,7 +43,7 @@ jobs:
         uses: Apple-Actions/download-provisioning-profiles@v4.0.0
         with:
           bundle-id: 'com.stash.sdkdemo'
-          profile-type: 'IOS_APP_STORE'
+          profile-type: 'IOS_APP_DEVELOPMENT'
           issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
@@ -63,66 +63,18 @@ jobs:
           targetPlatform: ${{ inputs.platform }}
           
       - if: inputs.platform == 'iOS'
-        name: Create Export Options Plist
-        run: |
-          cat > build/iOS/iOS/exportOptions.plist << EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>method</key>
-              <string>app-store</string>
-              <key>uploadBitcode</key>
-              <false/>
-              <key>uploadSymbols</key>
-              <true/>
-              <key>compileBitcode</key>
-              <false/>
-              <key>teamID</key>
-              <string>${{ secrets.IOS_TEAM_ID }}</string>
-              <key>signingStyle</key>
-              <string>manual</string>
-              <key>provisioningProfiles</key>
-              <dict>
-                  <key>com.stash.sdkdemo</key>
-                  <string>${{ secrets.IOS_PROVISIONING_PROFILE_NAME }}</string>
-              </dict>
-              <key>destination</key>
-              <string>export</string>
-          </dict>
-          </plist>
-          EOF
-
-      - if: inputs.platform == 'iOS'
         name: Build and Archive iOS App
         run: |
           cd build/iOS/iOS
           
-          # Set up code signing identity
-          CERTIFICATE_NAME="${{ secrets.IOS_CERTIFICATE_NAME }}"
-          TEAM_ID="${{ secrets.IOS_TEAM_ID }}"
-          PROVISIONING_PROFILE_NAME="${{ secrets.IOS_PROVISIONING_PROFILE_NAME }}"
-          
-          # Clean any previous builds
-          xcodebuild clean -project Unity-iPhone.xcodeproj -scheme Unity-iPhone
-          
-          # Resolve package dependencies
-          xcodebuild -resolvePackageDependencies -project Unity-iPhone.xcodeproj -scheme Unity-iPhone
-          
-          # Archive the project with manual code signing
-          xcodebuild archive \
-            -project Unity-iPhone.xcodeproj \
+          xcodebuild -project Unity-iPhone.xcodeproj \
             -scheme Unity-iPhone \
             -configuration Release \
             -sdk iphoneos \
             -archivePath ./build/Unity-iPhone.xcarchive \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="$CERTIFICATE_NAME" \
-            DEVELOPMENT_TEAM="$TEAM_ID" \
-            PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_NAME" \
-            -allowProvisioningUpdates
+            -allowProvisioningUpdates \
+            archive
           
-          # Export IPA
           xcodebuild -exportArchive \
             -archivePath ./build/Unity-iPhone.xcarchive \
             -exportOptionsPlist exportOptions.plist \
