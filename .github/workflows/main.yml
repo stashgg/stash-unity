@@ -78,6 +78,8 @@ jobs:
             -configuration Release \
             -sdk iphoneos \
             -archivePath ./build/Unity-iPhone.xcarchive \
+            DEVELOPMENT_TEAM="DB5KZDZYT5" \
+            CODE_SIGN_IDENTITY="Apple Development: Ondřej Řeháček (DC7Y8ZKSC8)" \
             -allowProvisioningUpdates \
             archive
           
