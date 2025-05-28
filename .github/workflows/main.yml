@@ -71,6 +71,13 @@ jobs:
           xcrun xcodebuild -showsdks
           xcrun xcodebuild -version
           xcrun xcodebuild -list -json
+          
+          # Add Apple account
+          xcrun xcodebuild -resolvePackageDependencies
+          xcrun xcodebuild -resolvePackageDependencies -workspace Unity-iPhone.xcworkspace
+          
+          # List available accounts
+          xcrun xcodebuild -list -json
 
           xcodebuild -project Unity-iPhone.xcodeproj \
             -scheme Unity-iPhone \
