@@ -1,4 +1,4 @@
-name: Build project
+name: Build Unity Project
 
 on:
   workflow_dispatch:
@@ -13,81 +13,86 @@ on:
           - iOS
 
 jobs:
-  buildForAllSupportedPlatforms:
+  build:
     name: Build for ${{ inputs.platform }}
     runs-on: ${{ inputs.platform == 'iOS' && 'macos-latest' || 'ubuntu-latest' }}
+    
     steps:
-      - uses: actions/checkout@v4
+      # Checkout repository with LFS support
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
           lfs: true
-      - uses: actions/cache@v3
+      
+      # Cache Unity Library folder
+      - name: Cache Unity Library
+        uses: actions/cache@v3
         with:
           path: Library
-          key: Library-${{ inputs.platform }}
-          restore-keys: Library-
-      - if: inputs.platform == 'Android'
+          key: Library-${{ inputs.platform }}-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-${{ inputs.platform }}-
+            Library-
+      
+      # Free up disk space for Android builds
+      - name: Free disk space (Android only)
+        if: inputs.platform == 'Android'
         uses: jlumbroso/free-disk-space@v1.3.1
-
-      - if: inputs.platform == 'iOS'
-        name: Install Apple Certificate
-        uses: Apple-Actions/import-codesign-certs@v5.0.1
+      
+      # iOS: Setup certificates and provisioning profiles
+      - name: Setup iOS certificates
+        if: inputs.platform == 'iOS'
+        uses: Apple-Actions/import-codesign-certs@v3
         with:
           p12-file-base64: ${{ secrets.IOS_P12_BASE64 }}
           p12-password: ${{ secrets.IOS_P12_PASSWORD }}
-          create-keychain: true
-          keychain-password: ${{ secrets.IOS_P12_PASSWORD }}
-
-      - if: inputs.platform == 'iOS'
-        name: Install Provisioning Profile
-        uses: Apple-Actions/download-provisioning-profiles@v4.0.0
+      
+      - name: Download iOS provisioning profiles
+        if: inputs.platform == 'iOS'
+        uses: Apple-Actions/download-provisioning-profiles@v3
         with:
           bundle-id: 'com.stash.sdkdemo'
           profile-type: 'IOS_APP_STORE'
           issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
-
-      - if: inputs.platform == 'iOS'
-        name: Verify Provisioning Profile
-        run: |
-          security find-identity -v -p codesigning
-          ls -l ~/Library/MobileDevice/Provisioning\ Profiles/
-
-      - if: inputs.platform == 'iOS'
-        name: Verify Provisioning Profile Details
-        run: |
-          PROFILES_PATH=~/Library/MobileDevice/Provisioning\ Profiles
-          if ls "$PROFILES_PATH"/*.mobileprovision 1> /dev/null 2>&1; then
-            for profile in "$PROFILES_PATH"/*.mobileprovision; do
-              echo "Inspecting $profile"
-              security cms -D -i "$profile" | grep -A 3 'TeamIdentifier' || echo "Failed to decode TeamIdentifier"
-              security cms -D -i "$profile" | grep -A 3 -i 'application' || echo "Failed to find application-related fields"
-              security cms -D -i "$profile" | grep -A 3 -i 'bundle' || echo "Failed to find bundle-related fields"
-              echo "----------------------------------------"
-            done
-          else
-            echo "No provisioning profiles found in $PROFILES_PATH"
-          fi
-
-      - uses: game-ci/unity-builder@v4
+      
+      # Build Unity project
+      - name: Build Unity project
+        uses: game-ci/unity-builder@v4
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-          androidExportType: 'androidAppBundle'
-          androidKeystoreName: user.keystore
-          androidKeystoreBase64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          androidKeystorePass: ${{ secrets.ANDROID_KEYSTORE_PASS }}
-          androidKeyaliasName: ${{ secrets.ANDROID_KEYALIAS_NAME }}
-          androidKeyaliasPass: ${{ secrets.ANDROID_KEYALIAS_PASS }}
         with:
           targetPlatform: ${{ inputs.platform }}
-          
-      - if: inputs.platform == 'iOS'
-        name: Create Export Options Plist
+          buildName: ${{ inputs.platform == 'iOS' && 'iOS' || inputs.platform }}
+          androidExportType: ${{ inputs.platform == 'Android' && 'androidAppBundle' || '' }}
+          androidKeystoreName: ${{ inputs.platform == 'Android' && 'user.keystore' || '' }}
+          androidKeystoreBase64: ${{ inputs.platform == 'Android' && secrets.ANDROID_KEYSTORE_BASE64 || '' }}
+          androidKeystorePass: ${{ inputs.platform == 'Android' && secrets.ANDROID_KEYSTORE_PASS || '' }}
+          androidKeyaliasName: ${{ inputs.platform == 'Android' && secrets.ANDROID_KEYALIAS_NAME || '' }}
+          androidKeyaliasPass: ${{ inputs.platform == 'Android' && secrets.ANDROID_KEYALIAS_PASS || '' }}
+      
+      # iOS: Build Xcode project and create IPA
+      - name: Build iOS Xcode project
+        if: inputs.platform == 'iOS'
         run: |
-          cat > build/iOS/iOS/exportOptions.plist << EOF
+          cd build/iOS/iOS
+          
+          # Configure Xcode project with team ID
+          xcodebuild -project Unity-iPhone.xcodeproj \
+            -scheme Unity-iPhone \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath Unity-iPhone.xcarchive \
+            -allowProvisioningUpdates \
+            DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
+            archive
+          
+          # Create export options plist
+          cat > exportOptions.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -96,57 +101,37 @@ jobs:
               <string>app-store</string>
               <key>teamID</key>
               <string>${{ secrets.IOS_TEAM_ID }}</string>
+              <key>signingStyle</key>
+              <string>automatic</string>
               <key>uploadBitcode</key>
               <false/>
               <key>uploadSymbols</key>
               <true/>
-              <key>compileBitcode</key>
-              <false/>
-              <key>signingStyle</key>
-              <string>automatic</string>
-              <key>destination</key>
-              <string>export</string>
           </dict>
           </plist>
           EOF
-
-      - if: inputs.platform == 'iOS'
-        name: Build and Archive iOS App
-        run: |
-          cd build/iOS/iOS
           
-          # Set up Xcode project with team ID using sed (more reliable than PlistBuddy wildcards)
-          sed -i '' "s/DEVELOPMENT_TEAM = \"\"";/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\";/g" Unity-iPhone.xcodeproj/project.pbxproj
-          sed -i '' "s/DEVELOPMENT_TEAM = ;/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\";/g" Unity-iPhone.xcodeproj/project.pbxproj
-          
-          xcodebuild -resolvePackageDependencies -project Unity-iPhone.xcodeproj -scheme Unity-iPhone
-          
-          xcodebuild -project Unity-iPhone.xcodeproj \
-            -scheme Unity-iPhone \
-            -configuration Release \
-            -sdk iphoneos \
-            -archivePath ./build/Unity-iPhone.xcarchive \
-            -allowProvisioningUpdates \
-            DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
-            CODE_SIGN_IDENTITY="iPhone Distribution" \
-            PROVISIONING_PROFILE_SPECIFIER="match AppStore com.stash.sdkdemo" \
-            archive
-          
+          # Export IPA
           xcodebuild -exportArchive \
-            -archivePath ./build/Unity-iPhone.xcarchive \
+            -archivePath Unity-iPhone.xcarchive \
             -exportOptionsPlist exportOptions.plist \
-            -exportPath ./build \
+            -exportPath export \
             -allowProvisioningUpdates
-            
-      - if: inputs.platform == 'iOS'
-        name: Upload to TestFlight
-        uses: apple-actions/upload-testflight-build@v3
+      
+      # iOS: Upload to TestFlight
+      - name: Upload to TestFlight
+        if: inputs.platform == 'iOS'
+        uses: apple-actions/upload-testflight-build@v1
         with:
-          app-path: 'build/iOS/iOS/build/Unity-iPhone.ipa'
+          app-path: 'build/iOS/iOS/export/Unity-iPhone.ipa'
           issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
-      - uses: actions/upload-artifact@v4
+      
+      # Upload build artifacts
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
         with:
           name: Build-${{ inputs.platform }}
           path: build/${{ inputs.platform }}
+          retention-days: 7
