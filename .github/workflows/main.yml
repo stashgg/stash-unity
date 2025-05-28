@@ -28,21 +28,23 @@ jobs:
           restore-keys: Library-
       - if: inputs.platform == 'Android'
         uses: jlumbroso/free-disk-space@v1.3.1
+
       - if: inputs.platform == 'iOS'
         name: Install Apple Certificate
         uses: apple-actions/import-codesign-certs@v1
         with:
           p12-file-base64: ${{ secrets.IOS_P12_BASE64 }}
           p12-password: ${{ secrets.IOS_P12_PASSWORD }}
+
       - if: inputs.platform == 'iOS'
         name: Install Provisioning Profile
         uses: apple-actions/download-provisioning-profiles@v1
         with:
           bundle-id: 'com.stash.sdkdemo'
-          profile-type: 'IOS_APP_DEVELOPMENT'
           issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
+
       - if: inputs.platform == 'iOS'
         name: Verify iOS Setup
         run: |
@@ -52,6 +54,7 @@ jobs:
           ls -la ~/Library/MobileDevice/Provisioning\ Profiles/
           echo "=== Available Teams ==="
           xcrun xcodebuild -showBuildSettings | grep DEVELOPMENT_TEAM || echo "No team found"
+
       - uses: game-ci/unity-builder@v4
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
@@ -65,49 +68,11 @@ jobs:
           androidKeyaliasPass: ${{ secrets.ANDROID_KEYALIAS_PASS }}
         with:
           targetPlatform: ${{ inputs.platform }}
+          
       - if: inputs.platform == 'iOS'
         name: Build and Archive iOS App
         run: |
-          # Create exportOptions.plist
-          cat > exportOptions.plist << EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>app-store</string>
-            <key>teamID</key>
-            <string>DC7Y8ZKSC8</string>
-            <key>uploadBitcode</key>
-            <false/>
-            <key>uploadSymbols</key>
-            <true/>
-            <key>compileBitcode</key>
-            <false/>
-          </dict>
-          </plist>
-          EOF
-          
           cd build/iOS/iOS
-          # Copy exportOptions.plist to the correct location
-          cp ../../../exportOptions.plist .
-          
-          # Get the provisioning profile UUID
-          PROFILE_UUID=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/ | head -1 | sed 's/.mobileprovision//')
-          echo "Using provisioning profile: $PROFILE_UUID"
-          
-          # Get provisioning profile details
-          echo "=== Provisioning Profile Details ==="
-          security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | plutil -p -
-          
-          # Verify project settings (still useful to see what Xcode resolves)
-          echo "=== Project (Unity-iPhone) Build Settings (Using unmodified project settings from Unity build) ==="
-          xcodebuild -project Unity-iPhone.xcodeproj -target Unity-iPhone -showBuildSettings | grep -E "(DEVELOPMENT_TEAM|CODE_SIGN|PROVISIONING_PROFILE)"
-          echo "=== UnityFramework Build Settings (Using unmodified project settings from Unity build) ==="
-          xcodebuild -project Unity-iPhone.xcodeproj -target UnityFramework -showBuildSettings | grep -E "(DEVELOPMENT_TEAM|CODE_SIGN|PROVISIONING_PROFILE)"
-          
-          # Build and archive with Automatic Signing, guided by Development Certificate
-          echo "Attempting to build and archive with Automatic Signing (guided by Development Certificate)..."
           xcodebuild -project Unity-iPhone.xcodeproj \
             -scheme Unity-iPhone \
             -configuration Release \
@@ -117,16 +82,19 @@ jobs:
             CODE_SIGN_IDENTITY="Apple Development: Ondřej Řeháček (DC7Y8ZKSC8)" \
             archive
           
-          # Export the archive
           xcodebuild -exportArchive \
             -archivePath ./build/Unity-iPhone.xcarchive \
             -exportOptionsPlist exportOptions.plist \
             -exportPath ./build
+            
       - if: inputs.platform == 'iOS'
         name: Upload to TestFlight
-        run: |
-          cd build/iOS/iOS/build
-          xcrun altool --upload-app --type ios --file "Unity-iPhone.ipa" --apiKey "${{ secrets.APPSTORE_KEY_ID }}" --apiIssuer "${{ secrets.APPSTORE_ISSUER_ID }}"
+        uses: apple-actions/upload-testflight-build@v3
+        with:
+          app-path: 'build/iOS/iOS/build/Unity-iPhone.ipa'
+          issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
       - uses: actions/upload-artifact@v4
         with:
           name: Build-${{ inputs.platform }}
