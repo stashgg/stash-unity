@@ -122,7 +122,7 @@ jobs:
               echo "Automatic signing failed, trying manual signing..."
               
               # If automatic fails, try manual with the available certificate
-              PROFILE_UUID="de899058-6b99-45e4-82b8-846f08a30e45"
+              PROFILE_UUID="8c8a8452-9d35-446e-98fd-80c3a215a3f7"
               SIGNING_IDENTITY=$(security find-identity -v -p codesigning | grep -o '"[^"]*"' | head -1 | tr -d '"')
               
               xcodebuild -project Unity-iPhone.xcodeproj \
