@@ -43,7 +43,7 @@ jobs:
         uses: Apple-Actions/download-provisioning-profiles@v4.0.0
         with:
           bundle-id: 'com.stash.sdkdemo'
-          profile-type: 'IOS_APP_DEVELOPMENT'
+          profile-type: 'IOS_APP_STORE'
           issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
@@ -63,9 +63,40 @@ jobs:
           targetPlatform: ${{ inputs.platform }}
           
       - if: inputs.platform == 'iOS'
+        name: Create Export Options Plist
+        run: |
+          cat > build/iOS/iOS/exportOptions.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string>
+              <key>teamID</key>
+              <string>${{ secrets.IOS_TEAM_ID }}</string>
+              <key>uploadBitcode</key>
+              <false/>
+              <key>uploadSymbols</key>
+              <true/>
+              <key>compileBitcode</key>
+              <false/>
+              <key>signingStyle</key>
+              <string>automatic</string>
+              <key>destination</key>
+              <string>export</string>
+          </dict>
+          </plist>
+          EOF
+
+      - if: inputs.platform == 'iOS'
         name: Build and Archive iOS App
         run: |
           cd build/iOS/iOS
+          
+          # Set up Xcode project with team ID
+          /usr/libexec/PlistBuddy -c "Set :objects:*:attributes:DEVELOPMENT_TEAM ${{ secrets.IOS_TEAM_ID }}" Unity-iPhone.xcodeproj/project.pbxproj || true
+          
+          xcodebuild -resolvePackageDependencies -project Unity-iPhone.xcodeproj -scheme Unity-iPhone
           
           xcodebuild -project Unity-iPhone.xcodeproj \
             -scheme Unity-iPhone \
@@ -73,12 +104,15 @@ jobs:
             -sdk iphoneos \
             -archivePath ./build/Unity-iPhone.xcarchive \
             -allowProvisioningUpdates \
+            DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
+            CODE_SIGN_STYLE=Automatic \
             archive
           
           xcodebuild -exportArchive \
             -archivePath ./build/Unity-iPhone.xcarchive \
             -exportOptionsPlist exportOptions.plist \
-            -exportPath ./build
+            -exportPath ./build \
+            -allowProvisioningUpdates
             
       - if: inputs.platform == 'iOS'
         name: Upload to TestFlight
