@@ -65,15 +65,9 @@ jobs:
       - if: inputs.platform == 'iOS'
         name: Build and Archive iOS App
         run: |
-          cd build/iOS/iOS
 
-          # Add Apple account
-          xcrun xcodebuild -resolvePackageDependencies
-          xcrun xcodebuild -resolvePackageDependencies -workspace Unity-iPhone.xcworkspace
+          xcodebuild -resolvePackageDependencies -project Unity-iPhone.xcodeproj -scheme Unity-iPhone
           
-          # List available accounts
-          xcrun xcodebuild -list -json
-
           xcodebuild -project Unity-iPhone.xcodeproj \
             -scheme Unity-iPhone \
             -configuration Release \
