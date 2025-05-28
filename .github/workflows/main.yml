@@ -106,14 +106,15 @@ jobs:
           echo "=== UnityFramework Build Settings (Using unmodified project settings from Unity build) ==="
           xcodebuild -project Unity-iPhone.xcodeproj -target UnityFramework -showBuildSettings | grep -E "(DEVELOPMENT_TEAM|CODE_SIGN|PROVISIONING_PROFILE)"
           
-          # Build and archive with Automatic Signing
-          echo "Attempting to build and archive with Automatic Signing (using committed project settings)..."
+          # Build and archive with Automatic Signing, guided by Development Certificate
+          echo "Attempting to build and archive with Automatic Signing (guided by Development Certificate)..."
           xcodebuild -project Unity-iPhone.xcodeproj \
             -scheme Unity-iPhone \
             -configuration Release \
             -sdk iphoneos \
             -archivePath ./build/Unity-iPhone.xcarchive \
             DEVELOPMENT_TEAM="DB5KZDZYT5" \
+            CODE_SIGN_IDENTITY="Apple Development: Ondřej Řeháček (DC7Y8ZKSC8)" \
             archive
           
           # Export the archive
