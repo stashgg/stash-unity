@@ -40,6 +40,38 @@ jobs:
           issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
+      - if: matrix.targetPlatform == 'iOS'
+        name: Setup Apple Developer Account
+        run: |
+          mkdir -p ~/Library/Developer/Xcode/UserData
+          echo '<?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>IDELastDistributedNotificationAppWatchingEnabled</key>
+              <true/>
+              <key>IDELastMacOSXSDK</key>
+              <string>14.4</string>
+              <key>IDELastXcodeSystemLogLocation</key>
+              <string>/Users/runner/Library/Developer/Xcode/DerivedData/Unity-iPhone-crjxlrgppfabfnenstxvmismtxgy/Logs/Debug</string>
+              <key>IDEWorkspaceSharedSettings_AutocreateContextsIfNeeded</key>
+              <false/>
+          </dict>
+          </plist>' > ~/Library/Developer/Xcode/UserData/IDEWorkspaceSharedSettings.xcuserdatad/WorkspaceSettings.xcsettings
+          
+          # Create a temporary keychain
+          security create-keychain -p "" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "" build.keychain
+          security set-keychain-settings build.keychain
+          
+          # Add the certificate to the keychain
+          echo "${{ secrets.IOS_P12_BASE64 }}" | base64 --decode > cert.p12
+          security import cert.p12 -k build.keychain -P "${{ secrets.IOS_P12_PASSWORD }}" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
+          
+          # List available identities
+          security find-identity -v -p codesigning
       - uses: game-ci/unity-builder@v4
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
