@@ -70,11 +70,18 @@ jobs:
           
           # Create and configure keychain
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
+          
+          # Add to keychain search list so Xcode can find it
+          security list-keychains -s "$KEYCHAIN_NAME" ~/Library/Keychains/login.keychain-db /Library/Keychains/System.keychain
+          
+          # Set as default and unlock
           security default-keychain -s "$KEYCHAIN_NAME"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
           security set-keychain-settings -t 3600 -u "$KEYCHAIN_NAME"
           
           echo "Keychain created and configured"
+          echo "Keychain search list:"
+          security list-keychains
           
           # Import certificate
           echo "Importing certificate..."
@@ -88,8 +95,8 @@ jobs:
             exit 1
           fi
           
-          # Import the certificate
-          security import certificate.p12 -k "$KEYCHAIN_NAME" -P "${{ secrets.IOS_P12_PASSWORD }}" -T /usr/bin/codesign || {
+          # Import the certificate with additional flags
+          security import certificate.p12 -k "$KEYCHAIN_NAME" -P "${{ secrets.IOS_P12_PASSWORD }}" -T /usr/bin/codesign -T /usr/bin/productbuild -T /usr/bin/productsign || {
             echo "ERROR: Certificate import failed"
             echo "Checking keychain contents:"
             security list-keychains
@@ -100,10 +107,13 @@ jobs:
           
           echo "Certificate imported successfully"
           
-          # Set key partition list
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME" || {
+          # Set key partition list for all common tools
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME" || {
             echo "WARNING: Failed to set key partition list, but continuing..."
           }
+          
+          # Make the keychain readable by all processes
+          security set-keychain-settings -t 7200 -l "$KEYCHAIN_NAME"
           
           echo "Checking imported certificates:"
           security find-identity -v -p codesigning "$KEYCHAIN_NAME"
@@ -202,7 +212,7 @@ jobs:
           APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APPSTORE_PRIVATE_KEY }}
           APP_STORE_CONNECT_API_KEY_IS_KEY_CONTENT_BASE64: false
         run: |
-          cd build/iOS/iOS
+          cd build/iOS/iOS/
           
           # Clean any existing build artifacts
           xcodebuild clean -project Unity-iPhone.xcodeproj -scheme Unity-iPhone
@@ -229,6 +239,13 @@ jobs:
           for attempt in 1 2 3; do
             echo "Build attempt $attempt..."
             
+            # Ensure keychain is unlocked and in search path
+            security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
+            security list-keychains -s "$KEYCHAIN_NAME" ~/Library/Keychains/login.keychain-db /Library/Keychains/System.keychain
+            
+            # Set additional environment variables for Xcode
+            export OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_NAME"
+            
             if xcodebuild -project Unity-iPhone.xcodeproj \
               -scheme Unity-iPhone \
               -configuration Release \
@@ -244,28 +261,40 @@ jobs:
               CODE_SIGN_STYLE="Automatic" \
               CODE_SIGNING_ALLOWED="YES" \
               CODE_SIGNING_REQUIRED="YES" \
+              OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_NAME" \
               archive; then
               echo "Build succeeded on attempt $attempt"
               break
             else
               if [ $attempt -eq 3 ]; then
                 echo "Build failed after 3 attempts"
+                echo "Final diagnostic information:"
+                echo "Available certificates in build keychain:"
+                security find-identity -v -p codesigning "$KEYCHAIN_NAME"
+                echo "Available certificates in all keychains:"
+                security find-identity -v -p codesigning
+                echo "Keychain search list:"
+                security list-keychains
                 exit 1
               fi
               echo "Build failed on attempt $attempt, retrying..."
               
               # On retry, clean up any certificate conflicts more aggressively
-              if [ $attempt -eq 2 ]; then
+              if [ $attempt -eq 1 ]; then
+                echo "Cleaning Xcode derived data..."
+                rm -rf ~/Library/Developer/Xcode/DerivedData/* 2>/dev/null || true
+              elif [ $attempt -eq 2 ]; then
                 echo "Attempting to resolve certificate conflicts..."
                 # Force Xcode to revoke and recreate certificates by clearing more state
                 rm -rf ~/Library/Developer/Xcode/DerivedData/* 2>/dev/null || true
                 rm -rf ~/Library/Caches/com.apple.dt.Xcode* 2>/dev/null || true
                 
-                # Re-unlock keychain
+                # Re-unlock and re-add keychain
                 security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
+                security list-keychains -s "$KEYCHAIN_NAME" ~/Library/Keychains/login.keychain-db /Library/Keychains/System.keychain
               fi
               
-              sleep 10
+              sleep 15
             fi
           done
           
