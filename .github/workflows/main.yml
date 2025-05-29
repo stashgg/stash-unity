@@ -231,9 +231,15 @@ jobs:
           sed -i '' "s/DEVELOPMENT_TEAM = \"[^\"]*\"/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\"/g" Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' "s/DEVELOPMENT_TEAM = ;/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\";/g" Unity-iPhone.xcodeproj/project.pbxproj
           
-          # Ensure code signing settings are consistent
-          sed -i '' 's/CODE_SIGN_STYLE = Manual/CODE_SIGN_STYLE = Automatic/g' Unity-iPhone.xcodeproj/project.pbxproj
-          sed -i '' 's/CODE_SIGN_IDENTITY = "[^"]*"/CODE_SIGN_IDENTITY = "Apple Development"/g' Unity-iPhone.xcodeproj/project.pbxproj
+          # Configure for manual signing with Distribution certificate
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' Unity-iPhone.xcodeproj/project.pbxproj
+          sed -i '' 's/CODE_SIGN_IDENTITY = "[^"]*"/CODE_SIGN_IDENTITY = "Apple Distribution"/g' Unity-iPhone.xcodeproj/project.pbxproj
+          sed -i '' 's/CODE_SIGN_IDENTITY = ;/CODE_SIGN_IDENTITY = "Apple Distribution";/g' Unity-iPhone.xcodeproj/project.pbxproj
+          
+          # Get the provisioning profile UUID for manual signing
+          PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -1)
+          PROFILE_UUID=$(basename "$PROFILE_PATH" .mobileprovision)
+          echo "Using provisioning profile: $PROFILE_UUID from $PROFILE_PATH"
           
           # Build with retry logic
           for attempt in 1 2 3; do
@@ -242,9 +248,6 @@ jobs:
             # Ensure keychain is unlocked and in search path
             security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
             security list-keychains -s "$KEYCHAIN_NAME" ~/Library/Keychains/login.keychain-db /Library/Keychains/System.keychain
-            
-            # Set additional environment variables for Xcode
-            export OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_NAME"
             
             if xcodebuild -project Unity-iPhone.xcodeproj \
               -scheme Unity-iPhone \
@@ -258,7 +261,9 @@ jobs:
               -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }} \
               DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
               PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
-              CODE_SIGN_STYLE="Automatic" \
+              CODE_SIGN_STYLE="Manual" \
+              CODE_SIGN_IDENTITY="Apple Distribution" \
+              PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
               CODE_SIGNING_ALLOWED="YES" \
               CODE_SIGNING_REQUIRED="YES" \
               OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_NAME" \
@@ -275,6 +280,8 @@ jobs:
                 security find-identity -v -p codesigning
                 echo "Keychain search list:"
                 security list-keychains
+                echo "Provisioning profiles:"
+                ls -la ~/Library/MobileDevice/Provisioning\ Profiles/
                 exit 1
               fi
               echo "Build failed on attempt $attempt, retrying..."
@@ -298,7 +305,7 @@ jobs:
             fi
           done
           
-          # Create export options plist
+          # Create export options plist for manual signing
           cat > exportOptions.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -309,7 +316,14 @@ jobs:
               <key>teamID</key>
               <string>${{ secrets.IOS_TEAM_ID }}</string>
               <key>signingStyle</key>
-              <string>automatic</string>
+              <string>manual</string>
+              <key>signingCertificate</key>
+              <string>Apple Distribution</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>com.stash.sdkdemo</key>
+                  <string>$PROFILE_UUID</string>
+              </dict>
               <key>uploadBitcode</key>
               <false/>
               <key>uploadSymbols</key>
