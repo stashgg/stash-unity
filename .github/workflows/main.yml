@@ -261,9 +261,8 @@ jobs:
               -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }} \
               DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
               PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
-              CODE_SIGN_STYLE="Manual" \
+              CODE_SIGN_STYLE="Automatic" \
               CODE_SIGN_IDENTITY="Apple Distribution" \
-              PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
               CODE_SIGNING_ALLOWED="YES" \
               CODE_SIGNING_REQUIRED="YES" \
               OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_NAME" \
