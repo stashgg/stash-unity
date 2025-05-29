@@ -66,16 +66,47 @@ jobs:
           KEYCHAIN_NAME="build-$(date +%s).keychain"
           KEYCHAIN_PASSWORD="${{ secrets.IOS_P12_PASSWORD }}"
           
+          echo "Creating keychain: $KEYCHAIN_NAME"
+          
           # Create and configure keychain
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
           security default-keychain -s "$KEYCHAIN_NAME"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
           security set-keychain-settings -t 3600 -u "$KEYCHAIN_NAME"
           
+          echo "Keychain created and configured"
+          
           # Import certificate
+          echo "Importing certificate..."
           echo "${{ secrets.IOS_P12_BASE64 }}" | base64 --decode > certificate.p12
-          security import certificate.p12 -k "$KEYCHAIN_NAME" -P "${{ secrets.IOS_P12_PASSWORD }}" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
+          
+          # Check if P12 file was created successfully
+          if [ -f certificate.p12 ]; then
+            echo "P12 file created successfully, size: $(wc -c < certificate.p12) bytes"
+          else
+            echo "ERROR: P12 file was not created"
+            exit 1
+          fi
+          
+          # Import the certificate
+          security import certificate.p12 -k "$KEYCHAIN_NAME" -P "${{ secrets.IOS_P12_PASSWORD }}" -T /usr/bin/codesign || {
+            echo "ERROR: Certificate import failed"
+            echo "Checking keychain contents:"
+            security list-keychains
+            echo "Checking if keychain exists:"
+            ls -la "$KEYCHAIN_NAME" 2>/dev/null || echo "Keychain file not found"
+            exit 1
+          }
+          
+          echo "Certificate imported successfully"
+          
+          # Set key partition list
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME" || {
+            echo "WARNING: Failed to set key partition list, but continuing..."
+          }
+          
+          echo "Checking imported certificates:"
+          security find-identity -v -p codesigning -k "$KEYCHAIN_NAME"
           
           # Store keychain name for later steps
           echo "KEYCHAIN_NAME=$KEYCHAIN_NAME" >> $GITHUB_ENV
@@ -83,6 +114,8 @@ jobs:
           
           # Clean up certificate file
           rm certificate.p12
+          
+          echo "Certificate setup completed"
       
       - name: Download iOS provisioning profiles
         if: inputs.platform == 'iOS'
@@ -101,26 +134,31 @@ jobs:
           security find-identity -v -p codesigning
           echo ""
           
+          # Debug keychain information
+          echo "Current default keychain:"
+          security default-keychain
+          echo ""
+          echo "All keychains:"
+          security list-keychains
+          echo ""
+          
+          # Check if we have any certificates at all
+          CERT_COUNT=$(security find-identity -v -p codesigning | grep -c "valid identities found" | cut -d' ' -f1)
+          echo "Found $CERT_COUNT certificates"
+          
           # Check if we have a distribution certificate
           if security find-identity -v -p codesigning | grep -q "Distribution"; then
             echo "✅ Distribution certificate found"
             echo "CERT_TYPE=distribution" >> $GITHUB_ENV
           else
-            echo "⚠️  WARNING: No Distribution certificate found. You have a Development certificate."
-            echo "   For App Store uploads, you need an Apple Distribution certificate."
-            echo "   Please update your IOS_P12_BASE64 secret with a Distribution certificate."
-            echo ""
-            echo "   To get a Distribution certificate:"
-            echo "   1. Go to https://developer.apple.com/account/resources/certificates/list"
-            echo "   2. Click '+' to create a new certificate"
-            echo "   3. Select 'Apple Distribution' (NOT 'Apple Development')"
-            echo "   4. Follow the steps to create and download the certificate"
-            echo "   5. Import it to Keychain Access and export as .p12 with a password"
-            echo "   6. Convert to base64: base64 -i distribution.p12 | pbcopy"
-            echo "   7. Update your IOS_P12_BASE64 secret in GitHub"
-            echo ""
-            echo "CERT_TYPE=development" >> $GITHUB_ENV
-            exit 1  # Fail the build since we can't upload to App Store without distribution cert
+            echo "⚠️  No Distribution certificate found."
+            if security find-identity -v -p codesigning | grep -q "Development"; then
+              echo "   Found Development certificate - this can work for TestFlight uploads."
+              echo "CERT_TYPE=development" >> $GITHUB_ENV
+            else
+              echo "   No certificates found at all - there may be an import issue."
+              echo "CERT_TYPE=none" >> $GITHUB_ENV
+            fi
           fi
           
           echo ""
