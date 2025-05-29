@@ -106,7 +106,7 @@ jobs:
           }
           
           echo "Checking imported certificates:"
-          security find-identity -v -p codesigning -k "$KEYCHAIN_NAME"
+          security find-identity -v -p codesigning "$KEYCHAIN_NAME"
           
           # Store keychain name for later steps
           echo "KEYCHAIN_NAME=$KEYCHAIN_NAME" >> $GITHUB_ENV
@@ -130,8 +130,12 @@ jobs:
       - name: Verify iOS setup
         if: inputs.platform == 'iOS'
         run: |
-          echo "Available signing identities:"
+          echo "Available signing identities in default keychain:"
           security find-identity -v -p codesigning
+          echo ""
+          
+          echo "Available signing identities in our build keychain:"
+          security find-identity -v -p codesigning "$KEYCHAIN_NAME"
           echo ""
           
           # Debug keychain information
@@ -142,21 +146,21 @@ jobs:
           security list-keychains
           echo ""
           
-          # Check if we have any certificates at all
-          CERT_COUNT=$(security find-identity -v -p codesigning | grep -c "valid identities found" | cut -d' ' -f1)
-          echo "Found $CERT_COUNT certificates"
+          # Check if we have any certificates in our build keychain
+          CERT_COUNT=$(security find-identity -v -p codesigning "$KEYCHAIN_NAME" | grep -c "valid identities found" | head -1)
+          echo "Found $CERT_COUNT certificates in build keychain"
           
           # Check if we have a distribution certificate
-          if security find-identity -v -p codesigning | grep -q "Distribution"; then
+          if security find-identity -v -p codesigning "$KEYCHAIN_NAME" | grep -q "Distribution"; then
             echo "✅ Distribution certificate found"
             echo "CERT_TYPE=distribution" >> $GITHUB_ENV
           else
             echo "⚠️  No Distribution certificate found."
-            if security find-identity -v -p codesigning | grep -q "Development"; then
+            if security find-identity -v -p codesigning "$KEYCHAIN_NAME" | grep -q "Development"; then
               echo "   Found Development certificate - this can work for TestFlight uploads."
               echo "CERT_TYPE=development" >> $GITHUB_ENV
             else
-              echo "   No certificates found at all - there may be an import issue."
+              echo "   No certificates found in build keychain."
               echo "CERT_TYPE=none" >> $GITHUB_ENV
             fi
           fi
