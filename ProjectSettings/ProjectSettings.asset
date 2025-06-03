@@ -230,6 +230,7 @@ PlayerSettings:
   iOSDeviceRequirements: []
   iOSURLSchemes:
   - stashdemo
+  - howlingwoods
   macOSURLSchemes: []
   iOSBackgroundModes: 0
   iOSMetalForceHardShadows: 0

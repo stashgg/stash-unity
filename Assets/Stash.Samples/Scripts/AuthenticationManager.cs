@@ -6,6 +6,11 @@ using System.Text;
 using UnityEngine;
 using System.Runtime.Serialization;
 using UnityEngine.Networking;
+using Stash.Core;
+using Stash.Models;
+using Stash.Scripts.Core;
+using System.Threading.Tasks;
+using UnityEngine.UI;
 // Add reference to JwtDecoder from global namespace
 // using JwtDecoder;  // Not needed since JwtDecoder is in global namespace
 
@@ -503,119 +508,151 @@ public class AuthenticationManager : MonoBehaviour
     }
     
     /// <summary>
-    /// Handles deep link activation from Cognito redirect
+    /// Handles deep link activation from Cognito redirect or Stash login
     /// </summary>
     /// <param name="url">The deep link URL</param>
-    private void OnDeepLinkActivated(string url)
+    private async void OnDeepLinkActivated(string url)
     {
         Debug.Log($"Deep link activated: {url}");
         
         try
         {
-            // Parse the URL to extract authorization code or error
-            Uri uri = new Uri(url);
-            
-            // Extract the expected scheme, removing any trailing "://"
-            string expectedScheme = redirectScheme.TrimEnd(':').TrimEnd('/');
-            string actualScheme = uri.Scheme;
-            
-            // Extract the expected host
-            string expectedHost = redirectHost;
-            string actualHost = uri.Host;
-            
-            // Log both expected and actual values for debugging
-            Debug.Log($"Comparing URI components:" +
-                     $"\nExpected - Scheme: '{expectedScheme}', Host: '{expectedHost}'" +
-                     $"\nActual   - Scheme: '{actualScheme}', Host: '{actualHost}'");
-            
-            // Perform scheme and host comparison (case-insensitive)
-            bool schemeMatches = string.Equals(actualScheme, expectedScheme, StringComparison.OrdinalIgnoreCase);
-            bool hostMatches = string.Equals(actualHost, expectedHost, StringComparison.OrdinalIgnoreCase);
-            
-            Debug.Log($"Scheme matches: {schemeMatches}, Host matches: {hostMatches}");
-            
-            // Check if this is our callback URL
-            if (schemeMatches && hostMatches)
+            if (url.Contains("stash/login"))
             {
-                Debug.Log("Callback URL matched correctly");
-                
-                // Parse query parameters
-                string query = uri.Query.TrimStart('?');
-                Dictionary<string, string> queryParams = ParseQueryString(query);
-                
-                // Log all query parameters for debugging
-                foreach (var param in queryParams)
+                int codeIndex = url.IndexOf("code=");
+                if (codeIndex != -1)
                 {
-                    Debug.Log($"Query param: {param.Key} = {param.Value}");
-                }
-                
-                // Check for authorization code (success)
-                if (queryParams.TryGetValue("code", out string authCode))
-                {
-                    Debug.Log($"Received authorization code: {authCode}");
+                    string code = url.Substring(codeIndex + 5);
+                    Debug.Log($"Extracted code: {code}");
                     
-                    // Retrieve the code verifier we stored earlier
-                    string codeVerifier = PlayerPrefs.GetString("PKCE_CODE_VERIFIER", "");
-                    
-                    if (string.IsNullOrEmpty(codeVerifier))
+                    if (!IsAuthenticated())
                     {
-                        Debug.LogError("Code verifier not found. Cannot exchange authorization code for tokens.");
-                        InvokeLoginFailed("Code verifier not found");
+                        Debug.LogError("User is not authenticated. Cannot proceed with Stash login.");
+                        ShowPopup("Authentication Required", "Please login first to proceed with Stash login.", false);
+                        InvokeLoginFailed("User not authenticated");
                         return;
                     }
                     
-                    Debug.Log("Code verifier retrieved successfully");
-                    
-                    // Exchange auth code for tokens
-                    ExchangeAuthCodeForTokens(authCode);
-                }
-                // Check for error
-                else if (queryParams.TryGetValue("error", out string error))
-                {
-                    string errorDescription = queryParams.ContainsKey("error_description") 
-                        ? queryParams["error_description"] 
-                        : "Unknown error";
-                    
-                    Debug.LogError($"Authentication error: {error} - {errorDescription}");
-                    InvokeLoginFailed(errorDescription);
-                }
-                else
-                {
-                    Debug.LogError("No authorization code or error found in callback URL");
-                    InvokeLoginFailed("Invalid callback URL format");
-                }
-            }
-            else
-            {
-                // Provide detailed diagnostic information for scheme/host mismatch
-                string mismatchDetails = "";
-                if (!schemeMatches) mismatchDetails += $"\nScheme mismatch: Expected '{expectedScheme}', got '{actualScheme}'";
-                if (!hostMatches) mismatchDetails += $"\nHost mismatch: Expected '{expectedHost}', got '{actualHost}'";
-                
-                Debug.LogWarning($"URL scheme or host did not match expected values.{mismatchDetails}");
-                
-                // Add a special case for common iOS issue where scheme doesn't include "://"
-                if (Application.platform == RuntimePlatform.IPhonePlayer && 
-                    !schemeMatches && actualScheme == redirectScheme.Replace("://", ""))
-                {
-                    Debug.LogWarning("Detected iOS-specific scheme format without '://'. Attempting to process anyway.");
-                    
-                    // Process as if there was a match (iOS sometimes strips '://' from the scheme)
-                    // Copy-paste relevant code from the "matched" section
-                    string query = uri.Query.TrimStart('?');
-                    Dictionary<string, string> queryParams = ParseQueryString(query);
-                    
-                    if (queryParams.TryGetValue("code", out string authCode))
+                    try
                     {
-                        ExchangeAuthCodeForTokens(authCode);
+                        // Create the request body using serializable classes
+                        var requestBody = new CustomLoginRequest
+                        {
+                            code = code,
+                            user = new CustomLoginUser
+                            {
+                                id = _userData.UserId,
+                                email = _userData.Email
+                            }
+                        };
+                        
+                        string jsonBody = JsonUtility.ToJson(requestBody);
+                        Debug.Log($"Request body: {jsonBody}");
+                        
+                        // Create and configure the request
+                        using (UnityWebRequest request = new UnityWebRequest("https://test-api.stash.gg/sdk/custom_login/approve", "POST"))
+                        {
+                            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonBody);
+                            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+                            request.downloadHandler = new DownloadHandlerBuffer();
+                            request.SetRequestHeader("Content-Type", "application/json");
+                            request.SetRequestHeader("x-stash-api-key", "p0SVSU3awmdDv8VUPFZ_adWz_uC81xXsEY95Gg7WSwx9TZAJ5_ch-ePXK2Xh3B6o");
+                            
+                            // Send the request
+                            var operation = request.SendWebRequest();
+                            while (!operation.isDone)
+                            {
+                                await Task.Yield();
+                            }
+                            
+                            if (request.result == UnityWebRequest.Result.Success)
+                            {
+                                Debug.Log($"Stash login successful: {request.downloadHandler.text}");
+                                ShowPopup("Account Linked", "Account Linked Successfully. Navigate back to the web shop.", true); // Show confetti on success
+                                
+                                if (OnLoginSuccess != null)
+                                {
+                                    StartCoroutine(InvokeOnMainThread(OnLoginSuccess));
+                                }
+                            }
+                            else
+                            {
+                                Debug.LogError($"Stash login failed: {request.error}\n{request.downloadHandler.text}");
+                                ShowPopup("Login Failed", $"Stash login failed: {request.error}", false);
+                                InvokeLoginFailed($"Stash login failed: {request.error}");
+                            }
+                        }
                     }
+                    catch (Exception ex)
+                    {
+                        Debug.LogError($"Stash login failed: {ex.Message}");
+                        ShowPopup("Login Failed", $"Stash login failed: {ex.Message}", false);
+                        InvokeLoginFailed($"Stash login failed: {ex.Message}");
+                    }
+                    return;
                 }
             }
+            
+            // If not a Stash login URL, treat it as a Cognito callback
+            HandleCognitoCallback(new Uri(url));
         }
         catch (Exception ex)
         {
             Debug.LogError($"Error processing deep link: {ex.Message}\n{ex.StackTrace}");
+            ShowPopup("Error", $"Error processing authentication: {ex.Message}", false);
             InvokeLoginFailed($"Error processing authentication response: {ex.Message}");
+        }
+    }
+    
+    /// <summary>
+    /// Handles the Cognito callback flow
+    /// </summary>
+    private void HandleCognitoCallback(Uri uri)
+    {
+        // Parse query parameters
+        string query = uri.Query.TrimStart('?');
+        Dictionary<string, string> queryParams = ParseQueryString(query);
+        
+        // Log all query parameters for debugging
+        foreach (var param in queryParams)
+        {
+            Debug.Log($"Query param: {param.Key} = {param.Value}");
+        }
+        
+        // Check for authorization code (success)
+        if (queryParams.TryGetValue("code", out string authCode))
+        {
+            Debug.Log($"Received authorization code: {authCode}");
+            
+            // Retrieve the code verifier we stored earlier
+            string codeVerifier = PlayerPrefs.GetString("PKCE_CODE_VERIFIER", "");
+            
+            if (string.IsNullOrEmpty(codeVerifier))
+            {
+                Debug.LogError("Code verifier not found. Cannot exchange authorization code for tokens.");
+                InvokeLoginFailed("Code verifier not found");
+                return;
+            }
+            
+            Debug.Log("Code verifier retrieved successfully");
+            
+            // Exchange auth code for tokens
+            ExchangeAuthCodeForTokens(authCode);
+        }
+        // Check for error
+        else if (queryParams.TryGetValue("error", out string error))
+        {
+            string errorDescription = queryParams.ContainsKey("error_description") 
+                ? queryParams["error_description"] 
+                : "Unknown error";
+            
+            Debug.LogError($"Authentication error: {error} - {errorDescription}");
+            InvokeLoginFailed(errorDescription);
+        }
+        else
+        {
+            Debug.LogError("No authorization code or error found in callback URL");
+            InvokeLoginFailed("Invalid callback URL format");
         }
     }
     
@@ -1057,6 +1094,135 @@ public class AuthenticationManager : MonoBehaviour
             Debug.LogWarning("No subscribers to OnLoginFailed event");
         }
     }
+
+    private void ShowPopup(string title, string message, bool withConfetti = false)
+    {
+        var popup = new GameObject("AuthPopup");
+        var popupScript = popup.AddComponent<AuthPopup>();
+        popupScript.Show(title, message);
+        
+        if (withConfetti)
+        {
+            // Create confetti system that renders in front of UI
+            GameObject confettiGO = new GameObject("ConfettiSystem");
+            
+            // Add Canvas component for UI rendering
+            Canvas confettiCanvas = confettiGO.AddComponent<Canvas>();
+            confettiCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            confettiCanvas.sortingOrder = 1000; // Very high sorting order to render in front of everything
+            
+            // Add CanvasScaler for consistent scaling
+            CanvasScaler scaler = confettiGO.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920, 1080);
+            
+            // Position the confetti container at the top of the screen
+            RectTransform rectTransform = confettiGO.GetComponent<RectTransform>();
+            rectTransform.anchorMin = new Vector2(0, 1); // Top-left anchor
+            rectTransform.anchorMax = new Vector2(1, 1); // Top-right anchor
+            rectTransform.anchoredPosition = new Vector2(0, 100); // Slightly above screen
+            rectTransform.sizeDelta = new Vector2(0, 200); // Full width, 200px height
+            
+            // Create multiple confetti emitters across the screen width
+            for (int i = 0; i < 5; i++)
+            {
+                GameObject emitter = new GameObject($"ConfettiEmitter_{i}");
+                emitter.transform.SetParent(confettiGO.transform, false);
+                
+                RectTransform emitterRect = emitter.AddComponent<RectTransform>();
+                float xPos = (i / 4.0f) - 0.5f; // Spread across screen: -0.5 to 0.5
+                emitterRect.anchorMin = new Vector2(0.5f + xPos, 0.5f);
+                emitterRect.anchorMax = new Vector2(0.5f + xPos, 0.5f);
+                emitterRect.anchoredPosition = Vector2.zero;
+                
+                ParticleSystem confetti = emitter.AddComponent<ParticleSystem>();
+                
+                // Configure main module for UI-space confetti
+                var main = confetti.main;
+                main.startLifetime = 4.0f;
+                main.startSpeed = 300.0f; // Higher speed for UI space
+                main.startSize = 20.0f; // Larger size for UI space (pixels)
+                main.startColor = GetRandomConfettiColor(i);
+                main.maxParticles = 40; // Per emitter
+                main.simulationSpace = ParticleSystemSimulationSpace.Local;
+                
+                // Configure emission for staggered bursts
+                var emission = confetti.emission;
+                emission.rateOverTime = 0;
+                emission.SetBursts(new ParticleSystem.Burst[] {
+                    new ParticleSystem.Burst(i * 0.1f, 20), // Stagger the bursts
+                    new ParticleSystem.Burst(i * 0.1f + 0.3f, 25),
+                    new ParticleSystem.Burst(i * 0.1f + 0.6f, 15)
+                });
+                
+                // Configure shape for wide spread
+                var shape = confetti.shape;
+                shape.enabled = true;
+                shape.shapeType = ParticleSystemShapeType.Circle;
+                shape.radius = 50; // Spread radius in UI pixels
+                
+                // Configure velocity for falling effect
+                var velocityOverLifetime = confetti.velocityOverLifetime;
+                velocityOverLifetime.enabled = true;
+                velocityOverLifetime.space = ParticleSystemSimulationSpace.Local;
+                velocityOverLifetime.y = new ParticleSystem.MinMaxCurve(-400f, -200f); // Downward fall
+                velocityOverLifetime.x = new ParticleSystem.MinMaxCurve(-100f, 100f); // Side drift
+                
+                // Configure size over lifetime
+                var sizeOverLifetime = confetti.sizeOverLifetime;
+                sizeOverLifetime.enabled = true;
+                AnimationCurve sizeCurve = new AnimationCurve();
+                sizeCurve.AddKey(0, 1.0f);
+                sizeCurve.AddKey(0.3f, 1.3f); // Grow slightly
+                sizeCurve.AddKey(1, 0.8f); // Shrink at end
+                sizeOverLifetime.size = new ParticleSystem.MinMaxCurve(1.0f, sizeCurve);
+                
+                // Configure vibrant colors
+                var colorOverLifetime = confetti.colorOverLifetime;
+                colorOverLifetime.enabled = true;
+                Gradient gradient = new Gradient();
+                gradient.SetKeys(
+                    new GradientColorKey[] { 
+                        new GradientColorKey(GetRandomConfettiColor(i), 0.0f), 
+                        new GradientColorKey(GetRandomConfettiColor(i + 1), 0.5f),
+                        new GradientColorKey(GetRandomConfettiColor(i + 2), 1.0f)
+                    },
+                    new GradientAlphaKey[] { 
+                        new GradientAlphaKey(1.0f, 0.0f), 
+                        new GradientAlphaKey(1.0f, 0.7f),
+                        new GradientAlphaKey(0.0f, 1.0f) 
+                    }
+                );
+                colorOverLifetime.color = gradient;
+                
+                // Configure rotation for spinning effect
+                var rotationOverLifetime = confetti.rotationOverLifetime;
+                rotationOverLifetime.enabled = true;
+                rotationOverLifetime.z = new ParticleSystem.MinMaxCurve(-360f, 360f);
+                
+                // Play each emitter
+                confetti.Play();
+            }
+            
+            // Destroy the confetti system after a delay
+            Destroy(confettiGO, 5f);
+        }
+    }
+
+    private Color GetRandomConfettiColor(int seed)
+    {
+        Color[] colors = {
+            Color.yellow,
+            Color.magenta,
+            Color.cyan,
+            Color.green,
+            Color.red,
+            new Color(1f, 0.5f, 0f), // Orange
+            new Color(0.5f, 0f, 1f), // Purple
+            new Color(1f, 0.75f, 0.8f) // Pink
+        };
+        return colors[seed % colors.Length];
+    }
 }
 
 /// <summary>
@@ -1109,4 +1275,135 @@ public class JwtPayload
     public int exp;
     public int iat;
     public string jti;
+}
+
+[System.Serializable]
+public class CustomLoginUser
+{
+    public string id;
+    public string email;
+}
+
+[System.Serializable]
+public class CustomLoginRequest
+{
+    public string code;
+    public CustomLoginUser user;
+}
+
+// Custom popup class for auth messages
+public class AuthPopup : MonoBehaviour
+{
+    private string title;
+    private string message;
+    private bool isShowing = false;
+    private float showDuration = 3f;
+    private GUIStyle titleStyle;
+    private GUIStyle messageStyle;
+    private GUIStyle containerStyle;
+    private Rect windowRect;
+    private Texture2D containerTexture;
+    
+    public void Show(string title, string message)
+    {
+        this.title = title;
+        this.message = message;
+        isShowing = true;
+        
+        // Set up window rect
+        float width = Screen.width * 0.8f; // 80% of screen width
+        float height = Screen.height * 0.3f; // 30% of screen height
+        windowRect = new Rect((Screen.width - width) / 2, (Screen.height - height) / 2, width, height);
+        
+        // Create container texture with rounded corners
+        int cornerRadius = 12;
+        containerTexture = new Texture2D(cornerRadius * 2, cornerRadius * 2);
+        
+        // Create a rounded rectangle texture
+        for (int x = 0; x < cornerRadius * 2; x++)
+        {
+            for (int y = 0; y < cornerRadius * 2; y++)
+            {
+                float distanceFromCorner = 0f;
+                
+                // Check which corner we're in
+                if (x < cornerRadius && y < cornerRadius) // Top-left
+                    distanceFromCorner = Vector2.Distance(new Vector2(x, y), new Vector2(cornerRadius, cornerRadius));
+                else if (x >= cornerRadius && y < cornerRadius) // Top-right
+                    distanceFromCorner = Vector2.Distance(new Vector2(x, y), new Vector2(cornerRadius, cornerRadius));
+                else if (x < cornerRadius && y >= cornerRadius) // Bottom-left
+                    distanceFromCorner = Vector2.Distance(new Vector2(x, y), new Vector2(cornerRadius, cornerRadius));
+                else // Bottom-right
+                    distanceFromCorner = Vector2.Distance(new Vector2(x, y), new Vector2(cornerRadius, cornerRadius));
+                
+                // Set pixel color based on distance
+                if (distanceFromCorner <= cornerRadius)
+                {
+                    containerTexture.SetPixel(x, y, new Color(0.26f, 0.26f, 0.29f, 0.95f)); // rgb(67, 67, 75) with 95% opacity
+                }
+                else
+                {
+                    containerTexture.SetPixel(x, y, Color.clear);
+                }
+            }
+        }
+        containerTexture.Apply();
+        
+        // Set up styles
+        titleStyle = new GUIStyle();
+        titleStyle.fontSize = Mathf.RoundToInt(height * 0.12f); // 12% of height
+        titleStyle.fontStyle = FontStyle.Bold;
+        titleStyle.normal.textColor = Color.white;
+        titleStyle.alignment = TextAnchor.MiddleCenter;
+        titleStyle.wordWrap = true;
+        
+        messageStyle = new GUIStyle();
+        messageStyle.fontSize = Mathf.RoundToInt(height * 0.08f); // 8% of height
+        messageStyle.normal.textColor = new Color(0.78f, 0.78f, 0.78f); // rgb(200, 200, 200)
+        messageStyle.alignment = TextAnchor.MiddleCenter;
+        messageStyle.wordWrap = true;
+        
+        containerStyle = new GUIStyle();
+        containerStyle.normal.background = containerTexture;
+        containerStyle.border = new RectOffset(cornerRadius, cornerRadius, cornerRadius, cornerRadius);
+        containerStyle.padding = new RectOffset(cornerRadius, cornerRadius, cornerRadius, cornerRadius);
+        
+        // Close after duration
+        Destroy(gameObject, showDuration);
+    }
+    
+    private void OnGUI()
+    {
+        if (isShowing)
+        {
+            // Draw the container
+            GUI.Box(windowRect, "", containerStyle);
+            
+            // Draw the content
+            GUILayout.BeginArea(windowRect);
+            
+            // Center content vertically
+            GUILayout.FlexibleSpace();
+            
+            // Title
+            GUILayout.Label(title, titleStyle);
+            GUILayout.Space(windowRect.height * 0.05f); // 5% of height spacing
+            
+            // Message
+            GUILayout.Label(message, messageStyle);
+            
+            // Center content vertically
+            GUILayout.FlexibleSpace();
+            
+            GUILayout.EndArea();
+        }
+    }
+    
+    private void OnDestroy()
+    {
+        if (containerTexture != null)
+        {
+            Destroy(containerTexture);
+        }
+    }
 } 

@@ -395,11 +395,6 @@
     position: relative;
 }
 
-.store-item:hover {
-    translate: 0 -2px;
-    border-color: rgb(95, 159, 251);
-}
-
 .item-name {
     color: white;
     -unity-font-style: bold;
@@ -1164,4 +1159,22 @@
     -unity-text-align: middle-left;
     line-height: 1.4;
     padding: 0 4px;
+}
+
+.navigation-blocker {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background-color: rgba(0, 0, 0, 0.2);
+    display: none;
+    z-index: 9999;
+    transition-duration: 0.2s;
+    transition-property: opacity;
+    opacity: 0;
+}
+
+.navigation-blocker.visible {
+    opacity: 1;
 }

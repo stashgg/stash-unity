@@ -187,6 +187,9 @@ public class StashStoreUIController : MonoBehaviour
         
         // Display a loading indicator
         SetButtonLoadingState(buyButtons[itemIndex], true);
+
+        // Block navigation during purchase
+        NavigationBlocker.Instance.BlockNavigation();
         
         // Open Stash popup for checkout
         OpenStashCheckout(itemIndex);
@@ -253,6 +256,9 @@ public class StashStoreUIController : MonoBehaviour
         
         // Re-enable the buy button since checkout was dismissed
         SetButtonEnabled(buyButtons[currentItemIndex], true);
+        
+        // Unblock navigation when browser is closed
+        NavigationBlocker.Instance.UnblockNavigation();
         
         // Verify the purchase status by calling the Stash API
         StartCoroutine(VerifyPurchase());
@@ -434,6 +440,9 @@ public class StashStoreUIController : MonoBehaviour
         // Re-enable the buy button after successful purchase
         SetButtonEnabled(buyButtons[itemIndex], true);
         
+        // Unblock navigation after successful purchase
+        NavigationBlocker.Instance.UnblockNavigation();
+        
         // Implement your purchase success logic
         // Could include adding the item to inventory, showing success message, etc.
     }
@@ -444,6 +453,9 @@ public class StashStoreUIController : MonoBehaviour
         
         // Re-enable the buy button after failed purchase
         SetButtonEnabled(buyButtons[itemIndex], true);
+        
+        // Unblock navigation after failed purchase
+        NavigationBlocker.Instance.UnblockNavigation();
         
         // Show the purchase failed state on the button
         Button button = buyButtons[itemIndex];

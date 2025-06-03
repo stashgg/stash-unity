@@ -838,7 +838,7 @@ public class StoreUIAuthController : MonoBehaviour
                 return;
             }
             userEmail = userData.Email;
-            userId = userEmail; // Use email as ID
+            userId = userData.UserId; // Use email as ID
         }
 
         try
