@@ -367,7 +367,6 @@ GameObject:
   - component: {fileID: 844212192}
   - component: {fileID: 844212191}
   - component: {fileID: 844212193}
-  - component: {fileID: 844212194}
   m_Layer: 5
   m_Name: UIDocument
   m_TagString: Untagged
@@ -419,19 +418,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   storeUIDocument: {fileID: 844212191}
-  tabController: {fileID: 0}
---- !u!114 &844212194
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 844212190}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e58996589375a4f118d254b46c699196, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!1 &1463800467
 GameObject:
   m_ObjectHideFlags: 0
@@ -474,7 +460,7 @@ MonoBehaviour:
     pricePerItem: 15.99
     imageUrl: https://api.braincloudservers.com/files/portal/g/15152/metadata/products/small_resource_shipment_1.png
   - id: barrel_of_potions
-    name: Barel Of Potions
+    name: Barrel Of Potions
     description: 
     pricePerItem: 35.99
     imageUrl: https://portalx.braincloudservers.com/files/portal/g/15152/metadata/itemDefinitions/coin.png

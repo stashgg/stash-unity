@@ -2,6 +2,30 @@
     margin: 0;
     padding: 0;
     font-size: 12px;
+    padding-top: env(safe-area-inset-top);
+    -unity-font: url("project://database/Assets/Stash.Samples/Assets/FactorA-Medium.ttf?fileID=102900000&guid=37e4d4308bfff4b4c960eecc029e5188&type=3#FactorA-Medium");
+    -unity-font-style: normal;
+    -unity-font-weight: 400;
+}
+
+.unity-base-field__label,
+.unity-base-field__input,
+.unity-base-popup-field__input,
+.unity-base-text-field__input,
+.unity-dropdown__label,
+.unity-slider__input,
+.unity-button__text {
+    -unity-font: url("project://database/Assets/Stash.Samples/Assets/FactorA-Medium.ttf?fileID=102900000&guid=37e4d4308bfff4b4c960eecc029e5188&type=3#FactorA-Medium");
+    -unity-font-style: normal;
+    -unity-font-weight: 400;
+}
+
+.unity-base-field__label {
+    font-weight: 600;
+}
+
+.unity-button__text {
+    font-weight: 700;
 }
 
 .store-container {
@@ -12,6 +36,11 @@
     flex-direction: column;
     align-items: stretch;
     justify-content: flex-start;
+    position: absolute;
+    top: env(safe-area-inset-top);
+    left: 0;
+    right: 0;
+    bottom: 0;
 }
 
 .header-bar {
@@ -29,6 +58,7 @@
     justify-content: center;
     align-items: center;
     flex-grow: 1;
+    padding-top: 47px;
 }
 
 .app-title {
@@ -86,10 +116,9 @@
     align-items: center;
     padding: 16px;
     margin-bottom: 16px;
-    background-color: rgba(30, 30, 30, 0.7);
-    border-width: 1px;
-    border-color: rgba(255, 255, 255, 0.1);
-    border-radius: 5px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+    gap: 16px;
 }
 
 .login-container .profile-status {
@@ -105,12 +134,15 @@
 }
 
 .profile-card {
-    background-color: rgba(30, 30, 30, 0.7);
+    background-color: #1E2017;
     padding: 16px;
-    border-width: 1px;
-    border-color: rgba(255, 255, 255, 0.1);
-    border-radius: 5px;
+    border-width: 3px;
+    border-color: rgba(47, 47, 47, 0.96);
+    border-radius: 12px;
     flex-direction: column;
+    width: 100%;
+    max-width: 600px;
+    box-sizing: border-box;
 }
 
 .profile-card-header {
@@ -143,6 +175,7 @@
 .profile-details {
     flex-direction: column;
     margin-top: 8px;
+    width: 100%;
 }
 
 .detail-row {
@@ -152,22 +185,32 @@
     padding-bottom: 4px;
     border-bottom-width: 1px;
     border-bottom-color: rgba(80, 80, 80, 0.3);
+    width: 100%;
 }
 
 .detail-label {
     color: rgb(180, 180, 180);
     font-size: 14px;
     -unity-font-style: bold;
-    width: 30%;
+    width: 120px;
+    flex-shrink: 0;
 }
 
 .detail-value {
     color: rgb(255, 255, 255);
     font-size: 14px;
-    width: 70%;
+    flex-grow: 1;
     -unity-text-align: upper-right;
     text-overflow: ellipsis;
     overflow: hidden;
+    margin-left: 16px;
+}
+
+#user-id-value {
+    max-width: 120px;
+    -unity-text-overflow-position: end;
+    -unity-text-overflow-mode: truncate;
+    -unity-text-overflow-ellipsis: "...";
 }
 
 .card-title {
@@ -228,7 +271,7 @@
     border-bottom-width: 2px;
     border-bottom-color: rgba(255, 215, 0, 0.4);
     padding-bottom: 8px;
-    width: 80%;
+    width: 100%;
     -unity-text-align: upper-center;
 }
 
@@ -240,33 +283,51 @@
 }
 
 .refresh-button {
-    background-color: rgb(60, 60, 60);
+    background-color: rgb(95, 159, 251);
     color: white;
-    padding: 8px 16px;
+    padding: 4px 8px;
     border-width: 1px;
-    border-color: rgb(100, 100, 100);
-    margin-top: 16px;
+    border-color: rgb(255, 255, 255);
+    border-radius: 12px;
     -unity-font-style: bold;
+    font-size: 12px;
+    width: 80%;
+    height: 28px;
+    justify-content: center;
+    -unity-text-align: upper-center;
+    align-items: center;
+    margin-top: 16px;
     transition-duration: 0.2s;
     align-self: center;
+    font-weight: 900;
 }
 
 .refresh-button:hover {
-    background-color: rgb(80, 80, 80);
-    border-color: rgb(150, 150, 150);
-    translate: 0 -1px;
+    background-color: rgb(85, 149, 241);
 }
 
 .refresh-button:active {
-    background-color: rgb(50, 50, 50);
-    translate: 0 1px;
+    background-color: rgb(75, 139, 231);
+}
+
+.refresh-button > .unity-text-element {
+    color: rgb(255, 215, 0);
+    font-size: 12px;
+    -unity-font-style: bold;
+    font-weight: 900;
+}
+
+.refresh-button:hover > .unity-text-element {
+    color: rgb(255, 215, 0);
 }
 
 .items-scroll-view {
     flex-grow: 1;
-    background-color: rgba(30, 30, 30, 0.7);
+    background-color: transparent;
     padding: 16px;
     overflow: hidden;
+    position: relative;
+    z-index: 2;
 }
 
 .items-scroll-view .unity-scroller {
@@ -309,103 +370,113 @@
     flex-direction: row;
     flex-wrap: wrap;
     justify-content: space-between;
-    padding: 16px;
+    padding: 8px;
     width: 100%;
     max-width: 360px;
     margin: 0 auto;
+    background-color: transparent;
 }
 
 .store-item {
-    width: 120px;
-    height: 140px;
-    margin: 0 0 16px;
-    background-color: rgba(50, 50, 50, 0.75);
+    width: 140px;
+    height: 160px;
+    margin: 0 0 24px;
+    background-color: rgb(67, 67, 75);
+    background-image: url("project://database/Assets/Stash.Samples/Assets/card_bg.png?fileID=21300000&guid=987d48a503707487f8fa551bc69b6915&type=3#card_bg");
+    background-size: 180px 180px;
+    background-repeat: repeat;
     flex-direction: column;
-    border-width: 1px;
-    border-color: rgba(255, 255, 255, 0.15);
-    overflow: hidden;
+    border-width: 3px;
+    border-color: rgba(47, 47, 47, 0.96);
+    border-radius: 12px;
+    overflow: visible;
     transition-duration: 0.2s;
+    padding: 8px;
+    position: relative;
 }
 
 .store-item:hover {
     translate: 0 -2px;
-    border-color: rgba(255, 215, 0, 0.6);
-}
-
-.item-image {
-    width: 100%;
-    height: 80px;
-    background-color: rgba(20, 20, 20, 0.5);
-    background-size: 70%;
-    background-position: center;
-    background-repeat: no-repeat;
-    padding: 0;
-    flex-shrink: 0;
-}
-
-.item-footer {
-    width: 100%;
-    height: 60px;
-    min-height: 60px;
-    flex-shrink: 0;
-    background-color: rgba(20, 20, 20, 0.9);
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 3px;
+    border-color: rgb(95, 159, 251);
 }
 
 .item-name {
     color: white;
     -unity-font-style: bold;
-    font-size: 12px;
-    margin-bottom: 2px;
-    text-overflow: ellipsis;
+    font-size: 14px;
+    font-weight: 900;
+    margin-bottom: 8px;
     overflow: hidden;
-    white-space: nowrap;
+    white-space: normal;
     width: 100%;
     -unity-text-align: upper-center;
+    padding: 0 4px;
+    min-height: 32px;
+    max-height: 32px;
+    -unity-text-overflow-position: end;
+    -unity-text-overflow-mode: truncate;
+    -unity-text-overflow-ellipsis: "...";
+    -unity-text-overflow-max-lines: 2;
+}
+
+.item-image {
+    width: 100%;
+    height: 90px;
+    background-size: 70%;
+    background-position: center;
+    background-repeat: no-repeat;
+    padding: 0;
+    flex-shrink: 0;
+    border-radius: 4px;
+}
+
+.buy-button {
+    background-color: rgb(95, 159, 251);
+    color: white;
+    padding: 4px 8px;
+    border-width: 1px;
+    border-color: rgb(255, 255, 255);
+    border-radius: 12px;
+    -unity-font-style: bold;
+    font-size: 12px;
+    width: 80%;
+    height: 28px;
+    justify-content: center;
+    -unity-text-align: upper-center;
+    align-items: center;
+    position: absolute;
+    bottom: -14px;
+    left: 50%;
+    translate: -50% 0;
+    z-index: 10;
+    font-weight: 900;
+}
+
+.buy-button:hover {
+    background-color: rgb(85, 149, 241);
+}
+
+.buy-button:active {
+    background-color: rgb(75, 139, 231);
+}
+
+.buy-button > .unity-text-element {
+    color: rgb(255, 215, 0);
+    font-size: 12px;
+    -unity-font-style: bold;
+    font-weight: 900;
+}
+
+.buy-button:hover > .unity-text-element {
+    color: rgb(255, 215, 0);
 }
 
 .item-price {
     color: rgb(255, 215, 0);
     font-size: 11px;
-    margin-bottom: 3px;
     -unity-font-style: bold;
     -unity-text-align: upper-center;
-}
-
-.buy-button {
-    background-color: rgb(76, 175, 80);
-    color: white;
-    padding: 4px 8px;
-    border-width: 1px;
-    border-color: rgba(255, 255, 255, 0.2);
-    -unity-font-style: bold;
-    font-size: 10px;
-    transition-duration: 0.2s;
-    width: 80%;
-    height: 20px;
-    justify-content: center;
-    -unity-text-align: upper-center;
-}
-
-.buy-button:hover {
-    background-color: rgb(56, 142, 60);
-    translate: 0 -1px;
-}
-
-.buy-button:active {
-    background-color: rgb(46, 120, 50);
-    translate: 0 1px;
-}
-
-.buy-button > .unity-text-element {
-    color: white;
-}
-
-.buy-button:hover > .unity-text-element {
-    color: rgb(255, 255, 255);
+    font-weight: 700;
 }
 
 .unity-scroll-view {
@@ -413,41 +484,99 @@
 }
 
 .login-button {
-    background-color: rgb(60, 60, 60);
+    background-color: rgb(95, 159, 251);
     color: white;
-    padding: 8px 16px;
+    padding: 4px 8px;
     border-width: 1px;
-    border-color: rgb(100, 100, 100);
-    border-radius: 4px;
-    transition-duration: 0.2s;
-    font-size: 14px;
-    min-width: 100px;
+    border-color: rgb(255, 255, 255);
+    border-radius: 12px;
     -unity-font-style: bold;
+    font-size: 16px;
+    width: 100%;
+    height: 36px;
+    justify-content: center;
+    -unity-text-align: middle-center;
+    align-items: center;
+    transition-duration: 0.2s;
+    font-weight: 1000;
+    margin-top: 16px;
 }
 
 .login-button:hover {
-    background-color: rgb(80, 80, 80);
-    border-color: rgb(150, 150, 150);
-    translate: 0 -1px;
+    background-color: rgb(85, 149, 241);
 }
 
 .login-button:active {
-    background-color: rgb(50, 50, 50);
-    translate: 0 1px;
+    background-color: rgb(75, 139, 231);
+}
+
+.login-button > .unity-text-element {
+    color: rgb(255, 215, 0);
+    font-size: 16px;
+    -unity-font-style: bold;
+    font-weight: 1000;
+    -unity-text-align: middle-center;
+    -unity-text-transform: uppercase;
+}
+
+.login-button:hover > .unity-text-element {
+    color: rgb(255, 215, 0);
+}
+
+.logout-button {
+    background-color: rgb(251, 95, 95);
+    color: white;
+    padding: 4px 8px;
+    border-width: 1px;
+    border-color: rgb(255, 255, 255);
+    border-radius: 12px;
+    -unity-font-style: bold;
+    font-size: 16px;
+    width: 100%;
+    height: 36px;
+    justify-content: center;
+    -unity-text-align: middle-center;
+    align-items: center;
+    transition-duration: 0.2s;
+    font-weight: 1000;
+    margin-top: 16px;
+}
+
+.logout-button:hover {
+    background-color: rgb(241, 85, 85);
+}
+
+.logout-button:active {
+    background-color: rgb(231, 75, 75);
+}
+
+.logout-button > .unity-text-element {
+    color: rgb(255, 215, 0);
+    font-size: 16px;
+    -unity-font-style: bold;
+    font-weight: 1000;
+    -unity-text-align: middle-center;
+    -unity-text-transform: uppercase;
+}
+
+.logout-button:hover > .unity-text-element {
+    color: rgb(255, 215, 0);
 }
 
 .tabs-container {
     flex-direction: row;
-    background-color: rgb(40, 40, 40);
+    background-color: rgba(30, 30, 30, 0.85);
     padding: 0 16px;
     height: 40px;
     align-items: flex-end;
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(255, 255, 255, 0.1);
 }
 
 .tab-button {
     padding: 10px 20px;
     margin-right: 2px;
-    background-color: rgba(50, 50, 50, 0.6);
+    background-color: transparent;
     color: rgba(200, 200, 200, 0.8);
     border-width: 0;
     border-bottom-width: 3px;
@@ -457,17 +586,19 @@
     font-size: 14px;
     flex: 0 1 auto;
     -unity-font-style: normal;
+    border-radius: 12px 12px 0 0;
+    -unity-font: url("project://database/Assets/Stash.Samples/Assets/FactorA-Medium.ttf?fileID=12800000&guid=6b89bab2b57b04955867564d42be558d&type=3#FactorA-Medium");
 }
 
 .tab-button:hover {
     color: white;
-    background-color: rgba(70, 70, 70, 0.6);
+    background-color: transparent;
 }
 
 .tab-button.tab-selected {
     color: rgb(255, 255, 255);
-    background-color: rgb(60, 60, 60);
-    border-bottom-color: rgb(255, 215, 0);
+    background-color: transparent;
+    border-bottom-color: rgb(255, 255, 255);
     border-bottom-width: 3px;
     -unity-font-style: bold;
 }
@@ -475,23 +606,45 @@
 .tab-content {
     flex-grow: 1;
     flex-direction: column;
+    position: relative;
+}
+
+.content-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 0;
 }
 
 .tab-panel {
+    position: relative;
+    z-index: 1;
     width: 100%;
     height: 100%;
     flex-grow: 1;
 }
 
+.tab-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.4);
+    z-index: 0;
+}
+
 .user-profile {
-    width: 90%;
-    max-width: 800px;
-    background-color: rgba(40, 40, 40, 0.85);
-    padding: 20px;
-    margin: 20px auto;
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    padding: 25px;
     flex-direction: column;
-    border-width: 1px;
-    border-color: rgba(255, 215, 0, 0.3);
+    align-items: center;
 }
 
 .settings-section {
@@ -691,4 +844,324 @@
     background-color: rgba(76, 175, 80, 0.5);
     color: rgba(255, 255, 255, 0.5);
     translate: 0 0;
+}
+
+.webshop-container {
+    width: 100%;
+    height: 100%;
+    padding: 25px;
+    padding-bottom: 120px;
+    align-items: stretch;
+    justify-content: stretch;
+    position: relative;
+}
+
+.webshop-card {
+    width: 100%;
+    height: 100%;
+    background-image: url("project://database/Assets/Stash.Samples/Assets/webshop_card.png");
+    background-size: cover;
+    background-position: center;
+    border-width: 3px;
+    border-color: rgba(47, 47, 47, 0.96);
+    border-radius: 12px;
+    position: relative;
+    transition-duration: 0.2s;
+}
+
+.webshop-button-container {
+    position: absolute;
+    bottom: 40px;
+    left: 0;
+    right: 0;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.webshop-description {
+    color: rgb(200, 200, 200);
+    font-size: 16px;
+    -unity-font-style: bold;
+    -unity-text-align: upper-center;
+    width: 100%;
+    max-width: 400px;
+    margin-bottom: 8px;
+    white-space: normal;
+    -unity-text-overflow-position: end;
+    -unity-text-overflow-mode: word-wrap;
+    -unity-text-overflow-ellipsis: "...";
+    padding: 0 20px;
+    box-sizing: border-box;
+}
+
+.action-button {
+    background-color: rgb(95, 159, 251);
+    color: white;
+    padding: 4px 8px;
+    border-width: 1px;
+    border-color: rgb(255, 255, 255);
+    border-radius: 12px;
+    -unity-font-style: bold;
+    font-size: 14px;
+    width: 90%;
+    height: 36px;
+    justify-content: center;
+    -unity-text-align: middle-center;
+    align-items: center;
+    transition-duration: 0.2s;
+    font-weight: 900;
+}
+
+.action-button:hover {
+    background-color: rgb(85, 149, 241);
+}
+
+.action-button:active {
+    background-color: rgb(75, 139, 231);
+}
+
+.action-button > .unity-text-element {
+    color: rgb(255, 215, 0);
+    font-size: 16px;
+    -unity-font-style: bold;
+    font-weight: 1000;
+    -unity-text-align: middle-center;
+}
+
+.action-button.disabled-button {
+    background-color: rgb(67, 67, 75);
+    border-color: rgba(255, 255, 255, 0.3);
+    opacity: 0.7;
+}
+
+.action-button.disabled-button > .unity-text-element {
+    color: rgb(180, 180, 180);
+}
+
+.action-button.disabled-button:hover {
+    background-color: rgb(67, 67, 75);
+    scale: 1;
+}
+
+.account-description-container {
+    background-color: rgba(30, 30, 30, 0.7);
+    padding: 16px;
+    margin-bottom: 16px;
+    border-width: 1px;
+    border-color: rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    width: 100%;
+    max-width: 600px;
+    box-sizing: border-box;
+}
+
+.account-description {
+    color: rgb(200, 200, 200);
+    font-size: 14px;
+    -unity-font-style: normal;
+    -unity-text-align: upper-center;
+    white-space: normal;
+    -unity-text-overflow-position: end;
+    -unity-text-overflow-mode: word-wrap;
+    -unity-text-overflow-ellipsis: "...";
+    padding: 0 20px;
+    box-sizing: border-box;
+}
+
+.help-button-container {
+    margin-right: 0px;
+    margin-top: 45px;
+    align-self: center;
+}
+
+.help-button {
+    width: 24px;
+    height: 24px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-width: 0;
+    border-radius: 12px;
+    color: rgb(0, 0, 0);
+    font-size: 16px;
+    -unity-font-style: bold;
+    transition-duration: 0.2s;
+}
+
+.help-button:hover {
+    background-color: rgba(0, 0, 0, 0.3);
+    scale: 1.1;
+}
+
+.help-button:active {
+    scale: 0.95;
+}
+
+.help-dialog {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+}
+
+.help-dialog-content {
+    background-color: rgb(67, 67, 75);
+    background-repeat: repeat;
+    border-width: 3px;
+    border-color: rgba(47, 47, 47, 0.96);
+    border-radius: 12px;
+    padding: 24px;
+    width: 400px;
+    max-width: 90%;
+    flex-direction: column;
+    gap: 16px;
+    transition-duration: 0.2s;
+}
+
+.help-dialog-text {
+    color: rgb(200, 200, 200);
+    font-size: 14px;
+    white-space: normal;
+    -unity-text-align: middle-center;
+    padding: 0 16px;
+    line-height: 1.5;
+    margin-bottom: 8px;
+}
+
+.help-dialog-close-button {
+    background-color: rgb(95, 159, 251);
+    color: white;
+    padding: 8px 16px;
+    border-width: 1px;
+    border-color: rgb(255, 255, 255);
+    border-radius: 12px;
+    -unity-font-style: bold;
+    font-size: 14px;
+    width: 100%;
+    height: 36px;
+    justify-content: center;
+    -unity-text-align: middle-center;
+    align-items: center;
+    transition-duration: 0.2s;
+}
+
+.help-dialog-close-button:hover {
+    background-color: rgb(85, 149, 241);
+}
+
+.help-dialog-close-button:active {
+    background-color: rgb(75, 139, 231);
+}
+
+.help-dialog-video-button {
+    background-color: rgb(255, 215, 0);
+    color: rgb(0, 0, 0);
+    padding: 8px 16px;
+    border-width: 1px;
+    border-color: rgb(255, 255, 255);
+    border-radius: 12px;
+    -unity-font-style: bold;
+    font-size: 14px;
+    width: 100%;
+    height: 36px;
+    justify-content: center;
+    -unity-text-align: middle-center;
+    align-items: center;
+    transition-duration: 0.2s;
+    margin-bottom: 8px;
+}
+
+.help-dialog-video-button:hover {
+    background-color: rgb(255, 225, 50);
+}
+
+.help-dialog-video-button:active {
+    background-color: rgb(235, 195, 0);
+}
+
+.help-dialog-video-button > .unity-text-element {
+    color: rgb(0, 0, 0);
+    font-size: 14px;
+    -unity-font-style: bold;
+    font-weight: 900;
+}
+
+.help-description-dialog {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background-color: rgba(67, 67, 75, 0.75);
+    border-width: 1px;
+    border-color: rgba(47, 47, 47, 0.96);
+    border-radius: 12px 12px 0 0;
+    padding: 16px;
+    flex-direction: column;
+    transition-duration: 0.3s;
+    transition-property: translate;
+    translate: 0 100%;
+    z-index: 100;
+    margin: 0;
+    width: 100%;
+}
+
+.help-description-dialog.visible {
+    translate: 0 0;
+}
+
+.help-description-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom-width: 2px;
+    border-bottom-color: rgba(255, 255, 255, 0.2);
+}
+
+.help-description-title {
+    color: rgb(255, 255, 255);
+    font-size: 16px;
+    -unity-font-style: bold;
+    font-weight: 900;
+}
+
+.help-description-close-button {
+    width: 28px;
+    height: 28px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-width: 0;
+    border-radius: 14px;
+    color: rgb(255, 255, 255);
+    font-size: 18px;
+    -unity-font-style: bold;
+    transition-duration: 0.2s;
+    justify-content: center;
+    align-items: center;
+}
+
+.help-description-close-button:hover {
+    background-color: rgba(0, 0, 0, 0.3);
+    scale: 1.1;
+}
+
+.help-description-close-button:active {
+    scale: 0.95;
+}
+
+.help-description-content {
+    color: rgb(200, 200, 200);
+    font-size: 13px;
+    white-space: normal;
+    -unity-text-align: middle-left;
+    line-height: 1.4;
+    padding: 0 4px;
 }

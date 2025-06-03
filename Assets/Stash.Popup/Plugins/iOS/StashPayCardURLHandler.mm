@@ -73,6 +73,7 @@ static BOOL _isCardExpanded = NO;
     WKWebView* _webView;
     UIView* _loadingView;
     NSTimer* _timeoutTimer;
+    BOOL _hasStartedRendering;
 }
 
 - (instancetype)initWithWebView:(WKWebView*)webView loadingView:(UIView*)loadingView {
@@ -80,9 +81,10 @@ static BOOL _isCardExpanded = NO;
     if (self) {
         _webView = webView;
         _loadingView = loadingView;
+        _hasStartedRendering = NO;
         
         // Create a fallback timer to handle cases where navigation events aren't fired
-        _timeoutTimer = [NSTimer scheduledTimerWithTimeInterval:5.0 
+        _timeoutTimer = [NSTimer scheduledTimerWithTimeInterval:0.3  // Reduced to 0.3 seconds
                                                         target:self 
                                                       selector:@selector(handleTimeout:) 
                                                       userInfo:nil 
@@ -134,7 +136,25 @@ static BOOL _isCardExpanded = NO;
 
 - (void)handleTimeout:(NSTimer*)timer {
     if (_webView.hidden) {
+        // Check if the page is truly ready
+        NSString *readyCheck = @"(function() { \
+            if (document.readyState !== 'complete') return false; \
+            if (document.documentElement.style.display === 'none') return false; \
+            if (document.body === null) return false; \
+            if (window.getComputedStyle(document.body).display === 'none') return false; \
+            return true; \
+        })()";
+        
+        [_webView evaluateJavaScript:readyCheck completionHandler:^(id result, NSError *error) {
+            if ([result boolValue]) {
         [self showWebViewAndRemoveLoading];
+            } else {
+                // If not ready, wait a bit more
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    [self handleTimeout:timer];
+                });
+            }
+        }];
     }
 }
 
@@ -145,34 +165,143 @@ static BOOL _isCardExpanded = NO;
     }
     
     if (_webView.hidden) {
-        // Add 1 second delay before showing webview
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [UIView animateWithDuration:0.3 animations:^{
+        // Final check to ensure page is truly ready
+        [_webView evaluateJavaScript:@"document.readyState === 'complete' && document.body !== null" completionHandler:^(id result, NSError *error) {
+            if (![result boolValue]) {
+                // If not ready, wait and try again
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    [self showWebViewAndRemoveLoading];
+                });
+                return;
+            }
+            
+            // Get the current system background color
+            UIColor *backgroundColor;
+            if (@available(iOS 13.0, *)) {
+                UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
+                backgroundColor = (currentStyle == UIUserInterfaceStyleDark) ? [UIColor blackColor] : [UIColor systemBackgroundColor];
+            } else {
+                backgroundColor = [UIColor whiteColor];
+            }
+            
+            // Set the WebView background color before showing
+            self->_webView.backgroundColor = backgroundColor;
+            self->_webView.scrollView.backgroundColor = backgroundColor;
+            self->_webView.scrollView.opaque = YES;
+            
+            // Force background color one last time
+            if (@available(iOS 13.0, *)) {
+                UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
+                if (currentStyle == UIUserInterfaceStyleDark) {
+                    NSString *forceColor = @"document.documentElement.style.backgroundColor = 'black'; \
+                                          document.body.style.backgroundColor = 'black'; \
+                                          var style = document.createElement('style'); \
+                                          style.innerHTML = 'body, html { background-color: black !important; }'; \
+                                          document.head.appendChild(style);";
+                    [self->_webView evaluateJavaScript:forceColor completionHandler:nil];
+                }
+            }
+            
+            // First fade out the loading view
+            [UIView animateWithDuration:0.2 animations:^{
                 self->_loadingView.alpha = 0.0;
             } completion:^(BOOL finished) {
+                // Make absolutely sure the page is ready before showing
+                [self->_webView evaluateJavaScript:@"document.body !== null && window.getComputedStyle(document.body).display !== 'none'" completionHandler:^(id result, NSError *error) {
+                    if ([result boolValue]) {
                 self->_webView.hidden = NO;
                 [self->_loadingView removeFromSuperview];
+                    } else {
+                        // If somehow not ready, restore loading view and try again
+                        self->_loadingView.alpha = 1.0;
+                        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                            [self showWebViewAndRemoveLoading];
+                        });
+                    }
+                }];
             }];
-        });
+        }];
     }
 }
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
+    // Don't show the webview immediately after navigation finishes
+    // Wait for the first content to be drawn
+    _hasStartedRendering = NO;
+    
+    // Function to check if page is truly ready
+    void (^checkPageReady)(void) = ^{
+        NSString *readyCheck = @"(function() { \
+            if (document.readyState !== 'complete') return false; \
+            if (document.documentElement.style.display === 'none') return false; \
+            if (document.body === null) return false; \
+            if (window.getComputedStyle(document.body).display === 'none') return false; \
+            return true; \
+        })()";
+        
+        [webView evaluateJavaScript:readyCheck completionHandler:^(id result, NSError *error) {
+            if ([result boolValue]) {
+                // Page is ready, force background color and show WebView
+                if (@available(iOS 13.0, *)) {
+                    UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
+                    if (currentStyle == UIUserInterfaceStyleDark) {
+                        NSString *forceColor = @"document.documentElement.style.backgroundColor = 'black'; \
+                                              document.body.style.backgroundColor = 'black'; \
+                                              var style = document.createElement('style'); \
+                                              style.innerHTML = 'body, html { background-color: black !important; }'; \
+                                              document.head.appendChild(style);";
+                        [webView evaluateJavaScript:forceColor completionHandler:^(id result, NSError *error) {
+                            // Wait a tiny bit more to ensure styles are applied
+                            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
     [self showWebViewAndRemoveLoading];
+                            });
+                        }];
+                    } else {
+                        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                            [self showWebViewAndRemoveLoading];
+                        });
+                    }
+                } else {
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                        [self showWebViewAndRemoveLoading];
+                    });
+                }
+            } else {
+                // Page not ready yet, check again after a short delay
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    checkPageReady();
+                });
+            }
+        }];
+    };
+    
+    // Start checking if page is ready
+    checkPageReady();
 }
 
 - (void)webView:(WKWebView *)webView didCommitNavigation:(WKNavigation *)navigation {
+    // Content has started rendering
+    _hasStartedRendering = YES;
+    // Don't show the webview here anymore, wait for full load
 }
 
 - (void)webView:(WKWebView *)webView didStartProvisionalNavigation:(WKNavigation *)navigation {
+    // Keep loading view visible
+    _hasStartedRendering = NO;
 }
 
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    // Even on error, wait a bit before showing to prevent flashing
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
     [self showWebViewAndRemoveLoading];
+    });
 }
 
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    // Even on error, wait a bit before showing to prevent flashing
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
     [self showWebViewAndRemoveLoading];
+    });
 }
 
 - (void)dealloc {
@@ -346,7 +475,7 @@ static BOOL _isCardExpanded = NO;
             
             if (shouldDismiss) {
                 // Animate the rest of the way out, then dismiss
-                [UIView animateWithDuration:0.2 animations:^{
+                [UIView animateWithDuration:0.15 animations:^{  // Reduced from 0.2
                     view.frame = CGRectMake(view.frame.origin.x, finalY, view.frame.size.width, height);
                     view.superview.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.0];
                 } completion:^(BOOL finished) {
@@ -356,14 +485,15 @@ static BOOL _isCardExpanded = NO;
                 }];
             } else {
                 // Animate back to original position with spring animation
-                [UIView animateWithDuration:0.3 
+                [UIView animateWithDuration:0.2  // Reduced from 0.3
                                       delay:0 
                      usingSpringWithDamping:0.7 
                       initialSpringVelocity:0 
                                     options:UIViewAnimationOptionCurveEaseOut 
                                  animations:^{
                     view.frame = CGRectMake(view.frame.origin.x, self.initialY, view.frame.size.width, height);
-                    view.superview.backgroundColor = [UIColor colorWithWhite:0.0 alpha:(_isCardExpanded ? 0.6 : 0.4)];
+                    CGFloat baseOpacity = _isCardExpanded ? 0.6 : 0.4;
+                    view.superview.backgroundColor = [UIColor colorWithWhite:0.0 alpha:baseOpacity];
                 } completion:nil];
             }
             break;
@@ -753,7 +883,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     }
     
     // Animate to full screen (edge-to-edge)
-    [UIView animateWithDuration:0.3 animations:^{
+    [UIView animateWithDuration:0.2 animations:^{  // Reduced from 0.3
         cardView.frame = fullScreenFrame;
         cardView.superview.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.6]; // Semi-transparent instead of solid black
     } completion:^(BOOL finished) {
@@ -854,7 +984,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     }
     
     // Animate back to original size
-    [UIView animateWithDuration:0.3 animations:^{
+    [UIView animateWithDuration:0.2 animations:^{  // Reduced from 0.3
         cardView.frame = CGRectMake(x, finalY, width, height);
         cardView.superview.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.4];
     } completion:^(BOOL finished) {
@@ -1162,7 +1292,7 @@ UIView* CreateLoadingView(CGRect frame) {
         isDarkMode = (currentStyle == UIUserInterfaceStyleDark);
     }
     
-    // Set the background color based on mode
+    // Set the background color based on mode - use pure black in dark mode
     loadingView.backgroundColor = isDarkMode ? [UIColor blackColor] : [UIColor whiteColor];
     
     // Calculate the reduced size (70% of original) with padding for animation
@@ -1355,6 +1485,29 @@ extern "C" {
                 // Add JavaScript handler for window.close() interception
                 WKUserContentController *userContentController = [[WKUserContentController alloc] init];
                 
+                // Add viewport meta tag and transparent background styles
+                NSString *viewportScript = @"var meta = document.createElement('meta'); \
+                    meta.name = 'viewport'; \
+                    meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover'; \
+                    document.head.appendChild(meta); \
+                    document.documentElement.style.backgroundColor = 'transparent'; \
+                    document.body.style.backgroundColor = 'transparent';";
+                
+                WKUserScript *viewportInjection = [[WKUserScript alloc] initWithSource:viewportScript
+                                                                       injectionTime:WKUserScriptInjectionTimeAtDocumentEnd
+                                                                    forMainFrameOnly:YES];
+                [userContentController addUserScript:viewportInjection];
+                
+                // Add transparent background styles
+                NSString *transparencyStyles = @"body, html { background-color: transparent !important; } \
+                    :root { background-color: transparent !important; }";
+                WKUserScript *styleInjection = [[WKUserScript alloc] initWithSource:[NSString stringWithFormat:@"var style = document.createElement('style'); \
+                    style.innerHTML = '%@'; \
+                    document.head.appendChild(style);", transparencyStyles]
+                                                                    injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+                                                                 forMainFrameOnly:YES];
+                [userContentController addUserScript:styleInjection];
+                
                 // JavaScript code to intercept window.close() calls
                 NSString *windowCloseScript = @"(function() {"
                     "console.log('Setting up window.close() handler');"
@@ -1362,7 +1515,7 @@ extern "C" {
                     "window.close = function() {"
                         "console.log('window.close() called - sending message to native code');"
                         "window.webkit.messageHandlers.windowClose.postMessage('close');"
-                        "originalClose.call(window);" // Still call original close for proper behavior
+                        "originalClose.call(window);"
                     "};"
                     "console.log('window.close() handler setup complete');"
                 "})();";
@@ -1377,203 +1530,57 @@ extern "C" {
                 
                 config.userContentController = userContentController;
                 
-                // Setup a web view controller
+                // Setup a web view controller with transparent background
                 WKWebView *webView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:config];
-                
-                // Set proper background colors to prevent black borders during overscroll
-                UIColor *webViewBackgroundColor;
-                if (@available(iOS 13.0, *)) {
-                    webViewBackgroundColor = [UIColor systemBackgroundColor]; // Adapts to light/dark mode
-                } else {
-                    webViewBackgroundColor = [UIColor whiteColor]; // Fallback for older iOS
-                }
-                
-                webView.backgroundColor = webViewBackgroundColor; // Use system background, not clear
-                webView.opaque = YES; // Make opaque to prevent transparency issues
+                webView.opaque = NO;
+                webView.backgroundColor = [UIColor clearColor];
+                webView.scrollView.backgroundColor = [UIColor clearColor];
+                webView.hidden = YES;
                 webView.translatesAutoresizingMaskIntoConstraints = NO;
-                webView.hidden = YES; // Hide webview initially until loaded
                 
-                // COMPREHENSIVE SCROLL OVERFLOW PREVENTION - ENHANCED
-                webView.scrollView.bounces = NO; // Prevent bouncing effect
-                webView.scrollView.alwaysBounceVertical = NO; // Never allow vertical bouncing
-                webView.scrollView.alwaysBounceHorizontal = NO; // Never allow horizontal bouncing
-                webView.scrollView.backgroundColor = webViewBackgroundColor; // Match webview background to prevent black borders
-                webView.scrollView.showsVerticalScrollIndicator = YES; // Keep scroll indicators for UX
-                webView.scrollView.showsHorizontalScrollIndicator = NO; // Hide horizontal scroll since we're edge-to-edge
+                // Disable scroll bounce and content insets
+                webView.scrollView.bounces = NO;
+                webView.scrollView.alwaysBounceVertical = NO;
+                webView.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
                 
-                // Prevent any content overflow or rubber-band effect
-                webView.scrollView.clipsToBounds = YES; // Clip any overflow content
-                webView.scrollView.scrollsToTop = YES; // Allow tap status bar to scroll to top
-                
-                // CRITICAL: Disable content inset adjustments completely for edge-to-edge control
-                webView.scrollView.contentInset = UIEdgeInsetsZero; // Ensure no extra insets
-                webView.scrollView.scrollIndicatorInsets = UIEdgeInsetsZero; // Align scroll indicators properly
-                
-                // Additional text selection prevention at scroll view level (less aggressive)
-                webView.scrollView.canCancelContentTouches = YES; // Allow canceling touches for better control
-                webView.scrollView.delaysContentTouches = NO; // Don't delay content touches to preserve responsiveness
-                
-                // Disable automatic content inset behavior to prevent overscrolling
+                // Remove any automatic margins or safe area insets
                 if (@available(iOS 11.0, *)) {
-                    webView.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever; // Complete manual control
+                    webView.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+                    webView.scrollView.contentInset = UIEdgeInsetsZero;
+                    webView.scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
                 }
                 
-                // Additional overscroll prevention properties
-                webView.scrollView.decelerationRate = UIScrollViewDecelerationRateNormal; // Normal deceleration
-                
-                // Comprehensive text selection and image saving prevention
-                
-                // Disable text selection at WebView level
-                if (@available(iOS 16.4, *)) {
-                    webView.interactionState = nil;
+                // Use the proper public API for iOS 9.0+
+                if ([webView respondsToSelector:@selector(setOpaque:)]) {
+                    [webView setOpaque:NO];
                 }
                 
-                // Disable text selection for older iOS versions
-                if (@available(iOS 11.0, *)) {
-                    webView.configuration.selectionGranularity = WKSelectionGranularityCharacter;
+                // Additional transparency settings for the scrollView
+                webView.scrollView.opaque = NO;
+                for (UIView *subview in webView.scrollView.subviews) {
+                    subview.backgroundColor = [UIColor clearColor];
                 }
                 
-                // Enhanced CSS and JavaScript injection for targeted prevention
-                NSString *preventSelectionScript = @""
-                    "// Targeted text selection and context menu prevention\n"
-                    "(function() {\n"
-                    "    // Add CSS to prevent selection while preserving interactions\n"
-                    "    var style = document.createElement('style');\n"
-                    "    style.innerHTML = `\n"
-                    "        /* Prevent text selection on non-interactive elements */\n"
-                    "        body, div, span, p, h1, h2, h3, h4, h5, h6, label {\n"
-                    "            -webkit-user-select: none !important;\n"
-                    "            -moz-user-select: none !important;\n"
-                    "            -ms-user-select: none !important;\n"
-                    "            user-select: none !important;\n"
-                    "            -webkit-touch-callout: none !important;\n"
-                    "        }\n"
-                    "        \n"
-                    "        /* Preserve functionality for interactive elements */\n"
-                    "        input, textarea, select, button, [contenteditable], a, [role=\"button\"], [onclick] {\n"
-                    "            -webkit-user-select: text !important;\n"
-                    "            -moz-user-select: text !important;\n"
-                    "            -ms-user-select: text !important;\n"
-                    "            user-select: text !important;\n"
-                    "            -webkit-touch-callout: default !important;\n"
-                    "            pointer-events: auto !important;\n"
-                    "        }\n"
-                    "        \n"
-                    "        /* Special handling for buttons and clickable elements */\n"
-                    "        button, [role=\"button\"], [onclick], a {\n"
-                    "            -webkit-user-select: none !important;\n"
-                    "            -moz-user-select: none !important;\n"
-                    "            -ms-user-select: none !important;\n"
-                    "            user-select: none !important;\n"
-                    "            pointer-events: auto !important;\n"
-                    "        }\n"
-                    "        \n"
-                    "        /* Prevent image interactions */\n"
-                    "        img {\n"
-                    "            -webkit-user-drag: none !important;\n"
-                    "            -webkit-user-select: none !important;\n"
-                    "            -moz-user-select: none !important;\n"
-                    "            user-select: none !important;\n"
-                    "            pointer-events: none !important;\n"
-                    "        }\n"
-                    "    `;\n"
-                    "    document.head.appendChild(style);\n"
-                    "    \n"
-                    "    // Prevent context menu only on non-interactive elements\n"
-                    "    document.addEventListener('contextmenu', function(e) {\n"
-                    "        var target = e.target;\n"
-                    "        var isInteractive = target.tagName === 'INPUT' || \n"
-                    "                           target.tagName === 'TEXTAREA' || \n"
-                    "                           target.tagName === 'SELECT' || \n"
-                    "                           target.tagName === 'BUTTON' || \n"
-                    "                           target.tagName === 'A' || \n"
-                    "                           target.hasAttribute('onclick') || \n"
-                    "                           target.getAttribute('role') === 'button' || \n"
-                    "                           target.isContentEditable;\n"
-                    "        \n"
-                    "        if (!isInteractive) {\n"
-                    "            e.preventDefault();\n"
-                    "            e.stopPropagation();\n"
-                    "            return false;\n"
-                    "        }\n"
-                    "    }, true);\n"
-                    "    \n"
-                    "    // Prevent selection events on non-interactive elements\n"
-                    "    document.addEventListener('selectstart', function(e) {\n"
-                    "        var target = e.target;\n"
-                    "        var isInteractive = target.tagName === 'INPUT' || \n"
-                    "                           target.tagName === 'TEXTAREA' || \n"
-                    "                           target.isContentEditable;\n"
-                    "        \n"
-                    "        if (!isInteractive) {\n"
-                    "            e.preventDefault();\n"
-                    "            e.stopPropagation();\n"
-                    "            return false;\n"
-                    "        }\n"
-                    "    }, true);\n"
-                    "    \n"
-                    "    // Prevent drag events on images only\n"
-                    "    document.addEventListener('dragstart', function(e) {\n"
-                    "        if (e.target.tagName === 'IMG') {\n"
-                    "            e.preventDefault();\n"
-                    "            e.stopPropagation();\n"
-                    "            return false;\n"
-                    "        }\n"
-                    "    }, true);\n"
-                    "    \n"
-                    "    // Apply to dynamically added content\n"
-                    "    var observer = new MutationObserver(function(mutations) {\n"
-                    "        mutations.forEach(function(mutation) {\n"
-                    "            mutation.addedNodes.forEach(function(node) {\n"
-                    "                if (node.nodeType === 1) {\n"
-                    "                    var imgs = node.querySelectorAll ? node.querySelectorAll('img') : [];\n"
-                    "                    for (var i = 0; i < imgs.length; i++) {\n"
-                    "                        imgs[i].style.pointerEvents = 'none';\n"
-                    "                        imgs[i].style.webkitUserSelect = 'none';\n"
-                    "                        imgs[i].style.webkitUserDrag = 'none';\n"
-                    "                    }\n"
-                    "                }\n"
-                    "            });\n"
-                    "        });\n"
-                    "    });\n"
-                    "    observer.observe(document.body, { childList: true, subtree: true });\n"
-                    "})();"
-                ;
+                // Add viewport meta tag to prevent any margins
+                NSString *noMarginsScript = @"var style = document.createElement('style'); \
+                    style.innerHTML = 'body { margin: 0 !important; padding: 0 !important; min-height: 100% !important; } \
+                    html { margin: 0 !important; padding: 0 !important; height: 100% !important; }'; \
+                    document.head.appendChild(style);";
                 
-                WKUserScript *preventSelectionUserScript = [[WKUserScript alloc] initWithSource:preventSelectionScript 
-                                                                                  injectionTime:WKUserScriptInjectionTimeAtDocumentStart 
-                                                                               forMainFrameOnly:NO];
-                [userContentController addUserScript:preventSelectionUserScript];
-                
-                // Also inject at document end to catch dynamically loaded content
-                WKUserScript *preventSelectionEndScript = [[WKUserScript alloc] initWithSource:preventSelectionScript 
-                                                                                 injectionTime:WKUserScriptInjectionTimeAtDocumentEnd 
-                                                                              forMainFrameOnly:NO];
-                [userContentController addUserScript:preventSelectionEndScript];
-                
-                // Allow keychain access for autofill
-                webView.allowsLinkPreview = NO; // Disable link preview which can show context menus
-                if (@available(iOS 14.0, *)) {
-                    webView.allowsBackForwardNavigationGestures = NO; // Prevent accidental navigation
-                }
-                
-                // Create an explicit URL request
-                NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url 
-                                                                       cachePolicy:NSURLRequestUseProtocolCachePolicy
-                                                                   timeoutInterval:30.0];
-                
-                // Add standard headers
-                [request setValue:@"Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1" forHTTPHeaderField:@"User-Agent"];
-            
-                // Log the URL we're trying to load
-                NSLog(@"Loading URL in WebView: %@", url.absoluteString);
-                
-                // Load the request
-                [webView loadRequest:request];
+                WKUserScript *noMarginsInjection = [[WKUserScript alloc] initWithSource:noMarginsScript
+                                                                         injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+                                                                      forMainFrameOnly:YES];
+                [config.userContentController addUserScript:noMarginsInjection];
                 
                 // Create loading view with logo
                 UIView* loadingView = CreateLoadingView(CGRectZero);
-                loadingView.backgroundColor = webViewBackgroundColor; // Match webview background
+                // Use the appropriate background color for the loading view
+                if (@available(iOS 13.0, *)) {
+                    UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
+                    loadingView.backgroundColor = (currentStyle == UIUserInterfaceStyleDark) ? [UIColor blackColor] : [UIColor systemBackgroundColor];
+                } else {
+                    loadingView.backgroundColor = [UIColor whiteColor];
+                }
                 loadingView.translatesAutoresizingMaskIntoConstraints = NO;
                 
                 [containerVC.view addSubview:loadingView];
@@ -1607,78 +1614,57 @@ extern "C" {
                 objc_setAssociatedObject(containerVC, "webViewDelegate", delegate, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 objc_setAssociatedObject(containerVC, "webViewUIDelegate", uiDelegate, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 
-                // Monitor and selectively remove text selection gestures (less aggressive)
-                NSTimer *gestureMonitorTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer * _Nonnull timer) {
-                    for (UIView *subview in webView.scrollView.subviews) {
-                        if ([subview isKindOfClass:NSClassFromString(@"WKContentView")]) {
-                            NSArray *gestureRecognizers = [subview.gestureRecognizers copy];
-                            for (UIGestureRecognizer *recognizer in gestureRecognizers) {
-                                // Only remove long press gestures that are specifically for text selection
-                                if ([recognizer isKindOfClass:[UILongPressGestureRecognizer class]]) {
-                                    UILongPressGestureRecognizer *longPress = (UILongPressGestureRecognizer *)recognizer;
-                                    // Only remove if it's the default text selection long press (0.5 second delay)
-                                    if (longPress.minimumPressDuration <= 0.5) {
-                                        [subview removeGestureRecognizer:recognizer];
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }];
+                // Create an explicit URL request with aggressive caching
+                NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url 
+                                                                    cachePolicy:NSURLRequestReturnCacheDataElseLoad
+                                                                timeoutInterval:30.0];
                 
-                // Store timer to clean up later
-                objc_setAssociatedObject(containerVC, "gestureMonitorTimer", gestureMonitorTimer, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                // Add standard headers
+                [request setValue:@"Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1" forHTTPHeaderField:@"User-Agent"];
                 
-                // Pre-configure the view with transparent background
-                containerVC.view.backgroundColor = [UIColor clearColor];
+                // Start loading the WebView immediately
+                [webView loadRequest:request];
                 
-                // Apply initial frame off-screen
+                // Calculate card dimensions
                 CGRect screenBounds = [UIScreen mainScreen].bounds;
                 CGFloat width, height, x, finalY;
                 
                 // Handle iPad with iPhone-like aspect ratio and centering
                 if (isRunningOniPad()) {
-                    NSLog(@"Detected iPad - using iPhone aspect ratio and centering");
                     CGSize cardSize = calculateiPadCardSize(screenBounds);
                     width = cardSize.width;
                     height = cardSize.height;
-                    
-                    // Center the card on iPad
                     x = (screenBounds.size.width - width) / 2;
                     finalY = (screenBounds.size.height - height) / 2;
-                    
-                    NSLog(@"iPad card positioned at: x=%.0f, y=%.0f, size=%.0fx%.0f", x, finalY, width, height);
                 } else {
-                    // iPhone/standard behavior
-                    width = screenBounds.size.width * _cardWidthRatio;  // Configurable width
-                    height = screenBounds.size.height * _cardHeightRatio; // Configurable height
-                    x = (screenBounds.size.width - width) / 2; // Center horizontally
-                    
-                    // Calculate vertical position based on _cardVerticalPosition
-                    // 0.0 = top of screen, 1.0 = bottom of screen, 0.5 = middle
+                    width = screenBounds.size.width * _cardWidthRatio;
+                    height = screenBounds.size.height * _cardHeightRatio;
+                    x = (screenBounds.size.width - width) / 2;
                     finalY = screenBounds.size.height * _cardVerticalPosition - height;
-                    // Ensure the card doesn't go above the top of the screen
                     if (finalY < 0) finalY = 0;
-                    
-                    NSLog(@"iPhone card positioned at: x=%.0f, y=%.0f, size=%.0fx%.0f", x, finalY, width, height);
                 }
                 
                 // Start position (off-screen)
-                CGFloat y = screenBounds.size.height; // Start off-screen at the bottom
+                CGFloat y = screenBounds.size.height;
                 
                 // Present without animation and animate to position after
                 [topController presentViewController:containerVC animated:NO completion:^{
                     // Set initial position off-screen
                     containerVC.view.frame = CGRectMake(x, y, width, height);
                     
-                    // Animate into position
-                    [UIView animateWithDuration:0.25 animations:^{
+                    // Set background overlay color immediately before animation
+                    containerVC.view.superview.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.4];
+                    
+                    // Animate into position with faster animation
+                    [UIView animateWithDuration:0.15 animations:^{
                         containerVC.view.frame = CGRectMake(x, finalY, width, height);
-                        
-                        // Set background color to match webview for consistency
-                        containerVC.view.backgroundColor = webViewBackgroundColor;
-                        
-                        containerVC.view.superview.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.4];
+                        // Set the container view background color
+                        if (@available(iOS 13.0, *)) {
+                            UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
+                            containerVC.view.backgroundColor = (currentStyle == UIUserInterfaceStyleDark) ? [UIColor blackColor] : [UIColor systemBackgroundColor];
+                        } else {
+                            containerVC.view.backgroundColor = [UIColor whiteColor];
+                        }
                     } completion:^(BOOL finished) {
                         // Determine which corners to round based on position
                         UIRectCorner cornersToRound;
@@ -1712,7 +1698,6 @@ extern "C" {
                         UIView *dragTray = [[StashPayCardSafariDelegate sharedInstance] createDragTray:width];
                         [containerVC.view addSubview:dragTray];
                         [StashPayCardSafariDelegate sharedInstance].dragTrayView = dragTray; // Store reference
-                        
                         
                         // Add pan gesture recognizer for swipe-to-dismiss
                         UIPanGestureRecognizer *panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:[StashPayCardSafariDelegate sharedInstance] action:@selector(handlePanGesture:)];
@@ -1764,28 +1749,10 @@ extern "C" {
                             // Stop keyboard observing when dismissing
                             [[StashPayCardSafariDelegate sharedInstance] stopKeyboardObserving];
                             
-                            // Clean up the gesture monitor timer
-                            UIViewController *strongContainerVC = weakContainerVC;
-                            if (strongContainerVC) {
-                                NSTimer *timer = objc_getAssociatedObject(strongContainerVC, "gestureMonitorTimer");
-                                if (timer) {
-                                    [timer invalidate];
-                                    objc_setAssociatedObject(strongContainerVC, "gestureMonitorTimer", nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-                                }
-                            }
-                            
                             if (_safariViewDismissedCallback != NULL) {
                                 _safariViewDismissedCallback();
                             }
                         };
-                        
-                        // GUARANTEED FALLBACK: Show the WebView after 3 seconds no matter what
-                        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                            if (webView.hidden) {
-                                webView.hidden = NO;
-                                loadingView.hidden = YES;
-                            }
-                        });
                     }];
                 }];
                 return;

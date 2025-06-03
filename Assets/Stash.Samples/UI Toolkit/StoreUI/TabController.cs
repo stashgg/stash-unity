@@ -12,11 +12,21 @@ public class TabController : MonoBehaviour
     
     private Button userTabButton;
     private Button storeTabButton;
-    private Button settingsTabButton;
+    private Button webshopTabButton;
     private VisualElement userTabContent;
     private VisualElement storeTabContent;
-    private VisualElement settingsTabContent;
+    private VisualElement webshopTabContent;
+    private VisualElement helpDescriptionDialog;
+    private Button helpDescriptionCloseButton;
+    private Label helpDescriptionText;
     private bool initialized = false;
+
+    private readonly Dictionary<string, string> tabDescriptions = new Dictionary<string, string>
+    {
+        { "user", "Manage your account settings and view your profile information. You can log in or create a new account here." },
+        { "store", "Browse and purchase items using Stash Pay. This is our seamless alternative to in-app purchases." },
+        { "webshop", "Open the Stash Webshop directly from the game. All purchases are synchronized with your game account." }
+    };
     
     private void Awake()
     {
@@ -81,43 +91,72 @@ public class TabController : MonoBehaviour
         // Get tab buttons
         userTabButton = root.Q<Button>("user-tab-button");
         storeTabButton = root.Q<Button>("store-tab-button");
-        settingsTabButton = root.Q<Button>("settings-tab-button");
+        webshopTabButton = root.Q<Button>("webshop-tab-button");
         
         // Get tab content panels
         userTabContent = root.Q<VisualElement>("user-tab-content");
         storeTabContent = root.Q<VisualElement>("store-tab-content");
-        settingsTabContent = root.Q<VisualElement>("settings-tab-content");
+        webshopTabContent = root.Q<VisualElement>("webshop-tab-content");
+
+        // Get help description dialog elements
+        helpDescriptionDialog = root.Q<VisualElement>("help-description-dialog");
+        helpDescriptionCloseButton = root.Q<Button>("help-description-close-button");
+        helpDescriptionText = root.Q<Label>("help-description-text");
         
         // Log what we found
         Debug.Log($"TabController: Found elements - " +
                  $"User Tab Button: {(userTabButton != null ? "Yes" : "No")}, " +
-                 $"IAP Tab Button: {(storeTabButton != null ? "Yes" : "No")}, " +
-                 $"Settings Tab Button: {(settingsTabButton != null ? "Yes" : "No")}, " +
+                 $"Store Tab Button: {(storeTabButton != null ? "Yes" : "No")}, " +
+                 $"Webshop Tab Button: {(webshopTabButton != null ? "Yes" : "No")}, " +
                  $"User Tab Content: {(userTabContent != null ? "Yes" : "No")}, " +
-                 $"IAP Tab Content: {(storeTabContent != null ? "Yes" : "No")}, " +
-                 $"Settings Tab Content: {(settingsTabContent != null ? "Yes" : "No")}");
+                 $"Store Tab Content: {(storeTabContent != null ? "Yes" : "No")}, " +
+                 $"Webshop Tab Content: {(webshopTabContent != null ? "Yes" : "No")}, " +
+                 $"Help Description Dialog: {(helpDescriptionDialog != null ? "Yes" : "No")}");
         
-        if (userTabButton == null || storeTabButton == null || settingsTabButton == null ||
-            userTabContent == null || storeTabContent == null || settingsTabContent == null)
+        if (userTabButton == null || storeTabButton == null || webshopTabButton == null ||
+            userTabContent == null || storeTabContent == null || webshopTabContent == null ||
+            helpDescriptionDialog == null || helpDescriptionCloseButton == null || helpDescriptionText == null)
         {
             Debug.LogError("Tab UI elements not found!");
             return false;
         }
         
-        // Set up event handlers
+        // Set up event handlers using RegisterCallback
+        userTabButton.RegisterCallback<ClickEvent>(evt => {
+            Debug.Log("TabController: User tab button clicked via RegisterCallback");
+            SelectTab("user");
+        });
+        
+        storeTabButton.RegisterCallback<ClickEvent>(evt => {
+            Debug.Log("TabController: Store tab button clicked via RegisterCallback");
+            SelectTab("store");
+        });
+        
+        webshopTabButton.RegisterCallback<ClickEvent>(evt => {
+            Debug.Log("TabController: Webshop tab button clicked via RegisterCallback");
+            SelectTab("webshop");
+        });
+
+        // Set up help description close button
+        helpDescriptionCloseButton.RegisterCallback<ClickEvent>(evt => {
+            Debug.Log("TabController: Help description close button clicked");
+            HideHelpDescription();
+        });
+        
+        // Also add the clicked event as a backup
         userTabButton.clicked += () => {
-            Debug.Log("TabController: User tab button clicked");
+            Debug.Log("TabController: User tab button clicked via clicked event");
             SelectTab("user");
         };
         
         storeTabButton.clicked += () => {
-            Debug.Log("TabController: IAP tab button clicked");
+            Debug.Log("TabController: Store tab button clicked via clicked event");
             SelectTab("store");
         };
         
-        settingsTabButton.clicked += () => {
-            Debug.Log("TabController: Settings tab button clicked");
-            SelectTab("settings");
+        webshopTabButton.clicked += () => {
+            Debug.Log("TabController: Webshop tab button clicked via clicked event");
+            SelectTab("webshop");
         };
         
         // Set initial state
@@ -127,13 +166,35 @@ public class TabController : MonoBehaviour
         Debug.Log("TabController: Initialized successfully");
         return true;
     }
+
+    private void ShowHelpDescription(string tabName)
+    {
+        if (helpDescriptionDialog != null && helpDescriptionText != null)
+        {
+            if (tabDescriptions.TryGetValue(tabName.ToLower(), out string description))
+            {
+                helpDescriptionText.text = description;
+                helpDescriptionDialog.AddToClassList("visible");
+            }
+        }
+    }
+
+    private void HideHelpDescription()
+    {
+        if (helpDescriptionDialog != null)
+        {
+            helpDescriptionDialog.RemoveFromClassList("visible");
+        }
+    }
     
     /// <summary>
     /// Switches to the specified tab
     /// </summary>
-    /// <param name="tabName">The name of the tab to select (user or store)</param>
+    /// <param name="tabName">The name of the tab to select (user, store, or webshop)</param>
     public void SelectTab(string tabName)
     {
+        Debug.Log($"TabController: SelectTab called with tabName={tabName}");
+        
         if (!initialized)
         {
             Debug.LogWarning("TabController: Not initialized yet, trying to initialize now");
@@ -144,8 +205,8 @@ public class TabController : MonoBehaviour
             }
         }
         
-        if (userTabButton == null || storeTabButton == null || settingsTabButton == null ||
-            userTabContent == null || storeTabContent == null || settingsTabContent == null)
+        if (userTabButton == null || storeTabButton == null || webshopTabButton == null ||
+            userTabContent == null || storeTabContent == null || webshopTabContent == null)
         {
             Debug.LogWarning("TabController: Tab elements are null, can't switch tabs");
             return;
@@ -156,12 +217,12 @@ public class TabController : MonoBehaviour
         // Update tab button styles
         userTabButton.RemoveFromClassList("tab-selected");
         storeTabButton.RemoveFromClassList("tab-selected");
-        settingsTabButton.RemoveFromClassList("tab-selected");
+        webshopTabButton.RemoveFromClassList("tab-selected");
         
         // Hide all tab content
         userTabContent.style.display = DisplayStyle.None;
         storeTabContent.style.display = DisplayStyle.None;
-        settingsTabContent.style.display = DisplayStyle.None;
+        webshopTabContent.style.display = DisplayStyle.None;
         
         // Show the selected tab
         switch (tabName.ToLower())
@@ -178,20 +239,29 @@ public class TabController : MonoBehaviour
                 Debug.Log("TabController: Store tab selected and activated");
                 break;
                 
-            case "settings":
-                settingsTabButton.AddToClassList("tab-selected");
-                settingsTabContent.style.display = DisplayStyle.Flex;
-                Debug.Log("TabController: Settings tab selected and activated");
+            case "webshop":
+                webshopTabButton.AddToClassList("tab-selected");
+                webshopTabContent.style.display = DisplayStyle.Flex;
+                Debug.Log("TabController: Webshop tab selected and activated");
                 break;
                 
             default:
                 Debug.LogWarning($"Unknown tab name: {tabName}");
                 break;
         }
+
+        // Show help description for the selected tab
+        ShowHelpDescription(tabName);
         
         // Force visual refresh
         userTabButton.MarkDirtyRepaint();
         storeTabButton.MarkDirtyRepaint();
-        settingsTabButton.MarkDirtyRepaint();
+        webshopTabButton.MarkDirtyRepaint();
+        
+        // Additional debug logging
+        Debug.Log($"TabController: After switching - " +
+                 $"User Tab Display: {userTabContent.style.display}, " +
+                 $"Store Tab Display: {storeTabContent.style.display}, " +
+                 $"Webshop Tab Display: {webshopTabContent.style.display}");
     }
 } 

@@ -96,6 +96,11 @@ public class StashStoreUIController : MonoBehaviour
             itemContainer.name = $"item-{i+1}";
             itemContainer.AddToClassList("store-item");
             
+            // Create the name label
+            Label nameLabel = new Label(storeItem.name);
+            nameLabel.name = $"item-{i+1}-name";
+            nameLabel.AddToClassList("item-name");
+            
             // Create the image element
             VisualElement imageElement = new VisualElement();
             imageElement.name = $"item-{i+1}-image";
@@ -107,25 +112,10 @@ public class StashStoreUIController : MonoBehaviour
                 imageElement.style.backgroundImage = new StyleBackground(itemImages[i]);
             }
             
-            // Create the footer
-            VisualElement footerElement = new VisualElement();
-            footerElement.name = $"item-{i+1}-footer";
-            footerElement.AddToClassList("item-footer");
-            
-            // Create the name label
-            Label nameLabel = new Label(storeItem.name);
-            nameLabel.name = $"item-{i+1}-name";
-            nameLabel.AddToClassList("item-name");
-            
-            // Create the price label
-            Label priceLabel = new Label("$" + storeItem.pricePerItem);
-            priceLabel.name = $"item-{i+1}-price";
-            priceLabel.AddToClassList("item-price");
-            
             // Create buy button
             Button buyButton = new Button();
             buyButton.name = $"buy-button-{i+1}";
-            buyButton.text = "BUY";
+            buyButton.text = "$" + storeItem.pricePerItem;
             buyButton.AddToClassList("buy-button");
             
             // Add click handler
@@ -134,13 +124,10 @@ public class StashStoreUIController : MonoBehaviour
             // Add to tracking list
             buyButtons.Add(buyButton);
             
-            // Assemble the item
-            footerElement.Add(nameLabel);
-            footerElement.Add(priceLabel);
-            footerElement.Add(buyButton);
-            
+            // Add elements to container in the desired order
+            itemContainer.Add(nameLabel);
             itemContainer.Add(imageElement);
-            itemContainer.Add(footerElement);
+            itemContainer.Add(buyButton);
             
             // Add to container
             itemsContainer.Add(itemContainer);
@@ -194,6 +181,9 @@ public class StashStoreUIController : MonoBehaviour
         StoreItem item = storeItems[itemIndex];
         
         Debug.Log($"Processing purchase with Stash for item: {item.id} at price: {item.pricePerItem}");
+        
+        // Disable the buy button to prevent multiple checkouts
+        SetButtonEnabled(buyButtons[itemIndex], false);
         
         // Display a loading indicator
         SetButtonLoadingState(buyButtons[itemIndex], true);
@@ -260,6 +250,9 @@ public class StashStoreUIController : MonoBehaviour
     private void OnBrowserClosed()
     {
         Debug.Log($"[Stash] Browser closed for checkout ID: {currentCheckoutId}");
+        
+        // Re-enable the buy button since checkout was dismissed
+        SetButtonEnabled(buyButtons[currentItemIndex], true);
         
         // Verify the purchase status by calling the Stash API
         StartCoroutine(VerifyPurchase());
@@ -438,6 +431,9 @@ public class StashStoreUIController : MonoBehaviour
     {
         Debug.Log($"Purchase successful for item: {storeItems[itemIndex].id}");
         
+        // Re-enable the buy button after successful purchase
+        SetButtonEnabled(buyButtons[itemIndex], true);
+        
         // Implement your purchase success logic
         // Could include adding the item to inventory, showing success message, etc.
     }
@@ -445,6 +441,9 @@ public class StashStoreUIController : MonoBehaviour
     private void HandleFailedPurchase(int itemIndex)
     {
         Debug.LogError($"Purchase failed for item: {storeItems[itemIndex].id}");
+        
+        // Re-enable the buy button after failed purchase
+        SetButtonEnabled(buyButtons[itemIndex], true);
         
         // Show the purchase failed state on the button
         Button button = buyButtons[itemIndex];
@@ -465,8 +464,23 @@ public class StashStoreUIController : MonoBehaviour
         }
         else
         {
-            button.RemoveFromClassList("button-loading");
-            button.text = "BUY";
+            // Get the item index from the button name
+            string buttonName = button.name;
+            int itemIndex = int.Parse(buttonName.Split('-')[2]) - 1;
+            button.text = "$" + storeItems[itemIndex].pricePerItem;
+        }
+    }
+    
+    private void SetButtonEnabled(Button button, bool enabled)
+    {
+        button.SetEnabled(enabled);
+        if (!enabled)
+        {
+            button.AddToClassList("button-disabled");
+        }
+        else
+        {
+            button.RemoveFromClassList("button-disabled");
         }
     }
     

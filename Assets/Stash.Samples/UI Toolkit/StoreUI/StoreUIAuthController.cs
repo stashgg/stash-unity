@@ -6,14 +6,26 @@ using UnityEngine.UIElements;
 using System.Text;
 using System.Globalization;
 using System.Linq;
+using UnityEngine.Networking;
+using System.Threading.Tasks;
 
 public class StoreUIAuthController : MonoBehaviour
 {
+    private const string API_KEY = "p0SVSU3awmdDv8VUPFZ_adWz_uC81xXsEY95Gg7WSwx9TZAJ5_ch-ePXK2Xh3B6o";
+    private const string WEBSHOP_URL_ENDPOINT = "https://test-api.stash.gg/sdk/server/generate_url";
+    
     [SerializeField] private UIDocument storeUIDocument;
-    [SerializeField] private TabController tabController; // Reference to TabController
     
     private Button loginButton;
     private Button refreshTokenButton;
+    private Button webshopButton;
+    private Button helpButton;
+    private Button closeHelpButton;
+    private Button watchVideoButton;
+    private VisualElement helpDialog;
+    private VisualElement helpDescriptionDialog;
+    private Button helpDescriptionCloseButton;
+    private Label helpDescriptionText;
     
     // User profile elements
     private Label profileStatus;
@@ -23,33 +35,45 @@ public class StoreUIAuthController : MonoBehaviour
     private Label tokenExpiryValue;
     private VisualElement attributesContainer;
     
+    // Tab elements
+    private Button userTabButton;
+    private Button storeTabButton;
+    private Button webshopTabButton;
+    private VisualElement userTabContent;
+    private VisualElement storeTabContent;
+    private VisualElement webshopTabContent;
+    
+    private readonly Dictionary<string, string> tabDescriptions = new()
+    {
+        { "user", "Stash works with any authentication provider out of the box. Login or create account here to try webshop account linking and Stash Pay seamless identification during purchase." },
+        { "store", "Try Stash Pay with native system dialog, our seamless D2C alternative to in-app purchases. Check out anonymously, or log in in the Account tab to use your game account." },
+        { "webshop", "Open pre-authenticated Stash Webshop with a press of a button right from the game client. Log in in the Account tab to use your custom account."}
+    };
+    
+    private readonly Dictionary<string, string> tabHeaders = new()
+    {
+        { "user", "Account Linking" },
+        { "store", "Stash Pay for IAPs" },
+        { "webshop", "Stash Webshop" }
+    };
+    
+    private const string HELP_DISMISSED_PREFIX = "help_dismissed_";
+    
     private void Awake()
     {
         Debug.Log("StoreUIAuthController: Awake called");
+        
+        // Reset help dialog dismissal settings
+        PlayerPrefs.DeleteKey(HELP_DISMISSED_PREFIX + "user");
+        PlayerPrefs.DeleteKey(HELP_DISMISSED_PREFIX + "store");
+        PlayerPrefs.DeleteKey(HELP_DISMISSED_PREFIX + "webshop");
+        PlayerPrefs.Save();
+        Debug.Log("StoreUIAuthController: Reset help dialog dismissal settings");
     }
     
     private void Start()
     {
         Debug.Log("StoreUIAuthController: Start method called");
-        
-        // Try to find TabController if not set
-        if (tabController == null)
-        {
-            tabController = GetComponent<TabController>();
-            if (tabController == null)
-            {
-                tabController = FindObjectOfType<TabController>();
-            }
-            
-            if (tabController != null)
-            {
-                Debug.Log("StoreUIAuthController: Found TabController");
-            }
-            else
-            {
-                Debug.LogWarning("StoreUIAuthController: TabController not found! Tab switching won't work.");
-            }
-        }
         
         // Call with slight delay to ensure everything is properly set up
         StartCoroutine(InitializeWithDelay(0.5f));
@@ -82,55 +106,97 @@ public class StoreUIAuthController : MonoBehaviour
             return;
         }
         
-        // Try to ensure TabController is initialized
-        if (tabController != null)
+        // Get UI elements
+        var root = storeUIDocument.rootVisualElement;
+        Debug.Log("StoreUIAuthController: Got root visual element");
+        
+        // Get help elements
+        helpButton = root.Q<Button>("help-button");
+        closeHelpButton = root.Q<Button>("close-help-button");
+        watchVideoButton = root.Q<Button>("watch-video-button");
+        helpDialog = root.Q<VisualElement>("help-dialog");
+        helpDescriptionDialog = root.Q<VisualElement>("help-description-dialog");
+        helpDescriptionCloseButton = root.Q<Button>("help-description-close-button");
+        helpDescriptionText = root.Q<Label>("help-description-text");
+        
+        if (helpButton != null && closeHelpButton != null && helpDialog != null && watchVideoButton != null)
         {
-            Debug.Log("StoreUIAuthController: Initializing TabController explicitly");
-            tabController.InitializeTabController();
+            helpButton.clicked += OnHelpButtonClicked;
+            closeHelpButton.clicked += OnCloseHelpButtonClicked;
+            watchVideoButton.clicked += OnWatchVideoButtonClicked;
+            Debug.Log("StoreUIAuthController: Help button handlers attached");
         }
         else
         {
-            // Try to find it again
-            tabController = GetComponent<TabController>();
-            if (tabController == null)
-            {
-                tabController = FindObjectOfType<TabController>();
-            }
-            
-            if (tabController != null)
-            {
-                Debug.Log("StoreUIAuthController: Found TabController, initializing it");
-                tabController.InitializeTabController();
-            }
+            Debug.LogWarning("StoreUIAuthController: Some help elements not found");
         }
         
-        // Get UI elements
-        var root = storeUIDocument.rootVisualElement;
+        if (helpDescriptionDialog != null && helpDescriptionCloseButton != null && helpDescriptionText != null)
+        {
+            helpDescriptionCloseButton.clicked += OnHelpDescriptionCloseButtonClicked;
+            Debug.Log("StoreUIAuthController: Help description dialog handlers attached");
+        }
+        else
+        {
+            Debug.LogWarning("StoreUIAuthController: Some help description elements not found");
+        }
         
-        // Get tab buttons as fallback (in case TabController isn't working)
-        var userTabButton = root.Q<Button>("user-tab-button");
-        var storeTabButton = root.Q<Button>("store-tab-button");
+        // Get tab buttons
+        userTabButton = root.Q<Button>("user-tab-button");
+        storeTabButton = root.Q<Button>("store-tab-button");
+        webshopTabButton = root.Q<Button>("webshop-tab-button");
+        webshopButton = root.Q<Button>("open-webshop-button");
+        
+        Debug.Log($"StoreUIAuthController: Found tab buttons - User: {userTabButton != null}, Store: {storeTabButton != null}, Webshop: {webshopTabButton != null}");
         
         // Get tab content panels
-        var userTabContent = root.Q<VisualElement>("user-tab-content");
-        var storeTabContent = root.Q<VisualElement>("store-tab-content");
+        userTabContent = root.Q<VisualElement>("user-tab-content");
+        storeTabContent = root.Q<VisualElement>("store-tab-content");
+        webshopTabContent = root.Q<VisualElement>("webshop-tab-content");
         
-        // Set up fallback tab button handlers
-        if (userTabButton != null && storeTabButton != null && 
-            userTabContent != null && storeTabContent != null && tabController == null)
+        Debug.Log($"StoreUIAuthController: Found tab content - User: {userTabContent != null}, Store: {storeTabContent != null}, Webshop: {webshopTabContent != null}");
+        
+        // Set up tab button handlers
+        if (userTabButton != null && storeTabButton != null && webshopTabButton != null && 
+            userTabContent != null && storeTabContent != null && webshopTabContent != null)
         {
-            Debug.Log("StoreUIAuthController: Setting up fallback tab button handlers (TabController not found)");
+            Debug.Log("StoreUIAuthController: Setting up tab button handlers");
             
-            // Set up direct handlers for tab buttons only if TabController is not present
+            // Clear any existing click events
+            userTabButton.clicked -= () => DirectTabSwitch("user");
+            storeTabButton.clicked -= () => DirectTabSwitch("store");
+            webshopTabButton.clicked -= () => DirectTabSwitch("webshop");
+            
+            // Add new click events
             userTabButton.clicked += () => {
-                Debug.Log("User tab button clicked directly");
-                DirectTabSwitch(userTabButton, storeTabButton, userTabContent, storeTabContent, true);
+                Debug.Log("User tab button clicked");
+                DirectTabSwitch("user");
             };
             
             storeTabButton.clicked += () => {
-                Debug.Log("IAP tab button clicked directly");
-                DirectTabSwitch(userTabButton, storeTabButton, userTabContent, storeTabContent, false);
+                Debug.Log("Store tab button clicked");
+                DirectTabSwitch("store");
             };
+            
+            webshopTabButton.clicked += () => {
+                Debug.Log("Webshop tab button clicked");
+                DirectTabSwitch("webshop");
+            };
+            
+            Debug.Log("StoreUIAuthController: Tab button handlers set up successfully");
+            
+            // Set initial tab
+            DirectTabSwitch("store");
+        }
+        else
+        {
+            Debug.LogError("StoreUIAuthController: Failed to find all tab elements");
+            if (userTabButton == null) Debug.LogError("userTabButton is null");
+            if (storeTabButton == null) Debug.LogError("storeTabButton is null");
+            if (webshopTabButton == null) Debug.LogError("webshopTabButton is null");
+            if (userTabContent == null) Debug.LogError("userTabContent is null");
+            if (storeTabContent == null) Debug.LogError("storeTabContent is null");
+            if (webshopTabContent == null) Debug.LogError("webshopTabContent is null");
         }
         
         // Get user profile elements
@@ -172,6 +238,17 @@ public class StoreUIAuthController : MonoBehaviour
         else
         {
             Debug.LogWarning("StoreUIAuthController: Force Refresh button not found");
+        }
+        
+        // Setup webshop button handler
+        if (webshopButton != null)
+        {
+            webshopButton.clicked += OnWebshopButtonClicked;
+            Debug.Log("StoreUIAuthController: Webshop button click handler attached");
+        }
+        else
+        {
+            Debug.LogWarning("StoreUIAuthController: Webshop button not found");
         }
         
         // Subscribe to authentication events
@@ -232,7 +309,7 @@ public class StoreUIAuthController : MonoBehaviour
         UpdateAuthUI();
         
         // Switch to the user tab to show profile
-        SwitchToUserTab();
+        DirectTabSwitch("user");
     }
     
     private void OnLoginFailed(string errorMessage)
@@ -356,6 +433,23 @@ public class StoreUIAuthController : MonoBehaviour
         
         // Update user profile in the User tab
         UpdateUserProfile(isAuthenticated);
+
+        // Update webshop button state
+        if (webshopButton != null)
+        {
+            if (isAuthenticated)
+            {
+                webshopButton.text = "Open Webshop";
+                webshopButton.SetEnabled(true);
+                webshopButton.RemoveFromClassList("disabled-button");
+            }
+            else
+            {
+                webshopButton.text = "Please Login First";
+                webshopButton.SetEnabled(false);
+                webshopButton.AddToClassList("disabled-button");
+            }
+        }
     }
     
     private void UpdateUserProfile(bool isAuthenticated)
@@ -365,7 +459,7 @@ public class StoreUIAuthController : MonoBehaviour
         // Update login button
         if (loginButton != null)
         {
-            loginButton.text = isAuthenticated ? "Logout" : "Login";
+            loginButton.text = isAuthenticated ? "LOGOUT" : "LOGIN / SIGN UP";
             Debug.Log($"Updated login button text to: {loginButton.text}");
         }
         else
@@ -611,106 +705,69 @@ public class StoreUIAuthController : MonoBehaviour
         return result;
     }
     
-    private void SwitchToUserTab()
-    {
-        Debug.Log("StoreUIAuthController: Attempting to switch to User tab");
-        
-        // Use TabController reference to switch tabs
-        if (tabController != null)
-        {
-            Debug.Log("StoreUIAuthController: Using TabController to switch tabs");
-            tabController.SelectTab("user");
-        }
-        else
-        {
-            Debug.LogWarning("StoreUIAuthController: TabController not found, using direct tab switching");
-            
-            // Try to find it again as a fallback
-            tabController = FindObjectOfType<TabController>();
-            if (tabController != null)
-            {
-                Debug.Log("StoreUIAuthController: Found TabController on fallback");
-                tabController.SelectTab("user");
-            }
-            else
-            {
-                // Direct tab switching as last resort
-                DirectSwitchToUserTab();
-            }
-        }
-    }
-    
-    private void DirectSwitchToUserTab()
-    {
-        Debug.Log("StoreUIAuthController: Using direct tab switching method");
-        
-        var root = storeUIDocument.rootVisualElement;
-        var userTabButton = root.Q<Button>("user-tab-button");
-        var storeTabButton = root.Q<Button>("store-tab-button");
-        var userTabContent = root.Q<VisualElement>("user-tab-content");
-        var storeTabContent = root.Q<VisualElement>("store-tab-content");
-        
-        if (userTabButton != null && storeTabButton != null && 
-            userTabContent != null && storeTabContent != null)
-        {
-            // Update button states first - clear all tab selections
-            userTabButton.RemoveFromClassList("tab-selected");
-            storeTabButton.RemoveFromClassList("tab-selected");
-            
-            // Select the user tab
-            userTabButton.AddToClassList("tab-selected");
-            
-            // Update visibility - this is crucial for the tab content to show
-            userTabContent.style.display = DisplayStyle.Flex;
-            storeTabContent.style.display = DisplayStyle.None;
-            
-            // Force visual refresh
-            userTabButton.MarkDirtyRepaint();
-            storeTabButton.MarkDirtyRepaint();
-            
-            Debug.Log("StoreUIAuthController: Successfully switched to User tab directly");
-        }
-        else
-        {
-            Debug.LogError("StoreUIAuthController: Failed to find tab elements for direct switching");
-        }
-    }
-    
     // Helper method for direct tab switching
-    private void DirectTabSwitch(Button userButton, Button storeButton, VisualElement userContent, VisualElement storeContent, bool showUserTab)
+    private void DirectTabSwitch(string tabToShow)
     {
-        Debug.Log($"StoreUIAuthController: DirectTabSwitch called, showUserTab={showUserTab}");
+        Debug.Log($"StoreUIAuthController: DirectTabSwitch called, tabToShow={tabToShow}");
+        
+        if (userTabButton == null || storeTabButton == null || webshopTabButton == null ||
+            userTabContent == null || storeTabContent == null || webshopTabContent == null)
+        {
+            Debug.LogError("StoreUIAuthController: Tab elements are null in DirectTabSwitch");
+            return;
+        }
+
+        // Hide help dialog first
+        HideHelpDescription();
         
         // Clear previous selections
-        userButton.RemoveFromClassList("tab-selected");
-        storeButton.RemoveFromClassList("tab-selected");
+        userTabButton.RemoveFromClassList("tab-selected");
+        storeTabButton.RemoveFromClassList("tab-selected");
+        webshopTabButton.RemoveFromClassList("tab-selected");
         
-        if (showUserTab)
+        // Hide all content
+        userTabContent.style.display = DisplayStyle.None;
+        storeTabContent.style.display = DisplayStyle.None;
+        webshopTabContent.style.display = DisplayStyle.None;
+        
+        // Show selected tab
+        switch (tabToShow.ToLower())
         {
-            // Add the selected class to the user tab
-            userButton.AddToClassList("tab-selected");
-            
-            // Show user content, hide store content
-            userContent.style.display = DisplayStyle.Flex;
-            storeContent.style.display = DisplayStyle.None;
-            
-            Debug.Log("StoreUIAuthController: Switched to User tab");
+            case "user":
+                userTabButton.AddToClassList("tab-selected");
+                userTabContent.style.display = DisplayStyle.Flex;
+                Debug.Log("StoreUIAuthController: Switched to User tab");
+                break;
+                
+            case "store":
+                storeTabButton.AddToClassList("tab-selected");
+                storeTabContent.style.display = DisplayStyle.Flex;
+                Debug.Log("StoreUIAuthController: Switched to Store tab");
+                break;
+                
+            case "webshop":
+                webshopTabButton.AddToClassList("tab-selected");
+                webshopTabContent.style.display = DisplayStyle.Flex;
+                Debug.Log("StoreUIAuthController: Switched to Webshop tab");
+                break;
+                
+            default:
+                Debug.LogError($"StoreUIAuthController: Unknown tab {tabToShow}");
+                break;
         }
-        else
-        {
-            // Add the selected class to the store tab
-            storeButton.AddToClassList("tab-selected");
-            
-            // Show store content, hide user content
-            userContent.style.display = DisplayStyle.None;
-            storeContent.style.display = DisplayStyle.Flex;
-            
-            Debug.Log("StoreUIAuthController: Switched to Store tab");
-        }
+
+        // Show help description for the selected tab after a short delay
+        StartCoroutine(ShowHelpDescriptionWithDelay(tabToShow));
         
         // Force a style refresh
-        userButton.MarkDirtyRepaint();
-        storeButton.MarkDirtyRepaint();
+        userTabButton.MarkDirtyRepaint();
+        storeTabButton.MarkDirtyRepaint();
+        webshopTabButton.MarkDirtyRepaint();
+        
+        // Force content refresh
+        userTabContent.MarkDirtyRepaint();
+        storeTabContent.MarkDirtyRepaint();
+        webshopTabContent.MarkDirtyRepaint();
     }
     
     private IEnumerator PeriodicProfileUpdate()
@@ -730,5 +787,236 @@ public class StoreUIAuthController : MonoBehaviour
                 UpdateUserProfile(true);
             }
         }
+    }
+
+    [Serializable]
+    private class WebshopResponse
+    {
+        public string url;
+    }
+
+    [Serializable]
+    private class WebshopUser
+    {
+        public string id;
+        public string email;
+    }
+
+    [Serializable]
+    private class WebshopRequest
+    {
+        public WebshopUser user;
+        public string target;
+    }
+
+    private async void OnWebshopButtonClicked()
+    {
+        Debug.Log("StoreUIAuthController: Webshop button clicked");
+        
+        string userId;
+        string userEmail;
+        
+        if (AuthenticationManager.Instance == null || !AuthenticationManager.Instance.IsAuthenticated())
+        {
+            #if UNITY_EDITOR
+            // Generate random user ID and email only in Unity Editor
+            userEmail = $"editor_{Guid.NewGuid().ToString("N").Substring(0, 8)}@example.com";
+            userId = userEmail; // Use email as ID
+            Debug.Log($"StoreUIAuthController: Generated random email for editor: {userEmail}");
+            #else
+            Debug.LogWarning("StoreUIAuthController: Cannot open webshop - user not authenticated");
+            return;
+            #endif
+        }
+        else
+        {
+            // Get user data from AuthenticationManager
+            UserData userData = AuthenticationManager.Instance.GetUserData();
+            if (string.IsNullOrEmpty(userData.Email))
+            {
+                Debug.LogError("StoreUIAuthController: User email is null or empty");
+                return;
+            }
+            userEmail = userData.Email;
+            userId = userEmail; // Use email as ID
+        }
+
+        try
+        {
+            // Create request payload
+            var request = new WebshopRequest
+            {
+                user = new WebshopUser
+                {
+                    id = userId, // This will now be the email
+                    email = userEmail
+                },
+                target = "HOME"
+            };
+
+            string jsonPayload = JsonUtility.ToJson(request);
+            Debug.Log($"StoreUIAuthController: Sending request with payload: {jsonPayload}");
+
+            // Create and configure the request
+            using (UnityWebRequest webRequest = new UnityWebRequest(WEBSHOP_URL_ENDPOINT, "POST"))
+            {
+                byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonPayload);
+                webRequest.uploadHandler = new UploadHandlerRaw(bodyRaw);
+                webRequest.downloadHandler = new DownloadHandlerBuffer();
+                webRequest.SetRequestHeader("Content-Type", "application/json");
+                webRequest.SetRequestHeader("x-stash-api-key", API_KEY);
+
+                // Send the request
+                var operation = webRequest.SendWebRequest();
+                while (!operation.isDone)
+                {
+                    await Task.Yield();
+                }
+
+                if (webRequest.result == UnityWebRequest.Result.Success)
+                {
+                    string response = webRequest.downloadHandler.text;
+                    Debug.Log($"StoreUIAuthController: Raw response body:\n{response}");
+                    Debug.Log($"StoreUIAuthController: Response status code: {webRequest.responseCode}");
+                    Debug.Log($"StoreUIAuthController: Response headers: {webRequest.GetResponseHeaders()}");
+
+                    // Parse the response
+                    var responseData = JsonUtility.FromJson<WebshopResponse>(response);
+                    if (!string.IsNullOrEmpty(responseData.url))
+                    {
+                        Debug.Log($"StoreUIAuthController: Opening webshop URL: {responseData.url}");
+                        Application.OpenURL(responseData.url);
+                    }
+                    else
+                    {
+                        Debug.LogError("StoreUIAuthController: URL is null or empty in response");
+                    }
+                }
+                else
+                {
+                    Debug.LogError($"StoreUIAuthController: Request failed: {webRequest.error}");
+                    Debug.LogError($"StoreUIAuthController: Response code: {webRequest.responseCode}");
+                    Debug.LogError($"StoreUIAuthController: Response headers: {webRequest.GetResponseHeaders()}");
+                    Debug.LogError($"StoreUIAuthController: Raw response body:\n{webRequest.downloadHandler.text}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"StoreUIAuthController: Error opening webshop: {ex.Message}\n{ex.StackTrace}");
+        }
+    }
+
+    private void OnHelpButtonClicked()
+    {
+        Debug.Log("StoreUIAuthController: Help button clicked");
+        if (helpDialog != null)
+        {
+            helpDialog.style.display = DisplayStyle.Flex;
+        }
+    }
+    
+    private void OnCloseHelpButtonClicked()
+    {
+        Debug.Log("StoreUIAuthController: Close help button clicked");
+        if (helpDialog != null)
+        {
+            helpDialog.style.display = DisplayStyle.None;
+        }
+    }
+
+    private void OnWatchVideoButtonClicked()
+    {
+        Debug.Log("StoreUIAuthController: Watch video button clicked");
+        Application.OpenURL("https://www.youtube.com/watch?v=dQw4w9WgXcQ"); // Replace with actual help video URL
+    }
+
+    private void OnHelpDescriptionCloseButtonClicked()
+    {
+        Debug.Log("StoreUIAuthController: Help description close button clicked");
+        HideHelpDescription();
+        
+        // Get current active tab
+        string activeTab = GetActiveTab();
+        if (!string.IsNullOrEmpty(activeTab))
+        {
+            // Save that this tab's help was dismissed
+            PlayerPrefs.SetInt(HELP_DISMISSED_PREFIX + activeTab, 1);
+            PlayerPrefs.Save();
+            Debug.Log($"StoreUIAuthController: Marked help as dismissed for tab: {activeTab}");
+        }
+    }
+
+    private void ShowHelpDescription(string tabName)
+    {
+        if (helpDescriptionDialog == null || helpDescriptionText == null)
+        {
+            Debug.LogWarning("Help description dialog elements not found");
+            return;
+        }
+
+        // Check if help was dismissed for this tab
+        if (PlayerPrefs.GetInt(HELP_DISMISSED_PREFIX + tabName.ToLower(), 0) == 1)
+        {
+            Debug.Log($"StoreUIAuthController: Help already dismissed for tab: {tabName}");
+            return;
+        }
+
+        // Hide first
+        HideHelpDescription();
+
+        // Start coroutine to show after a delay
+        StartCoroutine(ShowHelpDescriptionWithDelay(tabName));
+    }
+
+    private IEnumerator ShowHelpDescriptionWithDelay(string tabName)
+    {
+        yield return new WaitForSeconds(0.3f); // Wait for hide animation
+
+        // Check again if help was dismissed during the delay
+        if (PlayerPrefs.GetInt(HELP_DISMISSED_PREFIX + tabName.ToLower(), 0) == 1)
+        {
+            Debug.Log($"StoreUIAuthController: Help dismissed during delay for tab: {tabName}");
+            yield break;
+        }
+
+        if (helpDescriptionDialog != null && helpDescriptionText != null)
+        {
+            // Set the header text based on the tab
+            var headerLabel = helpDescriptionDialog.Q<Label>("help-description-title");
+            if (headerLabel != null)
+            {
+                string headerText = tabHeaders[tabName.ToLower()];
+                headerLabel.text = headerText;
+                Debug.Log($"StoreUIAuthController: Set help dialog header to: {headerText}");
+            }
+            else
+            {
+                Debug.LogError("StoreUIAuthController: Could not find help description title label");
+            }
+
+            // Set the description text
+            helpDescriptionText.text = tabDescriptions[tabName.ToLower()];
+            helpDescriptionDialog.AddToClassList("visible");
+        }
+    }
+
+    private void HideHelpDescription()
+    {
+        if (helpDescriptionDialog != null)
+        {
+            helpDescriptionDialog.RemoveFromClassList("visible");
+        }
+    }
+
+    private string GetActiveTab()
+    {
+        if (userTabButton != null && userTabButton.ClassListContains("tab-selected"))
+            return "user";
+        if (storeTabButton != null && storeTabButton.ClassListContains("tab-selected"))
+            return "store";
+        if (webshopTabButton != null && webshopTabButton.ClassListContains("tab-selected"))
+            return "webshop";
+        return string.Empty;
     }
 } 
