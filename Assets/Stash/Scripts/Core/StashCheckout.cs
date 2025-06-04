@@ -168,5 +168,58 @@ namespace Stash.Core
                 Debug.LogError($"[STASH] Error opening URL in browser: {e.Message}");
             }
         }
+
+        /// <summary>
+        /// Creates a checkout link for Stash payments using the client API with Bearer token authentication.
+        /// </summary>
+        /// <param name="userId">The user ID.</param>
+        /// <param name="validatedEmail">The validated email of the user (not used in payload).</param>
+        /// <param name="shopHandle">The handle of the shop.</param>
+        /// <param name="itemId">The ID of the item to purchase.</param>
+        /// <param name="idToken">The ID token for Bearer authentication (Cognito).</param>
+        /// <param name="environment">The Stash environment (defaults to Test).</param>
+        /// <returns>A response containing the URL and ID.</returns>
+        public static async Task<(string url, string id)> CreateCheckoutLinkClient(
+            string userId,
+            string shopHandle,
+            string itemId,
+            string idToken,
+            StashEnvironment environment = StashEnvironment.Test)
+        {
+            // Create the authorization header with Bearer token
+            RequestHeader authorizationHeader = new()
+            {
+                Key = "Authorization",
+                Value = $"Bearer {idToken}"
+            };
+
+            // Create the request body JSON string
+            string requestBody = $"{{\"user\":{{\"id\":\"{userId}\"}},\"shop_handle\":\"{shopHandle}\",\"item_id\":\"{itemId}\"}}";
+
+            // Set the URL for the client checkout link creation endpoint
+            string requestUrl = environment.GetRootUrl() + "/sdk/client/checkout_links/generate_quick_pay_url";
+
+            // Make a POST request to create the checkout link
+            Response result = await RestClient.Post(requestUrl, requestBody, new List<RequestHeader> { authorizationHeader });
+
+            // Check the response status code
+            if (result.StatusCode == 200)
+            {
+                try
+                {
+                    // Parse the response data into a CheckoutResponse object
+                    CheckoutResponse checkoutResponse = JsonUtility.FromJson<CheckoutResponse>(result.Data);
+                    return (checkoutResponse.url, checkoutResponse.id);
+                }
+                catch (Exception ex)
+                {
+                    // Throw an error if there is an issue parsing the response data
+                    throw new StashParseError($"{result.Data}. Error: {ex.Message}");
+                }
+            }
+
+            // Throw an error if the API request was not successful
+            throw new StashRequestError(result.StatusCode, result.Data);
+        }
     }
 }
