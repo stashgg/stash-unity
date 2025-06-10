@@ -173,18 +173,19 @@ namespace Stash.Core
         /// Creates a checkout link for Stash payments using the client API with Bearer token authentication.
         /// </summary>
         /// <param name="userId">The user ID.</param>
-        /// <param name="validatedEmail">The validated email of the user (not used in payload).</param>
         /// <param name="shopHandle">The handle of the shop.</param>
         /// <param name="itemId">The ID of the item to purchase.</param>
         /// <param name="idToken">The ID token for Bearer authentication (Cognito).</param>
         /// <param name="environment">The Stash environment (defaults to Test).</param>
+        /// <param name="regionCode">Optional region code for the user.</param>
         /// <returns>A response containing the URL and ID.</returns>
         public static async Task<(string url, string id)> CreateCheckoutLinkClient(
             string userId,
             string shopHandle,
             string itemId,
             string idToken,
-            StashEnvironment environment = StashEnvironment.Test)
+            StashEnvironment environment = StashEnvironment.Test,
+            string regionCode = "USD")
         {
             // Create the authorization header with Bearer token
             RequestHeader authorizationHeader = new()
@@ -193,8 +194,12 @@ namespace Stash.Core
                 Value = $"Bearer {idToken}"
             };
 
-            // Create the request body JSON string
-            string requestBody = $"{{\"user\":{{\"id\":\"{userId}\"}},\"shop_handle\":\"{shopHandle}\",\"item_id\":\"{itemId}\"}}";
+            // Create the request body JSON string with optional region_code
+            string userJson = string.IsNullOrEmpty(regionCode)
+                ? $"{{\"id\":\"{userId}\",\"platform\":\"IOS\"}}"
+                : $"{{\"id\":\"{userId}\",\"platform\":\"IOS\",\"region_code\":\"{regionCode}\"}}";
+            
+            string requestBody = $"{{\"user\":{userJson},\"shop_handle\":\"{shopHandle}\",\"item_id\":\"{itemId}\"}}";
 
             // Set the URL for the client checkout link creation endpoint
             string requestUrl = environment.GetRootUrl() + "/sdk/client/checkout_links/generate_quick_pay_url";
