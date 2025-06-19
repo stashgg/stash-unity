@@ -9,6 +9,16 @@ using System;
 namespace Stash.Core
 {
     /// <summary>
+    /// Platform enumeration for user identification.
+    /// </summary>
+    public enum Platform
+    {
+        Undefined = 0,
+        IOS = 1,
+        Android = 2
+    }
+
+    /// <summary>
     /// Handles the creation of checkout links for Stash payments and opening URLs in browsers.
     /// </summary>
     public static class StashCheckout
@@ -177,7 +187,11 @@ namespace Stash.Core
         /// <param name="itemId">The ID of the item to purchase.</param>
         /// <param name="idToken">The ID token for Bearer authentication (Cognito).</param>
         /// <param name="environment">The Stash environment (defaults to Test).</param>
-        /// <param name="regionCode">Optional region code for the user.</param>
+        /// <param name="platform">The platform of the user (defaults to Undefined).</param>
+        /// <param name="validatedEmail">Optional validated email of the user.</param>
+        /// <param name="profileImageUrl">Optional URL of the user's profile image.</param>
+        /// <param name="displayName">Optional display name of the user.</param>
+        /// <param name="regionCode">Optional region code for the user (ISO 3166-1 Alpha-3 format, e.g., "USA", "GBR").</param>
         /// <returns>A response containing the URL and ID.</returns>
         public static async Task<(string url, string id)> CreateCheckoutLinkClient(
             string userId,
@@ -185,7 +199,11 @@ namespace Stash.Core
             string itemId,
             string idToken,
             StashEnvironment environment = StashEnvironment.Test,
-            string regionCode = "USD")
+            Platform platform = Platform.Undefined,
+            string validatedEmail = null,
+            string profileImageUrl = null,
+            string displayName = null,
+            string regionCode = null)
         {
             // Create the authorization header with Bearer token
             RequestHeader authorizationHeader = new()
@@ -194,11 +212,34 @@ namespace Stash.Core
                 Value = $"Bearer {idToken}"
             };
 
-            // Create the request body JSON string with optional region_code
-            string userJson = string.IsNullOrEmpty(regionCode)
-                ? $"{{\"id\":\"{userId}\",\"platform\":\"IOS\"}}"
-                : $"{{\"id\":\"{userId}\",\"platform\":\"IOS\",\"region_code\":\"{regionCode}\"}}";
-            
+            // Build the user JSON object with all optional fields
+            var userFields = new List<string>
+            {
+                $"\"id\":\"{userId}\"",
+                $"\"platform\":\"{platform.ToString().ToUpper()}\""
+            };
+
+            if (!string.IsNullOrEmpty(validatedEmail))
+            {
+                userFields.Add($"\"validated_email\":\"{validatedEmail}\"");
+            }
+
+            if (!string.IsNullOrEmpty(profileImageUrl))
+            {
+                userFields.Add($"\"profile_image_url\":\"{profileImageUrl}\"");
+            }
+
+            if (!string.IsNullOrEmpty(displayName))
+            {
+                userFields.Add($"\"display_name\":\"{displayName}\"");
+            }
+
+            if (!string.IsNullOrEmpty(regionCode))
+            {
+                userFields.Add($"\"region_code\":\"{regionCode}\"");
+            }
+
+            string userJson = "{" + string.Join(",", userFields) + "}";
             string requestBody = $"{{\"user\":{userJson},\"shop_handle\":\"{shopHandle}\",\"item_id\":\"{itemId}\"}}";
 
             // Set the URL for the client checkout link creation endpoint
