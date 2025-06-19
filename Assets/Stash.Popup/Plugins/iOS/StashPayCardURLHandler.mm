@@ -22,6 +22,9 @@ PaymentSuccessCallback _paymentSuccessCallback = NULL;
 // Flag to track if callback was already called
 BOOL _callbackWasCalled = NO;
 
+// Flag to track if a card is currently being presented
+BOOL _isCardCurrentlyPresented = NO;
+
 // Configuration options for card size and position
 static CGFloat _cardHeightRatio = 0.4; // Default to 40% of screen height
 static CGFloat _cardVerticalPosition = 1.0; // Default to bottom of screen (1.0)
@@ -367,6 +370,7 @@ static BOOL _isCardExpanded = NO;
 - (void)callUnityCallbackOnce {
     if (!_callbackWasCalled && _safariViewDismissedCallback != NULL) {
         _callbackWasCalled = YES;
+        _isCardCurrentlyPresented = NO; // Reset the presentation flag
         dispatch_async(dispatch_get_main_queue(), ^{
             _safariViewDismissedCallback();
         });
@@ -374,12 +378,14 @@ static BOOL _isCardExpanded = NO;
 }
 
 - (void)safariViewControllerDidFinish:(SFSafariViewController *)controller {
+    _isCardCurrentlyPresented = NO; // Reset the presentation flag
     [self callUnityCallbackOnce];
 }
 
 - (void)handleDismiss:(UITapGestureRecognizer *)gesture {
     if (self.currentPresentedVC) {
         [self.currentPresentedVC dismissViewControllerAnimated:YES completion:^{
+            _isCardCurrentlyPresented = NO; // Reset the presentation flag
             [self callUnityCallbackOnce];
         }];
     }
@@ -388,6 +394,7 @@ static BOOL _isCardExpanded = NO;
 - (void)dismissButtonTapped:(UIButton *)button {
     if (self.currentPresentedVC) {
         [self.currentPresentedVC dismissViewControllerAnimated:YES completion:^{
+            _isCardCurrentlyPresented = NO; // Reset the presentation flag
             [self callUnityCallbackOnce];
         }];
     }
@@ -480,6 +487,7 @@ static BOOL _isCardExpanded = NO;
                     view.superview.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.0];
                 } completion:^(BOOL finished) {
                     [self.currentPresentedVC dismissViewControllerAnimated:NO completion:^{
+                        _isCardCurrentlyPresented = NO; // Reset the presentation flag
                         [self callUnityCallbackOnce];
                     }];
                 }];
@@ -1188,6 +1196,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
                     cardView.superview.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.0];
                 } completion:^(BOOL finished) {
                     [self.currentPresentedVC dismissViewControllerAnimated:NO completion:^{
+                        _isCardCurrentlyPresented = NO; // Reset the presentation flag
                         [self callUnityCallbackOnce];
                     }];
                 }];
@@ -1267,6 +1276,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     if ([message.name isEqualToString:@"windowClose"]) {
         if (self.currentPresentedVC) {
             [self.currentPresentedVC dismissViewControllerAnimated:YES completion:^{
+                _isCardCurrentlyPresented = NO; // Reset the presentation flag
                 [self callUnityCallbackOnce];
             }];
         }
@@ -1415,6 +1425,15 @@ extern "C" {
             NSLog(@"Error: URL is null");
             return;
         }
+        
+        // Check if a card is already being presented
+        if (_isCardCurrentlyPresented) {
+            NSLog(@"Warning: Card is already being presented. Ignoring new request.");
+            return;
+        }
+        
+        // Set the presentation flag
+        _isCardCurrentlyPresented = YES;
         
         // Reset expansion state for new card
         _isCardExpanded = NO;
@@ -1769,5 +1788,20 @@ extern "C" {
             }
         }
     }
-} 
+
+    // Resets the card presentation state (useful for debugging or force reset)
+    void _StashPayCardResetPresentationState() {
+        _isCardCurrentlyPresented = NO;
+        _callbackWasCalled = NO;
+        if ([StashPayCardSafariDelegate sharedInstance].currentPresentedVC) {
+            [[StashPayCardSafariDelegate sharedInstance].currentPresentedVC dismissViewControllerAnimated:NO completion:nil];
+            [StashPayCardSafariDelegate sharedInstance].currentPresentedVC = nil;
+        }
+    }
+
+    // Returns whether a card is currently being presented
+    bool _StashPayCardIsCurrentlyPresented() {
+        return _isCardCurrentlyPresented;
+    }
+}
 

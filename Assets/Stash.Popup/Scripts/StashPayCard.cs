@@ -84,6 +84,12 @@ namespace StashPopup
         
         [DllImport("__Internal")]
         private static extern void _StashPayCardSetCardConfigurationWithWidth(float heightRatio, float verticalPosition, float widthRatio);
+        
+        [DllImport("__Internal")]
+        private static extern void _StashPayCardResetPresentationState();
+        
+        [DllImport("__Internal")]
+        private static extern bool _StashPayCardIsCurrentlyPresented();
 #endif
 
         #endregion
@@ -149,6 +155,32 @@ namespace StashPopup
             // For Android and other platforms, just open in default browser without callbacks
             Application.OpenURL(url);
 #endif
+        }
+
+        /// <summary>
+        /// Resets the card presentation state. Useful for debugging or force resetting the card state.
+        /// This will dismiss any currently presented card and reset internal flags.
+        /// </summary>
+        public void ResetPresentationState()
+        {
+#if UNITY_IOS && !UNITY_EDITOR
+            _StashPayCardResetPresentationState();
+#endif
+        }
+
+        /// <summary>
+        /// Gets whether a card is currently being presented.
+        /// </summary>
+        public bool IsCurrentlyPresented
+        {
+            get
+            {
+#if UNITY_IOS && !UNITY_EDITOR
+                return _StashPayCardIsCurrentlyPresented();
+#else
+                return false;
+#endif
+            }
         }
 
         #endregion
