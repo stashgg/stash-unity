@@ -106,26 +106,38 @@ static BOOL _isCardExpanded = NO;
     return self;
 }
 
-// Handle external links and decide when to call Unity callback
+// Handle all navigation to keep everything within the card
 - (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
     
     NSURL *url = navigationAction.request.URL;
+    NSString *urlString = url.absoluteString;
     
+    // Allow all navigation within the WebView to keep users in the payment flow
+    // This includes link clicks, form submissions, redirects, etc.
     
-    if (navigationAction.navigationType == WKNavigationTypeLinkActivated) {
+    // Log navigation for debugging
+    NSLog(@"WebView navigation to: %@", urlString);
+    
+    // Check for specific schemes that should never be handled in WebView
+    if ([url.scheme isEqualToString:@"tel"] ||
+        [url.scheme isEqualToString:@"mailto"] ||
+        [url.scheme isEqualToString:@"sms"]) {
+        // These should open in system apps
         decisionHandler(WKNavigationActionPolicyCancel);
         [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
-        
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if ([StashPayCardSafariDelegate sharedInstance].currentPresentedVC) {
-                [[StashPayCardSafariDelegate sharedInstance].currentPresentedVC dismissViewControllerAnimated:YES completion:^{
-                    [[StashPayCardSafariDelegate sharedInstance] callUnityCallbackOnce];
-                }];
-            }
-        });
         return;
     }
     
+    // Check for app store links that should open externally
+    if ([urlString containsString:@"apps.apple.com"] ||
+        [urlString containsString:@"itunes.apple.com"]) {
+        decisionHandler(WKNavigationActionPolicyCancel);
+        [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
+        return;
+    }
+    
+    // For all other navigation (including external domains), allow it in the WebView
+    // This keeps payment flows, external authentication, and other links within the card
     decisionHandler(WKNavigationActionPolicyAllow);
 }
 
@@ -332,6 +344,34 @@ static BOOL _isCardExpanded = NO;
     completionHandler(nil);
 }
 
+// Handle new window requests by loading them in the same WebView
+- (WKWebView *)webView:(WKWebView *)webView createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration forNavigationAction:(WKNavigationAction *)navigationAction windowFeatures:(WKWindowFeatures *)windowFeatures {
+    // Instead of creating a new window, load the URL in the existing WebView
+    // This prevents target="_blank" links and window.open() from opening new windows
+    
+    NSURL *url = navigationAction.request.URL;
+    NSString *urlString = url.absoluteString;
+    
+    NSLog(@"New window request for: %@", urlString);
+    
+    // Check for specific schemes that should open externally
+    if ([url.scheme isEqualToString:@"tel"] ||
+        [url.scheme isEqualToString:@"mailto"] ||
+        [url.scheme isEqualToString:@"sms"] ||
+        [urlString containsString:@"apps.apple.com"] ||
+        [urlString containsString:@"itunes.apple.com"]) {
+        // Open these externally and return nil to prevent new window
+        [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
+        return nil;
+    }
+    
+    // For all other URLs, load them in the existing WebView
+    [webView loadRequest:navigationAction.request];
+    
+    // Return nil to prevent the new window from being created
+    return nil;
+}
+
 // Disable JavaScript alerts/prompts that might interfere
 - (void)webView:(WKWebView *)webView runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(void))completionHandler {
     completionHandler();
@@ -363,9 +403,16 @@ static BOOL _isCardExpanded = NO;
     if (!_callbackWasCalled && _safariViewDismissedCallback != NULL) {
         _callbackWasCalled = YES;
         _isCardCurrentlyPresented = NO; // Reset the presentation flag
+        NSLog(@"Calling Safari view dismissed callback: %p", _safariViewDismissedCallback);
         dispatch_async(dispatch_get_main_queue(), ^{
             _safariViewDismissedCallback();
         });
+    } else {
+        if (_callbackWasCalled) {
+            NSLog(@"Safari view dismissed callback already called, skipping");
+        } else if (_safariViewDismissedCallback == NULL) {
+            NSLog(@"Safari view dismissed callback is NULL, cannot call");
+        }
     }
 }
 
@@ -1427,16 +1474,19 @@ extern "C" {
         _callbackWasCalled = NO; // Reset flag when setting a new callback
         _paymentSuccessHandled = NO; // Reset payment success flag when setting new callback
         _paymentSuccessCallbackCalled = NO; // Reset payment success callback flag when setting new callback
+        NSLog(@"Safari view dismissed callback registered: %p", callback);
     }
 
     // Sets the callback function to be called when payment succeeds
     void _StashPayCardSetPaymentSuccessCallback(PaymentSuccessCallback callback) {
         _paymentSuccessCallback = callback;
+        NSLog(@"Payment success callback registered: %p", callback);
     }
 
     // Sets the callback function to be called when payment fails
     void _StashPayCardSetPaymentFailureCallback(PaymentFailureCallback callback) {
         _paymentFailureCallback = callback;
+        NSLog(@"Payment failure callback registered: %p", callback);
     }
 
     // Sets the card configuration - height ratio and vertical position
@@ -1487,9 +1537,10 @@ extern "C" {
             return;
         }
         
-        // Reset payment success flags for new payment session
+        // Reset all callback flags for new payment session to ensure callbacks work properly
         _paymentSuccessHandled = NO;
         _paymentSuccessCallbackCalled = NO;
+        _callbackWasCalled = NO;
         
         // Set the presentation flag
         _isCardCurrentlyPresented = YES;
@@ -1602,6 +1653,79 @@ extern "C" {
                                                               injectionTime:WKUserScriptInjectionTimeAtDocumentStart 
                                                            forMainFrameOnly:YES];
                 [userContentController addUserScript:windowScript];
+                
+                // JavaScript code to override window.open() to prevent new windows
+                NSString *windowOpenOverrideScript = @"(function() {"
+                    "console.log('Setting up window.open() override to prevent new windows');"
+                    "var originalOpen = window.open;"
+                    "window.open = function(url, name, features) {"
+                        "console.log('window.open() intercepted for URL:', url);"
+                        "// Instead of opening a new window, navigate in the current window"
+                        "if (url) {"
+                            "window.location.href = url;"
+                        "}"
+                        "return window;"
+                    "};"
+                    "console.log('window.open() override setup complete');"
+                "})();";
+                
+                WKUserScript *windowOpenInjection = [[WKUserScript alloc] initWithSource:windowOpenOverrideScript 
+                                                                       injectionTime:WKUserScriptInjectionTimeAtDocumentStart 
+                                                                    forMainFrameOnly:YES];
+                [userContentController addUserScript:windowOpenInjection];
+                
+                // JavaScript code to handle target="_blank" links and force them to open in same window
+                NSString *targetBlankOverrideScript = @"(function() {"
+                    "function removeTargetBlank() {"
+                        "var links = document.querySelectorAll('a[target=\"_blank\"]');"
+                        "for (var i = 0; i < links.length; i++) {"
+                            "links[i].removeAttribute('target');"
+                            "console.log('Removed target=\"_blank\" from link:', links[i].href);"
+                        "}"
+                    "}"
+                    ""
+                    "// Remove target=\"_blank\" from existing links"
+                    "if (document.readyState === 'loading') {"
+                        "document.addEventListener('DOMContentLoaded', removeTargetBlank);"
+                    "} else {"
+                        "removeTargetBlank();"
+                    "}"
+                    ""
+                    "// Monitor for dynamically added links"
+                    "var observer = new MutationObserver(function(mutations) {"
+                        "mutations.forEach(function(mutation) {"
+                            "if (mutation.type === 'childList') {"
+                                "mutation.addedNodes.forEach(function(node) {"
+                                    "if (node.nodeType === 1) {"
+                                        "if (node.tagName === 'A' && node.getAttribute('target') === '_blank') {"
+                                            "node.removeAttribute('target');"
+                                            "console.log('Removed target=\"_blank\" from dynamically added link:', node.href);"
+                                        "}"
+                                        "var blankLinks = node.querySelectorAll && node.querySelectorAll('a[target=\"_blank\"]');"
+                                        "if (blankLinks) {"
+                                            "for (var i = 0; i < blankLinks.length; i++) {"
+                                                "blankLinks[i].removeAttribute('target');"
+                                                "console.log('Removed target=\"_blank\" from nested link:', blankLinks[i].href);"
+                                            "}"
+                                        "}"
+                                    "}"
+                                "});"
+                            "}"
+                        "});"
+                    "});"
+                    ""
+                    "observer.observe(document.body || document.documentElement, {"
+                        "childList: true,"
+                        "subtree: true"
+                    "});"
+                    ""
+                    "console.log('Target blank override setup complete');"
+                "})();";
+                
+                WKUserScript *targetBlankInjection = [[WKUserScript alloc] initWithSource:targetBlankOverrideScript 
+                                                                        injectionTime:WKUserScriptInjectionTimeAtDocumentEnd 
+                                                                     forMainFrameOnly:YES];
+                [userContentController addUserScript:targetBlankInjection];
                 
                 // JavaScript code to set up Stash SDK functions
                 NSString *stashSDKScript = @"(function() {"

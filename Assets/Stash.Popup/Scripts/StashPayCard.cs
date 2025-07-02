@@ -65,9 +65,6 @@ namespace StashPopup
         private float _cardHeightRatio = 0.6f; // Default: 60% of screen height
         private float _cardVerticalPosition = 1.0f; // Default: bottom of screen
         private float _cardWidthRatio = 1.0f; // Default: 100% of screen width
-        
-        // Flag to track if native callbacks have been set
-        private static bool _nativeCallbacksSet = false;
         #endregion
 
         #region Native Plugin Interface
@@ -168,14 +165,12 @@ namespace StashPopup
                       
             ApplyCardConfiguration();
 
-            // Set the native iOS callbacks only once to prevent multiple registrations
-            if (!_nativeCallbacksSet)
-            {
-                _StashPayCardSetSafariViewDismissedCallback(OnIOSSafariViewDismissed);
-                _StashPayCardSetPaymentSuccessCallback(OnIOSPaymentSuccess);
-                _StashPayCardSetPaymentFailureCallback(OnIOSPaymentFailure);
-                _nativeCallbacksSet = true;
-            }
+            // Always re-register the native iOS callbacks to ensure they're properly hooked up
+            // This is safe to do multiple times and ensures callbacks work on every call
+            _StashPayCardSetSafariViewDismissedCallback(OnIOSSafariViewDismissed);
+            _StashPayCardSetPaymentSuccessCallback(OnIOSPaymentSuccess);
+            _StashPayCardSetPaymentFailureCallback(OnIOSPaymentFailure);
+            Debug.Log("[StashPayCard] Native iOS callbacks registered for this session");
             
             // Open the URL using the native iOS plugin
             _StashPayCardOpenURLInSafariVC(url);
@@ -193,7 +188,6 @@ namespace StashPopup
         {
 #if UNITY_IOS && !UNITY_EDITOR
             _StashPayCardResetPresentationState();
-            _nativeCallbacksSet = false; // Allow callbacks to be re-registered after reset
 #endif
         }
 
