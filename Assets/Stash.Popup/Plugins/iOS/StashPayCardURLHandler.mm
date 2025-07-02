@@ -19,11 +19,21 @@ SafariViewDismissedCallback _safariViewDismissedCallback = NULL;
 typedef void (*PaymentSuccessCallback)();
 PaymentSuccessCallback _paymentSuccessCallback = NULL;
 
+// Define a payment failure callback function typedef
+typedef void (*PaymentFailureCallback)();
+PaymentFailureCallback _paymentFailureCallback = NULL;
+
 // Flag to track if callback was already called
 BOOL _callbackWasCalled = NO;
 
 // Flag to track if a card is currently being presented
 BOOL _isCardCurrentlyPresented = NO;
+
+// Flag to track if payment success was already handled
+BOOL _paymentSuccessHandled = NO;
+
+// Flag to track if payment success callback was already called for this session
+BOOL _paymentSuccessCallbackCalled = NO;
 
 // Configuration options for card size and position
 static CGFloat _cardHeightRatio = 0.4; // Default to 40% of screen height
@@ -101,24 +111,6 @@ static BOOL _isCardExpanded = NO;
     
     NSURL *url = navigationAction.request.URL;
     
-    if (url && [url.absoluteString containsString:@"redirect_status=succeeded"]) {
-        decisionHandler(WKNavigationActionPolicyAllow);
-        
-        if (_paymentSuccessCallback != NULL) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                _paymentSuccessCallback();
-            });
-        }
-        
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            if ([StashPayCardSafariDelegate sharedInstance].currentPresentedVC) {
-                [[StashPayCardSafariDelegate sharedInstance].currentPresentedVC dismissViewControllerAnimated:YES completion:^{
-                    [[StashPayCardSafariDelegate sharedInstance] callUnityCallbackOnce];
-                }];
-            }
-        });
-        return;
-    }
     
     if (navigationAction.navigationType == WKNavigationTypeLinkActivated) {
         decisionHandler(WKNavigationActionPolicyCancel);
@@ -1271,13 +1263,69 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     }
 }
 
-// WKScriptMessageHandler implementation for handling JavaScript window.close() calls
+// WKScriptMessageHandler implementation for handling JavaScript calls
 - (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message {
     if ([message.name isEqualToString:@"windowClose"]) {
         if (self.currentPresentedVC) {
             [self.currentPresentedVC dismissViewControllerAnimated:YES completion:^{
                 _isCardCurrentlyPresented = NO; // Reset the presentation flag
                 [self callUnityCallbackOnce];
+            }];
+        }
+    }
+    else if ([message.name isEqualToString:@"stashPaymentSuccess"]) {
+        NSLog(@"Payment success received from JavaScript");
+        
+        // Prevent multiple payment success handling
+        if (_paymentSuccessHandled) {
+            NSLog(@"Payment success already handled, ignoring duplicate");
+            return;
+        }
+        _paymentSuccessHandled = YES;
+        
+        // Prevent multiple callback executions for this session
+        if (_paymentSuccessCallbackCalled) {
+            NSLog(@"Payment success callback already called for this session, ignoring");
+            return;
+        }
+        _paymentSuccessCallbackCalled = YES;
+        
+        // Call the payment success callback if available
+        if (_paymentSuccessCallback != NULL) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                _paymentSuccessCallback();
+            });
+        } else {
+            NSLog(@"Payment success callback is NULL, cannot call Unity");
+        }
+        
+        // Automatically close the Stash Pay Card without calling the regular dismissal callback
+        if (self.currentPresentedVC) {
+            [self.currentPresentedVC dismissViewControllerAnimated:YES completion:^{
+                _isCardCurrentlyPresented = NO; // Reset the presentation flag
+                _callbackWasCalled = YES; // Mark callback as called to prevent dismissal callback
+                // Don't call callUnityCallbackOnce here since we already handled the success callback
+            }];
+        }
+    }
+    else if ([message.name isEqualToString:@"stashPaymentFailure"]) {
+        NSLog(@"Payment failure received from JavaScript");
+        
+        // Call the payment failure callback if available
+        if (_paymentFailureCallback != NULL) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                _paymentFailureCallback();
+            });
+        } else {
+            NSLog(@"Payment failure callback is NULL, cannot call Unity");
+        }
+        
+        // Automatically close the Stash Pay Card without calling the regular dismissal callback
+        if (self.currentPresentedVC) {
+            [self.currentPresentedVC dismissViewControllerAnimated:YES completion:^{
+                _isCardCurrentlyPresented = NO; // Reset the presentation flag
+                _callbackWasCalled = YES; // Mark callback as called to prevent dismissal callback
+                // Don't call callUnityCallbackOnce here since we already handled the failure callback
             }];
         }
     }
@@ -1377,11 +1425,18 @@ extern "C" {
     void _StashPayCardSetSafariViewDismissedCallback(SafariViewDismissedCallback callback) {
         _safariViewDismissedCallback = callback;
         _callbackWasCalled = NO; // Reset flag when setting a new callback
+        _paymentSuccessHandled = NO; // Reset payment success flag when setting new callback
+        _paymentSuccessCallbackCalled = NO; // Reset payment success callback flag when setting new callback
     }
 
     // Sets the callback function to be called when payment succeeds
     void _StashPayCardSetPaymentSuccessCallback(PaymentSuccessCallback callback) {
         _paymentSuccessCallback = callback;
+    }
+
+    // Sets the callback function to be called when payment fails
+    void _StashPayCardSetPaymentFailureCallback(PaymentFailureCallback callback) {
+        _paymentFailureCallback = callback;
     }
 
     // Sets the card configuration - height ratio and vertical position
@@ -1431,6 +1486,10 @@ extern "C" {
             NSLog(@"Warning: Card is already being presented. Ignoring new request.");
             return;
         }
+        
+        // Reset payment success flags for new payment session
+        _paymentSuccessHandled = NO;
+        _paymentSuccessCallbackCalled = NO;
         
         // Set the presentation flag
         _isCardCurrentlyPresented = YES;
@@ -1544,8 +1603,30 @@ extern "C" {
                                                            forMainFrameOnly:YES];
                 [userContentController addUserScript:windowScript];
                 
+                // JavaScript code to set up Stash SDK functions
+                NSString *stashSDKScript = @"(function() {"
+                    "console.log('Setting up Stash SDK functions');"
+                    "window.stash_sdk = window.stash_sdk || {};"
+                    "window.stash_sdk.onPaymentSuccess = function(data) {"
+                        "console.log('Stash SDK: onPaymentSuccess called with data:', data);"
+                        "window.webkit.messageHandlers.stashPaymentSuccess.postMessage(data || {});"
+                    "};"
+                    "window.stash_sdk.onPaymentFailure = function(data) {"
+                        "console.log('Stash SDK: onPaymentFailure called with data:', data);"
+                        "window.webkit.messageHandlers.stashPaymentFailure.postMessage(data || {});"
+                    "};"
+                    "console.log('Stash SDK setup complete - functions available at window.stash_sdk');"
+                "})();";
+                
+                WKUserScript *stashSDKInjection = [[WKUserScript alloc] initWithSource:stashSDKScript 
+                                                                     injectionTime:WKUserScriptInjectionTimeAtDocumentStart 
+                                                                  forMainFrameOnly:YES];
+                [userContentController addUserScript:stashSDKInjection];
+                
                 // Add the script message handlers
                 [userContentController addScriptMessageHandler:[StashPayCardSafariDelegate sharedInstance] name:@"windowClose"];
+                [userContentController addScriptMessageHandler:[StashPayCardSafariDelegate sharedInstance] name:@"stashPaymentSuccess"];
+                [userContentController addScriptMessageHandler:[StashPayCardSafariDelegate sharedInstance] name:@"stashPaymentFailure"];
                 
                 config.userContentController = userContentController;
                 
@@ -1793,6 +1874,8 @@ extern "C" {
     void _StashPayCardResetPresentationState() {
         _isCardCurrentlyPresented = NO;
         _callbackWasCalled = NO;
+        _paymentSuccessHandled = NO;
+        _paymentSuccessCallbackCalled = NO;
         if ([StashPayCardSafariDelegate sharedInstance].currentPresentedVC) {
             [[StashPayCardSafariDelegate sharedInstance].currentPresentedVC dismissViewControllerAnimated:NO completion:nil];
             [StashPayCardSafariDelegate sharedInstance].currentPresentedVC = nil;

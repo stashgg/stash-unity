@@ -53,6 +53,11 @@ namespace StashPopup
         /// Event triggered when a payment succeeds.
         /// </summary>
         public event Action OnPaymentSuccess;
+
+        /// <summary>
+        /// Event triggered when a payment fails.
+        /// </summary>
+        public event Action OnPaymentFailure;
         #endregion
 
         #region Private Fields
@@ -60,6 +65,9 @@ namespace StashPopup
         private float _cardHeightRatio = 0.6f; // Default: 60% of screen height
         private float _cardVerticalPosition = 1.0f; // Default: bottom of screen
         private float _cardWidthRatio = 1.0f; // Default: 100% of screen width
+        
+        // Flag to track if native callbacks have been set
+        private static bool _nativeCallbacksSet = false;
         #endregion
 
         #region Native Plugin Interface
@@ -68,6 +76,7 @@ namespace StashPopup
         // Delegate types for iOS callbacks
         private delegate void SafariViewDismissedCallback();
         private delegate void PaymentSuccessCallback();
+        private delegate void PaymentFailureCallback();
         
         // Import the native iOS plugin functions
         [DllImport("__Internal")]
@@ -78,6 +87,9 @@ namespace StashPopup
         
         [DllImport("__Internal")]
         private static extern void _StashPayCardSetPaymentSuccessCallback(PaymentSuccessCallback callback);
+        
+        [DllImport("__Internal")]
+        private static extern void _StashPayCardSetPaymentFailureCallback(PaymentFailureCallback callback);
         
         [DllImport("__Internal")]
         private static extern void _StashPayCardSetCardConfiguration(float heightRatio, float verticalPosition);
@@ -113,9 +125,10 @@ namespace StashPopup
         /// On other platforms and editor, simply opens the URL in the default browser as a fallback.
         /// </summary>
         /// <param name="url">Stash Pay URL to open</param>
-        /// <param name="dismissCallback">Callback triggered when the browser view is dismissed / payment fails.</param>
+        /// <param name="dismissCallback">Callback triggered when the browser view is dismissed.</param>
         /// <param name="successCallback">Callback triggered when payment succeeds.</param>
-        public void OpenURL(string url, Action dismissCallback = null, Action successCallback = null)
+        /// <param name="failureCallback">Callback triggered when payment fails.</param>
+        public void OpenURL(string url, Action dismissCallback = null, Action successCallback = null, Action failureCallback = null)
         {
             if (string.IsNullOrEmpty(url))
             {
@@ -131,6 +144,11 @@ namespace StashPopup
 
             Debug.Log($"StashPayCard: Opening URL {url}");
 
+            // Clear previous callbacks to prevent multiple registrations
+            OnSafariViewDismissed = null;
+            OnPaymentSuccess = null;
+            OnPaymentFailure = null;
+            
             if (dismissCallback != null)
             {
                 OnSafariViewDismissed += dismissCallback;
@@ -141,13 +159,23 @@ namespace StashPopup
                 OnPaymentSuccess += successCallback;
             }
 
+            if (failureCallback != null)
+            {
+                OnPaymentFailure += failureCallback;
+            }
+
 #if UNITY_IOS && !UNITY_EDITOR
                       
             ApplyCardConfiguration();
 
-            // Set the native iOS callbacks
-            _StashPayCardSetSafariViewDismissedCallback(OnIOSSafariViewDismissed);
-            _StashPayCardSetPaymentSuccessCallback(OnIOSPaymentSuccess);
+            // Set the native iOS callbacks only once to prevent multiple registrations
+            if (!_nativeCallbacksSet)
+            {
+                _StashPayCardSetSafariViewDismissedCallback(OnIOSSafariViewDismissed);
+                _StashPayCardSetPaymentSuccessCallback(OnIOSPaymentSuccess);
+                _StashPayCardSetPaymentFailureCallback(OnIOSPaymentFailure);
+                _nativeCallbacksSet = true;
+            }
             
             // Open the URL using the native iOS plugin
             _StashPayCardOpenURLInSafariVC(url);
@@ -165,6 +193,7 @@ namespace StashPopup
         {
 #if UNITY_IOS && !UNITY_EDITOR
             _StashPayCardResetPresentationState();
+            _nativeCallbacksSet = false; // Allow callbacks to be re-registered after reset
 #endif
         }
 
@@ -206,9 +235,33 @@ namespace StashPopup
         [MonoPInvokeCallback(typeof(PaymentSuccessCallback))]
         private static void OnIOSPaymentSuccess()
         {
+            Debug.Log("[StashPayCard] Payment success callback received from iOS");
+            
             if (Instance != null)
             {
                 Instance.OnPaymentSuccess?.Invoke();
+            }
+            else
+            {
+                Debug.LogWarning("[StashPayCard] Payment success callback received but Instance is null");
+            }
+        }
+
+        /// <summary>
+        /// Unity callback method called from iOS when payment fails.
+        /// </summary>
+        [MonoPInvokeCallback(typeof(PaymentFailureCallback))]
+        private static void OnIOSPaymentFailure()
+        {
+            Debug.Log("[StashPayCard] Payment failure callback received from iOS");
+            
+            if (Instance != null)
+            {
+                Instance.OnPaymentFailure?.Invoke();
+            }
+            else
+            {
+                Debug.LogWarning("[StashPayCard] Payment failure callback received but Instance is null");
             }
         }
 #endif

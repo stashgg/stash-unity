@@ -46,6 +46,15 @@ public class StashStoreUIController : MonoBehaviour
     private string currentCheckoutId;
     private int currentItemIndex;
 
+    // Payment popup elements
+    private VisualElement paymentPopup;
+    private Label paymentPopupItemName;
+    private Label paymentPopupItemPrice;
+    private Button directCheckoutButton;
+    private Button applePayButton;
+    private Button paymentPopupCloseButton;
+    private int currentPopupItemIndex = -1;
+
     private void Start()
     {
         // Get the root of the UI document
@@ -56,6 +65,9 @@ public class StashStoreUIController : MonoBehaviour
         
         // Setup store UI elements
         UpdateUIFromStoreItems();
+        
+        // Setup payment popup
+        SetupPaymentPopup();
         
     }
     
@@ -118,8 +130,8 @@ public class StashStoreUIController : MonoBehaviour
             buyButton.text = "$" + storeItem.pricePerItem;
             buyButton.AddToClassList("buy-button");
             
-            // Add click handler
-            buyButton.clicked += () => ProcessPurchase(itemIndex);
+            // Add click handler to show payment popup
+            buyButton.clicked += () => ShowPaymentPopup(itemIndex);
             
             // Add to tracking list
             buyButtons.Add(buyButton);
@@ -170,11 +182,171 @@ public class StashStoreUIController : MonoBehaviour
         });
     }
 
-    private void ProcessPurchase(int itemIndex)
+    private void SetupPaymentPopup()
     {
+        // Setup payment popup references
+        paymentPopup = root.Q<VisualElement>("payment-popup");
+        paymentPopupItemName = root.Q<Label>("payment-popup-item-name");
+        paymentPopupItemPrice = root.Q<Label>("payment-popup-item-price");
+        directCheckoutButton = root.Q<Button>("direct-checkout-button");
+        applePayButton = root.Q<Button>("apple-pay-button");
+        paymentPopupCloseButton = root.Q<Button>("payment-popup-close-button");
+
+        if (paymentPopup != null)
+        {
+            paymentPopup.visible = false;
+        }
+        if (paymentPopupCloseButton != null)
+        {
+            paymentPopupCloseButton.clicked += HidePaymentPopup;
+        }
+        if (directCheckoutButton != null)
+        {
+            directCheckoutButton.clicked += OnDirectCheckoutClicked;
+        }
+        if (applePayButton != null)
+        {
+            applePayButton.clicked += OnApplePayClicked;
+        }
+    }
+
+    private void ShowPaymentPopup(int itemIndex)
+    {
+        Debug.Log($"[StoreUI] ShowPaymentPopup called with itemIndex: {itemIndex}, storeItems.Count: {storeItems?.Count ?? 0}");
+        
         if (itemIndex < 0 || itemIndex >= storeItems.Count)
         {
-            Debug.LogError("Invalid item index!");
+            Debug.LogError($"[StoreUI] Invalid itemIndex: {itemIndex} for ShowPaymentPopup");
+            return;
+        }
+        
+        currentPopupItemIndex = itemIndex;
+        StoreItem item = storeItems[itemIndex];
+        
+        Debug.Log($"[StoreUI] Setting popup for item: {item.name} (ID: {item.id}) at index: {itemIndex}");
+        
+        if (paymentPopupItemName != null)
+            paymentPopupItemName.text = item.name;
+        if (paymentPopupItemPrice != null)
+            paymentPopupItemPrice.text = "$" + item.pricePerItem;
+        if (paymentPopup != null)
+        {
+            paymentPopup.AddToClassList("visible");
+            paymentPopup.visible = true;
+        }
+    }
+
+    private void HidePaymentPopup()
+    {
+        if (paymentPopup != null)
+        {
+            paymentPopup.RemoveFromClassList("visible");
+            paymentPopup.visible = false;
+        }
+        currentPopupItemIndex = -1;
+    }
+
+    private void OnDirectCheckoutClicked()
+    {
+        Debug.Log($"[StoreUI] OnDirectCheckoutClicked called. currentPopupItemIndex: {currentPopupItemIndex}");
+        
+        if (storeItems == null)
+        {
+            Debug.LogError("[StoreUI] storeItems is null!");
+            return;
+        }
+        
+        if (currentPopupItemIndex < 0 || currentPopupItemIndex >= storeItems.Count) 
+        {
+            Debug.LogError($"[StoreUI] Invalid popup item index: {currentPopupItemIndex}. Store items count: {storeItems?.Count ?? 0}");
+            return;
+        }
+        
+        try
+        {
+            // Store the index before hiding the popup (which resets currentPopupItemIndex to -1)
+            int itemIndex = currentPopupItemIndex;
+            StoreItem item = storeItems[itemIndex];
+            if (item == null)
+            {
+                Debug.LogError($"[StoreUI] Store item at index {itemIndex} is null!");
+                return;
+            }
+            
+            HidePaymentPopup();
+            Debug.Log($"[StoreUI] Direct Checkout for item: {item.id}");
+            Debug.Log($"[StoreUI] About to call ProcessPurchase with index: {itemIndex}");
+            // Use the existing Stash implementation
+            ProcessPurchase(itemIndex);
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"[StoreUI] Exception in OnDirectCheckoutClicked: {ex.Message}\nStackTrace: {ex.StackTrace}");
+        }
+    }
+
+    private void OnApplePayClicked()
+    {
+        Debug.Log($"[StoreUI] OnApplePayClicked called. currentPopupItemIndex: {currentPopupItemIndex}");
+        
+        if (storeItems == null)
+        {
+            Debug.LogError("[StoreUI] storeItems is null!");
+            return;
+        }
+        
+        if (currentPopupItemIndex < 0 || currentPopupItemIndex >= storeItems.Count) 
+        {
+            Debug.LogError($"[StoreUI] Invalid popup item index: {currentPopupItemIndex}. Store items count: {storeItems?.Count ?? 0}");
+            return;
+        }
+        
+        try
+        {
+            // Store the index before hiding the popup (which resets currentPopupItemIndex to -1)
+            int itemIndex = currentPopupItemIndex;
+            StoreItem item = storeItems[itemIndex];
+            if (item == null)
+            {
+                Debug.LogError($"[StoreUI] Store item at index {itemIndex} is null!");
+                return;
+            }
+            
+            HidePaymentPopup();
+            Debug.Log($"[StoreUI] Apple Pay selected for item: {item.id}");
+            // TODO: Implement Apple IAP logic here
+            // For now, show a placeholder message
+            ShowApplePayPlaceholder();
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"[StoreUI] Exception in OnApplePayClicked: {ex.Message}\nStackTrace: {ex.StackTrace}");
+        }
+    }
+
+    private void ShowApplePayPlaceholder()
+    {
+        // Create a simple popup to inform user that Apple Pay is not yet implemented
+        var placeholderPopup = new GameObject("ApplePayPlaceholder");
+        var popupScript = placeholderPopup.AddComponent<SuccessPopup>();
+        popupScript.Show("Apple Pay", "Apple In-App Purchase integration coming soon!");
+    }
+
+    private void ProcessPurchase(int itemIndex)
+    {
+        Debug.Log($"[StoreUI] ProcessPurchase called with itemIndex: {itemIndex}");
+        Debug.Log($"[StoreUI] storeItems null? {storeItems == null}");
+        Debug.Log($"[StoreUI] storeItems.Count: {storeItems?.Count ?? -1}");
+        
+        if (storeItems == null)
+        {
+            Debug.LogError("[StoreUI] storeItems is null in ProcessPurchase!");
+            return;
+        }
+        
+        if (itemIndex < 0 || itemIndex >= storeItems.Count)
+        {
+            Debug.LogError($"[StoreUI] Invalid item index in ProcessPurchase: {itemIndex}! Valid range: 0 to {storeItems.Count - 1}");
             return;
         }
 
@@ -237,7 +409,7 @@ public class StashStoreUIController : MonoBehaviour
             Debug.Log($"[Stash] Generated checkout URL: {url} with ID: {id}");
             
             // Open the checkout URL in the StashPayCard
-            StashPayCard.Instance.OpenURL(url, () => OnBrowserClosed(), () => OnPaymentSuccessDetected());
+            StashPayCard.Instance.OpenURL(url, () => OnBrowserClosed(), () => OnPaymentSuccessDetected(), () => OnPaymentFailureDetected());
         }
         catch (Exception ex)
         {
@@ -361,14 +533,28 @@ public class StashStoreUIController : MonoBehaviour
                 );
                 
                 // Notify listeners
-                OnPurchaseCompleted?.Invoke(storeItems[currentItemIndex].id, true);
+                if (storeItems != null && currentItemIndex >= 0 && currentItemIndex < storeItems.Count)
+                {
+                    OnPurchaseCompleted?.Invoke(storeItems[currentItemIndex].id, true);
+                }
+                else
+                {
+                    Debug.LogError($"[StoreUI] Cannot invoke OnPurchaseCompleted - invalid currentItemIndex: {currentItemIndex}");
+                }
             }
             else
             {
                 // Purchase failed verification
                 Debug.LogWarning("[Stash] Purchase verification failed");
                 HandleFailedPurchase(currentItemIndex);
-                OnPurchaseCompleted?.Invoke(storeItems[currentItemIndex].id, false);
+                if (storeItems != null && currentItemIndex >= 0 && currentItemIndex < storeItems.Count)
+                {
+                    OnPurchaseCompleted?.Invoke(storeItems[currentItemIndex].id, false);
+                }
+                else
+                {
+                    Debug.LogError($"[StoreUI] Cannot invoke OnPurchaseCompleted - invalid currentItemIndex: {currentItemIndex}");
+                }
             }
             
             // Reset button state
@@ -435,10 +621,19 @@ public class StashStoreUIController : MonoBehaviour
     
     private void HandleSuccessfulPurchase(int itemIndex)
     {
+        if (storeItems == null || itemIndex < 0 || itemIndex >= storeItems.Count)
+        {
+            Debug.LogError($"[StoreUI] Invalid item index {itemIndex} in HandleSuccessfulPurchase. Store items count: {storeItems?.Count ?? 0}");
+            return;
+        }
+        
         Debug.Log($"Purchase successful for item: {storeItems[itemIndex].id}");
         
         // Re-enable the buy button after successful purchase
-        SetButtonEnabled(buyButtons[itemIndex], true);
+        if (buyButtons != null && itemIndex < buyButtons.Count)
+        {
+            SetButtonEnabled(buyButtons[itemIndex], true);
+        }
         
         // Unblock navigation after successful purchase
         NavigationBlocker.Instance.UnblockNavigation();
@@ -449,22 +644,31 @@ public class StashStoreUIController : MonoBehaviour
     
     private void HandleFailedPurchase(int itemIndex)
     {
+        if (storeItems == null || itemIndex < 0 || itemIndex >= storeItems.Count)
+        {
+            Debug.LogError($"[StoreUI] Invalid item index {itemIndex} in HandleFailedPurchase. Store items count: {storeItems?.Count ?? 0}");
+            return;
+        }
+        
         Debug.LogError($"Purchase failed for item: {storeItems[itemIndex].id}");
         
         // Re-enable the buy button after failed purchase
-        SetButtonEnabled(buyButtons[itemIndex], true);
+        if (buyButtons != null && itemIndex < buyButtons.Count)
+        {
+            SetButtonEnabled(buyButtons[itemIndex], true);
+            
+            // Show the purchase failed state on the button
+            Button button = buyButtons[itemIndex];
+            button.AddToClassList("purchase-failed");
+            
+            // Remove the failed state after a short delay
+            Invoke(() => {
+                button.RemoveFromClassList("purchase-failed");
+            }, 2f);
+        }
         
         // Unblock navigation after failed purchase
         NavigationBlocker.Instance.UnblockNavigation();
-        
-        // Show the purchase failed state on the button
-        Button button = buyButtons[itemIndex];
-        button.AddToClassList("purchase-failed");
-        
-        // Remove the failed state after a short delay
-        Invoke(() => {
-            button.RemoveFromClassList("purchase-failed");
-        }, 2f);
     }
     
     private void SetButtonLoadingState(Button button, bool isLoading)
@@ -476,10 +680,26 @@ public class StashStoreUIController : MonoBehaviour
         }
         else
         {
-            // Get the item index from the button name
-            string buttonName = button.name;
-            int itemIndex = int.Parse(buttonName.Split('-')[2]) - 1;
-            button.text = "$" + storeItems[itemIndex].pricePerItem;
+            try
+            {
+                // Get the item index from the button name
+                string buttonName = button.name;
+                int itemIndex = int.Parse(buttonName.Split('-')[2]) - 1;
+                
+                if (storeItems == null || itemIndex < 0 || itemIndex >= storeItems.Count)
+                {
+                    Debug.LogError($"[StoreUI] Invalid item index {itemIndex} in SetButtonLoadingState. Store items count: {storeItems?.Count ?? 0}");
+                    button.text = "BUY";
+                    return;
+                }
+                
+                button.text = "$" + storeItems[itemIndex].pricePerItem;
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"[StoreUI] Exception in SetButtonLoadingState: {ex.Message}");
+                button.text = "BUY";
+            }
         }
     }
     
@@ -569,36 +789,98 @@ public class StashStoreUIController : MonoBehaviour
 
     private void OnPaymentSuccessDetected()
     {
-        Debug.Log("[Stash] Payment success detected from iOS - showing celebration!");
+        Debug.Log("[Stash] Payment success detected from iOS");
         
         try
         {
-            // Ensure we're on the main thread for UI operations
-            if (this != null && gameObject != null)
+            // Validate currentItemIndex before accessing storeItems
+            if (storeItems == null || currentItemIndex < 0 || currentItemIndex >= storeItems.Count)
             {
-                // Get the current item details
-                StoreItem currentItem = storeItems[currentItemIndex];
-                
-                // Show enhanced success popup with confetti
-                ShowSuccessPopup(
-                    currentItem.name,
-                    currency,
-                    currentItem.pricePerItem,
-                    "0", // No tax info available at this point
-                    DateTimeOffset.Now.ToUnixTimeMilliseconds().ToString()
-                );
-                
-                // Also show confetti effect
-                ShowSuccessPopupWithConfetti("Payment successful!", "Your purchase has been completed successfully!");
+                Debug.LogError($"[StoreUI] Invalid currentItemIndex {currentItemIndex}. Store items count: {storeItems?.Count ?? 0}");
+                return;
             }
-            else
+            
+            // Get the current item details
+            StoreItem currentItem = storeItems[currentItemIndex];
+            
+            // Show enhanced success popup with confetti
+            ShowSuccessPopup(
+                currentItem.name,
+                currency,
+                currentItem.pricePerItem,
+                "0", // No tax info available at this point
+                DateTimeOffset.Now.ToUnixTimeMilliseconds().ToString()
+            );
+            
+            // Also show confetti effect
+            ShowSuccessPopupWithConfetti("Payment successful!", "Your purchase has been completed successfully!");
+            
+            // Re-enable UI after successful payment
+            if (buyButtons != null && currentItemIndex >= 0 && currentItemIndex < buyButtons.Count)
             {
-                Debug.LogWarning("[Stash] Cannot show celebration - component or GameObject is null");
+                SetButtonEnabled(buyButtons[currentItemIndex], true);
+                SetButtonLoadingState(buyButtons[currentItemIndex], false);
             }
+            
+            // Unblock navigation after successful payment
+            NavigationBlocker.Instance.UnblockNavigation();
         }
         catch (Exception ex)
         {
-            Debug.LogError($"[Stash] Error showing payment success celebration: {ex.Message}");
+            Debug.LogError($"[Stash] Error handling payment success: {ex.Message}");
+        }
+    }
+
+    private void OnPaymentFailureDetected()
+    {
+        Debug.Log("[Stash] Payment failure detected from iOS");
+        
+        try
+        {
+            // Validate currentItemIndex before accessing storeItems
+            if (storeItems == null || currentItemIndex < 0 || currentItemIndex >= storeItems.Count)
+            {
+                Debug.LogError($"[StoreUI] Invalid currentItemIndex {currentItemIndex}. Store items count: {storeItems?.Count ?? 0}");
+                return;
+            }
+            
+            // Handle the failed purchase
+            HandleFailedPurchase(currentItemIndex);
+            
+            // Show failure message to user
+            ShowPaymentFailureMessage();
+            
+            // Notify listeners
+            OnPurchaseCompleted?.Invoke(storeItems[currentItemIndex].id, false);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[Stash] Error handling payment failure: {ex.Message}");
+        }
+    }
+    
+    private void ShowPaymentFailureMessage()
+    {
+        try
+        {
+            // Create a failure popup
+            var failurePopup = new GameObject("PaymentFailurePopup");
+            var popupScript = failurePopup.AddComponent<SuccessPopup>(); // Reusing the SuccessPopup class
+            
+            string message = "Your payment could not be processed.\n\nPlease try again or contact support if the problem persists.";
+            
+            // Add the current item name if available
+            if (storeItems != null && currentItemIndex >= 0 && currentItemIndex < storeItems.Count)
+            {
+                string itemName = storeItems[currentItemIndex].name;
+                message = $"Payment for {itemName} could not be processed.\n\nPlease try again or contact support if the problem persists.";
+            }
+            
+            popupScript.Show("Payment Failed", message);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[Stash] Error showing payment failure message: {ex.Message}");
         }
     }
     
@@ -734,9 +1016,11 @@ public class StashStoreUIController : MonoBehaviour
     
     private void OnDestroy()
     {
+        Debug.Log($"[StoreUI] OnDestroy called for StashStoreUIController instance: {GetInstanceID()}");
         // Unsubscribe from payment success events
         if (StashPayCard.Instance != null)
         {
+            Debug.Log($"[StoreUI] Unsubscribing OnPaymentSuccessDetected callback for instance: {GetInstanceID()}");
             StashPayCard.Instance.OnPaymentSuccess -= OnPaymentSuccessDetected;
         }
     }

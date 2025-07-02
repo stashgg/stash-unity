@@ -7,15 +7,15 @@ public class StoreExample : MonoBehaviour
     [SerializeField] private GameObject storeUIGameObject;
     
     // Reference to store controller
-    private StoreUIController storeController;
+    private StashStoreUIController storeController;
 
     private void Start()
     {
         // Get or add store controller component
-        storeController = storeUIGameObject.GetComponent<StoreUIController>();
+        storeController = storeUIGameObject.GetComponent<StashStoreUIController>();
         if (storeController == null)
         {
-            storeController = storeUIGameObject.AddComponent<StoreUIController>();
+            storeController = storeUIGameObject.AddComponent<StashStoreUIController>();
         }
         
         // Subscribe to purchase events

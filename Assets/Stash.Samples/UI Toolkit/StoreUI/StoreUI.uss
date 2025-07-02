@@ -1178,3 +1178,103 @@
 .navigation-blocker.visible {
     opacity: 1;
 }
+
+/* Payment Popup Styles */
+.payment-popup {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    z-index: 2000;
+    justify-content: center;
+    align-items: center;
+    display: none;
+}
+.payment-popup.visible {
+    display: flex;
+}
+.payment-popup-content {
+    background-color: rgb(67, 67, 75);
+    background-image: url("project://database/Assets/Stash.Samples/Assets/card_bg.png?fileID=21300000&guid=987d48a503707487f8fa551bc69b6915&type=3#card_bg");
+    background-size: 180px 180px;
+    background-repeat: repeat;
+    border-width: 3px;
+    border-color: rgba(47, 47, 47, 0.96);
+    border-radius: 16px;
+    padding: 32px 24px 24px 24px;
+    width: 340px;
+    max-width: 90%;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+}
+.payment-popup-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    margin-bottom: 8px;
+}
+.payment-popup-title {
+    color: rgb(255, 255, 255);
+    font-size: 18px;
+    font-weight: 900;
+}
+.payment-popup-close-button {
+    width: 28px;
+    height: 28px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-width: 0;
+    border-radius: 14px;
+    color: rgb(255, 255, 255);
+    font-size: 18px;
+    -unity-font-style: bold;
+    transition-duration: 0.2s;
+    justify-content: center;
+    align-items: center;
+}
+.payment-popup-close-button:hover {
+    background-color: rgba(0, 0, 0, 0.3);
+    scale: 1.1;
+}
+.payment-popup-close-button:active {
+    scale: 0.95;
+}
+.payment-popup-item-name {
+    display: none;
+}
+.payment-popup-item-price {
+    display: none;
+}
+.payment-options-container {
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    align-items: stretch;
+}
+.payment-option-button {
+    background-color: rgb(95, 159, 251);
+    color: white;
+    border-radius: 10px;
+    border-width: 0;
+    padding: 16px 0;
+    margin-top: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    transition-duration: 0.2s;
+}
+.payment-option-button:hover {
+    background-color: rgb(85, 149, 241);
+}
+.payment-option-button:active {
+    background-color: rgb(75, 139, 231);
+}
+.payment-option-icon {
+    display: none;
+}

@@ -100,5 +100,27 @@
             </ui:VisualElement>
             <ui:Label name="help-description-text" class="help-description-content" />
         </ui:VisualElement>
+        
+        <!-- Payment Method Selection Popup -->
+        <ui:VisualElement name="payment-popup" class="payment-popup">
+            <ui:VisualElement class="payment-popup-content">
+                <ui:VisualElement class="payment-popup-header">
+                    <ui:Label text="Choose Payment Method" class="payment-popup-title" />
+                    <ui:Button name="payment-popup-close-button" class="payment-popup-close-button" text="×" />
+                </ui:VisualElement>
+                <ui:Label name="payment-popup-item-name" class="payment-popup-item-name" />
+                <ui:Label name="payment-popup-item-price" class="payment-popup-item-price" />
+                <ui:VisualElement class="payment-options-container">
+                    <ui:Button name="direct-checkout-button" class="payment-option-button direct-checkout-button">
+                        <ui:VisualElement class="payment-option-icon direct-checkout-icon" />
+                        <ui:Label text="Direct Checkout With Stash" class="payment-option-text" />
+                    </ui:Button>
+                    <ui:Button name="apple-pay-button" class="payment-option-button apple-pay-button">
+                        <ui:VisualElement class="payment-option-icon apple-pay-icon" />
+                        <ui:Label text="Apple IAP" class="payment-option-text" />
+                    </ui:Button>
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>
