@@ -115,9 +115,6 @@ static BOOL _isCardExpanded = NO;
     // Allow all navigation within the WebView to keep users in the payment flow
     // This includes link clicks, form submissions, redirects, etc.
     
-    // Log navigation for debugging
-    NSLog(@"WebView navigation to: %@", urlString);
-    
     // Check for specific schemes that should never be handled in WebView
     if ([url.scheme isEqualToString:@"tel"] ||
         [url.scheme isEqualToString:@"mailto"] ||
@@ -352,8 +349,6 @@ static BOOL _isCardExpanded = NO;
     NSURL *url = navigationAction.request.URL;
     NSString *urlString = url.absoluteString;
     
-    NSLog(@"New window request for: %@", urlString);
-    
     // Check for specific schemes that should open externally
     if ([url.scheme isEqualToString:@"tel"] ||
         [url.scheme isEqualToString:@"mailto"] ||
@@ -403,16 +398,9 @@ static BOOL _isCardExpanded = NO;
     if (!_callbackWasCalled && _safariViewDismissedCallback != NULL) {
         _callbackWasCalled = YES;
         _isCardCurrentlyPresented = NO; // Reset the presentation flag
-        NSLog(@"Calling Safari view dismissed callback: %p", _safariViewDismissedCallback);
         dispatch_async(dispatch_get_main_queue(), ^{
             _safariViewDismissedCallback();
         });
-    } else {
-        if (_callbackWasCalled) {
-            NSLog(@"Safari view dismissed callback already called, skipping");
-        } else if (_safariViewDismissedCallback == NULL) {
-            NSLog(@"Safari view dismissed callback is NULL, cannot call");
-        }
     }
 }
 
@@ -594,7 +582,7 @@ static BOOL _isCardExpanded = NO;
         x = (screenBounds.size.width - width) / 2;
         finalY = (screenBounds.size.height - height) / 2;
         
-        NSLog(@"iPad card positioned at: x=%.0f, y=%.0f, size=%.0fx%.0f", x, finalY, width, height);
+
     } else {
         // iPhone/standard behavior
         width = screenBounds.size.width * _cardWidthRatio;  // Configurable width
@@ -607,7 +595,7 @@ static BOOL _isCardExpanded = NO;
         // Ensure the card doesn't go above the top of the screen
         if (finalY < 0) finalY = 0;
         
-        NSLog(@"iPhone card positioned at: x=%.0f, y=%.0f, size=%.0fx%.0f", x, finalY, width, height);
+
     }
     
     // Start position (off-screen)
@@ -827,7 +815,6 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
 - (void)expandCardToFullScreen {
     if (!self.currentPresentedVC) return;
     
-    NSLog(@"Expanding card to full screen with safe area respect");
     _isCardExpanded = YES;
     
     UIView *cardView = self.currentPresentedVC.view;
@@ -850,15 +837,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     // CGFloat safeWidth = screenBounds.size.width - safeAreaInsets.left - safeAreaInsets.right; // Unused variable removed
     CGFloat safeTop = safeAreaInsets.top;
     
-    if (isRunningOniPad()) {
-        NSLog(@"iPad expanding to full screen: %.0f,%.0f %.0fx%.0f", 
-              fullScreenFrame.origin.x, fullScreenFrame.origin.y, 
-              fullScreenFrame.size.width, fullScreenFrame.size.height);
-    } else {
-        NSLog(@"iPhone expanding to full screen: %.0f,%.0f %.0fx%.0f", 
-              fullScreenFrame.origin.x, fullScreenFrame.origin.y, 
-              fullScreenFrame.size.width, fullScreenFrame.size.height);
-    }
+
     
     
     // Update WebView constraints to respect safe area when expanded
@@ -895,7 +874,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
                 ]];
             }
             
-            NSLog(@"Updated WebView constraints to respect safe area when expanded (keyboard preserved)");
+
             break;
         }
     }
@@ -942,9 +921,6 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
 - (void)collapseCardToOriginal {
     if (!self.currentPresentedVC) return;
     
-    NSLog(@"=== COLLAPSE CARD TO ORIGINAL ===");
-    NSLog(@"collapseCardToOriginal called - current expansion state: %@", _isCardExpanded ? @"EXPANDED" : @"COLLAPSED");
-    
     _isCardExpanded = NO;
     
     UIView *cardView = self.currentPresentedVC.view;
@@ -960,7 +936,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
         height = cardSize.height;
         x = (screenBounds.size.width - width) / 2;
         finalY = (screenBounds.size.height - height) / 2;
-        NSLog(@"iPad collapsing to: %.0f,%.0f %.0fx%.0f", x, finalY, width, height);
+
     } else {
         // iPhone: return to original configured position
         width = screenBounds.size.width * _originalCardWidthRatio;
@@ -968,7 +944,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
         x = (screenBounds.size.width - width) / 2;
         finalY = screenBounds.size.height * _originalCardVerticalPosition - height;
         if (finalY < 0) finalY = 0;
-        NSLog(@"iPhone collapsing to: %.0f,%.0f %.0fx%.0f", x, finalY, width, height);
+
     }
     
     
@@ -996,7 +972,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
                 [webView.bottomAnchor constraintEqualToAnchor:cardView.bottomAnchor]
             ]];
             
-            NSLog(@"Restored WebView edge-to-edge constraints for collapsed state (keyboard preserved)");
+
             break;
         }
     }
@@ -1141,7 +1117,6 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     switch (gesture.state) {
         case UIGestureRecognizerStateBegan:
             self.initialY = cardView.frame.origin.y;
-            NSLog(@"Drag tray gesture began - current expansion state: %@", _isCardExpanded ? @"Expanded" : @"Collapsed");
             break;
             
         case UIGestureRecognizerStateChanged: {
@@ -1193,21 +1168,17 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
                 // Dragged up sufficiently or fast upward velocity
                 if (!_isCardExpanded) {
                     shouldExpand = YES;
-                    NSLog(@"Expanding card via drag up - translation: %.2f, velocity: %.2f", translation.y, velocity.y);
                 } else {
                     // Already expanded, treat as small adjustment - return to position
-                    NSLog(@"Card already expanded, returning to position");
                 }
             } else if (translation.y > dismissThreshold || velocity.y > dismissVelocityThreshold) {
                 // Dragged down sufficiently or fast downward velocity
                 if (_isCardExpanded) {
                     // If expanded, first collapse instead of dismissing
                     shouldCollapse = YES;
-                    NSLog(@"Collapsing expanded card via drag down - translation: %.2f, velocity: %.2f", translation.y, velocity.y);
                 } else {
                     // If not expanded, dismiss
                     shouldDismiss = YES;
-                    NSLog(@"Dismissing card via drag down - translation: %.2f, velocity: %.2f", translation.y, velocity.y);
                 }
             }
             
@@ -1412,7 +1383,7 @@ UIView* CreateLoadingView(CGRect frame) {
     float containerWidth = newWidth * paddingFactor;
     float containerHeight = newHeight * paddingFactor;
     
-    NSLog(@"Rendering logo at reduced size: %.0f x %.0f, container: %.0f x %.0f", newWidth, newHeight, containerWidth, containerHeight);
+
     
     // Create a container for the logo with expanded size to accommodate animation
     UIView* logoContainer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, containerWidth, containerHeight)];
@@ -1474,19 +1445,16 @@ extern "C" {
         _callbackWasCalled = NO; // Reset flag when setting a new callback
         _paymentSuccessHandled = NO; // Reset payment success flag when setting new callback
         _paymentSuccessCallbackCalled = NO; // Reset payment success callback flag when setting new callback
-        NSLog(@"Safari view dismissed callback registered: %p", callback);
     }
 
     // Sets the callback function to be called when payment succeeds
     void _StashPayCardSetPaymentSuccessCallback(PaymentSuccessCallback callback) {
         _paymentSuccessCallback = callback;
-        NSLog(@"Payment success callback registered: %p", callback);
     }
 
     // Sets the callback function to be called when payment fails
     void _StashPayCardSetPaymentFailureCallback(PaymentFailureCallback callback) {
         _paymentFailureCallback = callback;
-        NSLog(@"Payment failure callback registered: %p", callback);
     }
 
     // Sets the card configuration - height ratio and vertical position
@@ -1639,14 +1607,11 @@ extern "C" {
                 
                 // JavaScript code to intercept window.close() calls
                 NSString *windowCloseScript = @"(function() {"
-                    "console.log('Setting up window.close() handler');"
                     "var originalClose = window.close;"
                     "window.close = function() {"
-                        "console.log('window.close() called - sending message to native code');"
                         "window.webkit.messageHandlers.windowClose.postMessage('close');"
                         "originalClose.call(window);"
                     "};"
-                    "console.log('window.close() handler setup complete');"
                 "})();";
                 
                 WKUserScript *windowScript = [[WKUserScript alloc] initWithSource:windowCloseScript 
@@ -1656,17 +1621,14 @@ extern "C" {
                 
                 // JavaScript code to override window.open() to prevent new windows
                 NSString *windowOpenOverrideScript = @"(function() {"
-                    "console.log('Setting up window.open() override to prevent new windows');"
                     "var originalOpen = window.open;"
                     "window.open = function(url, name, features) {"
-                        "console.log('window.open() intercepted for URL:', url);"
                         "// Instead of opening a new window, navigate in the current window"
                         "if (url) {"
                             "window.location.href = url;"
                         "}"
                         "return window;"
                     "};"
-                    "console.log('window.open() override setup complete');"
                 "})();";
                 
                 WKUserScript *windowOpenInjection = [[WKUserScript alloc] initWithSource:windowOpenOverrideScript 
@@ -1680,7 +1642,6 @@ extern "C" {
                         "var links = document.querySelectorAll('a[target=\"_blank\"]');"
                         "for (var i = 0; i < links.length; i++) {"
                             "links[i].removeAttribute('target');"
-                            "console.log('Removed target=\"_blank\" from link:', links[i].href);"
                         "}"
                     "}"
                     ""
@@ -1699,13 +1660,11 @@ extern "C" {
                                     "if (node.nodeType === 1) {"
                                         "if (node.tagName === 'A' && node.getAttribute('target') === '_blank') {"
                                             "node.removeAttribute('target');"
-                                            "console.log('Removed target=\"_blank\" from dynamically added link:', node.href);"
                                         "}"
                                         "var blankLinks = node.querySelectorAll && node.querySelectorAll('a[target=\"_blank\"]');"
                                         "if (blankLinks) {"
                                             "for (var i = 0; i < blankLinks.length; i++) {"
                                                 "blankLinks[i].removeAttribute('target');"
-                                                "console.log('Removed target=\"_blank\" from nested link:', blankLinks[i].href);"
                                             "}"
                                         "}"
                                     "}"
@@ -1718,8 +1677,6 @@ extern "C" {
                         "childList: true,"
                         "subtree: true"
                     "});"
-                    ""
-                    "console.log('Target blank override setup complete');"
                 "})();";
                 
                 WKUserScript *targetBlankInjection = [[WKUserScript alloc] initWithSource:targetBlankOverrideScript 
@@ -1729,17 +1686,13 @@ extern "C" {
                 
                 // JavaScript code to set up Stash SDK functions
                 NSString *stashSDKScript = @"(function() {"
-                    "console.log('Setting up Stash SDK functions');"
                     "window.stash_sdk = window.stash_sdk || {};"
                     "window.stash_sdk.onPaymentSuccess = function(data) {"
-                        "console.log('Stash SDK: onPaymentSuccess called with data:', data);"
                         "window.webkit.messageHandlers.stashPaymentSuccess.postMessage(data || {});"
                     "};"
                     "window.stash_sdk.onPaymentFailure = function(data) {"
-                        "console.log('Stash SDK: onPaymentFailure called with data:', data);"
                         "window.webkit.messageHandlers.stashPaymentFailure.postMessage(data || {});"
                     "};"
-                    "console.log('Stash SDK setup complete - functions available at window.stash_sdk');"
                 "})();";
                 
                 WKUserScript *stashSDKInjection = [[WKUserScript alloc] initWithSource:stashSDKScript 

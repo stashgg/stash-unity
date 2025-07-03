@@ -170,7 +170,6 @@ namespace StashPopup
             _StashPayCardSetSafariViewDismissedCallback(OnIOSSafariViewDismissed);
             _StashPayCardSetPaymentSuccessCallback(OnIOSPaymentSuccess);
             _StashPayCardSetPaymentFailureCallback(OnIOSPaymentFailure);
-            Debug.Log("[StashPayCard] Native iOS callbacks registered for this session");
             
             // Open the URL using the native iOS plugin
             _StashPayCardOpenURLInSafariVC(url);

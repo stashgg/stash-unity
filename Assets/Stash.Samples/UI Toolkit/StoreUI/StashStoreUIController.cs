@@ -225,14 +225,28 @@ public class StashStoreUIController : MonoBehaviour
         
         Debug.Log($"[StoreUI] Setting popup for item: {item.name} (ID: {item.id}) at index: {itemIndex}");
         
+        // Update item details (even though they're hidden, keep for potential future use)
         if (paymentPopupItemName != null)
             paymentPopupItemName.text = item.name;
         if (paymentPopupItemPrice != null)
             paymentPopupItemPrice.text = "$" + item.pricePerItem;
+            
         if (paymentPopup != null)
         {
-            paymentPopup.AddToClassList("visible");
+            Debug.Log("[StoreUI] Payment popup element found, making it visible");
+            
+            // Ensure it's displayed and visible
+            paymentPopup.style.display = DisplayStyle.Flex;
             paymentPopup.visible = true;
+            
+            // Add the visible class for CSS animation
+            paymentPopup.AddToClassList("visible");
+            
+            Debug.Log($"[StoreUI] Payment popup visibility: {paymentPopup.visible}, has visible class: {paymentPopup.ClassListContains("visible")}");
+        }
+        else
+        {
+            Debug.LogError("[StoreUI] Payment popup element not found! Check UXML setup.");
         }
     }
 
@@ -240,8 +254,19 @@ public class StashStoreUIController : MonoBehaviour
     {
         if (paymentPopup != null)
         {
+            Debug.Log("[StoreUI] Hiding payment popup");
+            
+            // Remove the visible class to trigger CSS animation
             paymentPopup.RemoveFromClassList("visible");
-            paymentPopup.visible = false;
+            
+            // Hide after a short delay to allow animation to complete
+            Invoke(() => {
+                if (paymentPopup != null && !paymentPopup.ClassListContains("visible"))
+                {
+                    paymentPopup.visible = false;
+                    paymentPopup.style.display = DisplayStyle.None;
+                }
+            }, 0.3f); // Match the CSS transition duration
         }
         currentPopupItemIndex = -1;
     }
@@ -329,7 +354,14 @@ public class StashStoreUIController : MonoBehaviour
         // Create a simple popup to inform user that Apple Pay is not yet implemented
         var placeholderPopup = new GameObject("ApplePayPlaceholder");
         var popupScript = placeholderPopup.AddComponent<SuccessPopup>();
-        popupScript.Show("Apple Pay", "Apple In-App Purchase integration coming soon!");
+        
+        // Set the root element directly to avoid search issues
+        if (root != null)
+        {
+            popupScript.SetRootElement(root);
+        }
+        
+        popupScript.Show("Apple Pay", "Not available in Testflight.");
     }
 
     private void ProcessPurchase(int itemIndex)
@@ -575,6 +607,12 @@ public class StashStoreUIController : MonoBehaviour
         // Create and show a success popup
         var successPopup = new GameObject("SuccessPopup");
         var popupScript = successPopup.AddComponent<SuccessPopup>();
+        
+        // Set the root element directly to avoid search issues
+        if (root != null)
+        {
+            popupScript.SetRootElement(root);
+        }
         
         // Build the success message with payment details
         string message = "Your purchase";
@@ -847,6 +885,13 @@ public class StashStoreUIController : MonoBehaviour
             // Handle the failed purchase
             HandleFailedPurchase(currentItemIndex);
             
+            // Re-enable UI after failed payment (same as success handler)
+            if (buyButtons != null && currentItemIndex >= 0 && currentItemIndex < buyButtons.Count)
+            {
+                SetButtonEnabled(buyButtons[currentItemIndex], true);
+                SetButtonLoadingState(buyButtons[currentItemIndex], false);
+            }
+            
             // Show failure message to user
             ShowPaymentFailureMessage();
             
@@ -866,6 +911,12 @@ public class StashStoreUIController : MonoBehaviour
             // Create a failure popup
             var failurePopup = new GameObject("PaymentFailurePopup");
             var popupScript = failurePopup.AddComponent<SuccessPopup>(); // Reusing the SuccessPopup class
+            
+            // Set the root element directly to avoid search issues
+            if (root != null)
+            {
+                popupScript.SetRootElement(root);
+            }
             
             string message = "Your payment could not be processed.\n\nPlease try again or contact support if the problem persists.";
             
@@ -1026,62 +1077,239 @@ public class StashStoreUIController : MonoBehaviour
     }
 }
 
-// Simple success popup class for showing purchase success messages
+// Modern UI Toolkit-based popup class for showing purchase messages
 public class SuccessPopup : MonoBehaviour
 {
-    private string title;
-    private string message;
-    private bool isShowing = false;
+    private VisualElement popupContainer;
+    private VisualElement popupCard;
     private float showDuration = 3f;
-    private GUIStyle titleStyle;
-    private GUIStyle messageStyle;
-    private Rect windowRect;
+    private VisualElement overrideRootElement;
+    
+    public void SetRootElement(VisualElement rootElement)
+    {
+        overrideRootElement = rootElement;
+    }
     
     public void Show(string title, string message)
     {
-        this.title = title;
-        this.message = message;
-        isShowing = true;
-        
-        // Set up window rect
-        float width = 1200; // 4x bigger: was 300, now 1200
-        float height = 600;  // 4x bigger: was 150, now 600
-        windowRect = new Rect((Screen.width - width) / 2, (Screen.height - height) / 2, width, height);
-        
-        // Set up styles
-        titleStyle = new GUIStyle();
-        titleStyle.fontSize = 80; // 4x bigger: was 20, now 80
-        titleStyle.fontStyle = FontStyle.Bold;
-        titleStyle.normal.textColor = Color.white;
-        titleStyle.alignment = TextAnchor.MiddleCenter;
-        
-        messageStyle = new GUIStyle();
-        messageStyle.fontSize = 64; // 4x bigger: was 16, now 64
-        messageStyle.normal.textColor = Color.white;
-        messageStyle.alignment = TextAnchor.MiddleCenter;
-        messageStyle.wordWrap = true;
+        CreateUIToolkitPopup(title, message);
         
         // Close after duration
         Destroy(gameObject, showDuration);
     }
     
-    private void OnGUI()
+    private void CreateUIToolkitPopup(string title, string message)
     {
-        if (isShowing)
+        // Try multiple approaches to find the root visual element
+        VisualElement rootElement = null;
+        
+        // First check if we have an override root element set directly
+        if (overrideRootElement != null)
         {
-            // Draw a semi-transparent background
-            GUI.color = new Color(0, 0, 0, 0.8f);
-            GUI.DrawTexture(windowRect, Texture2D.whiteTexture);
-            GUI.color = Color.white;
-            
-            // Draw the content
-            GUILayout.BeginArea(windowRect);
-            GUILayout.Space(80); // 4x bigger spacing: was 20, now 80
-            GUILayout.Label(title, titleStyle);
-            GUILayout.Space(80); // 4x bigger spacing: was 20, now 80
-            GUILayout.Label(message, messageStyle);
-            GUILayout.EndArea();
+            rootElement = overrideRootElement;
+            Debug.Log("[SuccessPopup] Using override root element");
         }
+        
+        // First try to get from current GameObject (unlikely to work for dynamically created objects)
+        if (rootElement == null)
+        {
+            var currentUIDocument = GetComponent<UIDocument>();
+            if (currentUIDocument != null)
+            {
+                rootElement = currentUIDocument.rootVisualElement;
+                Debug.Log("[SuccessPopup] Found UIDocument on current GameObject");
+            }
+        }
+        
+        // Try to find StashStoreUIController and get its UIDocument
+        if (rootElement == null)
+        {
+            var storeUIController = FindObjectOfType<StashStoreUIController>();
+            if (storeUIController != null)
+            {
+                Debug.Log("[SuccessPopup] Found StashStoreUIController");
+                
+                // Get the UIDocument component
+                var uiDocument = storeUIController.GetComponent<UIDocument>();
+                if (uiDocument != null)
+                {
+                    rootElement = uiDocument.rootVisualElement;
+                    Debug.Log("[SuccessPopup] Using UIDocument component on StashStoreUIController");
+                }
+                else
+                {
+                    Debug.LogWarning("[SuccessPopup] StashStoreUIController found but no UIDocument component");
+                }
+            }
+            else
+            {
+                Debug.LogError("[SuccessPopup] Could not find StashStoreUIController in scene");
+            }
+        }
+        
+        // Try to find any UIDocument in the scene as last resort
+        if (rootElement == null)
+        {
+            var allUIDocuments = FindObjectsOfType<UIDocument>();
+            Debug.Log($"[SuccessPopup] Found {allUIDocuments.Length} UIDocument(s) in scene");
+            
+            foreach (var doc in allUIDocuments)
+            {
+                if (doc.rootVisualElement != null)
+                {
+                    rootElement = doc.rootVisualElement;
+                    Debug.Log($"[SuccessPopup] Using UIDocument from GameObject: {doc.gameObject.name}");
+                    break;
+                }
+            }
+        }
+        
+        if (rootElement == null) 
+        {
+            Debug.LogError("[SuccessPopup] Could not find root visual element for popup - no UIDocument found in scene");
+            return;
+        }
+        
+        // Calculate responsive sizes based on screen - much smaller for success/failure popups
+        float screenWidth = Screen.width;
+        float screenHeight = Screen.height;
+        float popupWidth = Mathf.Clamp(screenWidth * 0.5f, 150f, 200f);
+        float popupHeight = Mathf.Clamp(screenHeight * 0.2f, 120f, 180f);
+        
+        // Create popup container (full screen overlay)
+        popupContainer = new VisualElement();
+        popupContainer.style.position = Position.Absolute;
+        popupContainer.style.top = 0;
+        popupContainer.style.left = 0;
+        popupContainer.style.width = Length.Percent(100);
+        popupContainer.style.height = Length.Percent(100);
+        popupContainer.style.backgroundColor = new Color(0, 0, 0, 0.75f);
+        popupContainer.style.alignItems = Align.Center;
+        popupContainer.style.justifyContent = Justify.Center;
+        popupContainer.style.flexDirection = FlexDirection.Column;
+        
+        // Create popup card with responsive sizing
+        popupCard = new VisualElement();
+        popupCard.style.backgroundColor = new Color(0.26f, 0.26f, 0.29f, 0.95f);
+        popupCard.style.borderTopLeftRadius = 12;
+        popupCard.style.borderTopRightRadius = 12;
+        popupCard.style.borderBottomLeftRadius = 12;
+        popupCard.style.borderBottomRightRadius = 12;
+        popupCard.style.borderLeftWidth = 3;
+        popupCard.style.borderRightWidth = 3;
+        popupCard.style.borderTopWidth = 3;
+        popupCard.style.borderBottomWidth = 3;
+        popupCard.style.borderLeftColor = new Color(0.18f, 0.18f, 0.18f, 0.96f);
+        popupCard.style.borderRightColor = new Color(0.18f, 0.18f, 0.18f, 0.96f);
+        popupCard.style.borderTopColor = new Color(0.18f, 0.18f, 0.18f, 0.96f);
+        popupCard.style.borderBottomColor = new Color(0.18f, 0.18f, 0.18f, 0.96f);
+        popupCard.style.paddingLeft = 16;
+        popupCard.style.paddingRight = 16;
+        popupCard.style.paddingTop = 14;
+        popupCard.style.paddingBottom = 14;
+        popupCard.style.width = popupWidth;
+        popupCard.style.maxHeight = popupHeight;
+        popupCard.style.flexShrink = 0;
+        
+        // Create title label with smaller font size for compact popups
+        var titleLabel = new Label(title);
+        titleLabel.style.fontSize = Mathf.Clamp(screenWidth * 0.03f, 14f, 16f);
+        titleLabel.style.color = new Color(1f, 0.84f, 0f, 1f);
+        titleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        titleLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+        titleLabel.style.marginBottom = 8;
+        titleLabel.style.whiteSpace = WhiteSpace.Normal;
+        titleLabel.style.flexWrap = Wrap.Wrap;
+        
+        // Create message label with smaller font size for compact popups
+        var messageLabel = new Label(message);
+        messageLabel.style.fontSize = Mathf.Clamp(screenWidth * 0.025f, 11f, 13f);
+        messageLabel.style.color = Color.white;
+        messageLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+        messageLabel.style.whiteSpace = WhiteSpace.Normal;
+        messageLabel.style.marginBottom = 6;
+        messageLabel.style.flexWrap = Wrap.Wrap;
+        
+        // Assemble the popup
+        popupCard.Add(titleLabel);
+        popupCard.Add(messageLabel);
+        popupContainer.Add(popupCard);
+        rootElement.Add(popupContainer);
+        
+        Debug.Log($"Popup created with size: {popupWidth}x{popupHeight} on screen: {screenWidth}x{screenHeight}");
+        
+        // Start with small scale and animate in
+        popupCard.style.scale = new Vector2(0.8f, 0.8f);
+        popupContainer.style.opacity = 0;
+        
+        // Animate in immediately
+        AnimatePopupIn();
+        
+        // Schedule close animation
+        StartCoroutine(CloseAfterDelay());
+    }
+    
+    private void AnimatePopupIn()
+    {
+        if (popupContainer == null || popupCard == null) return;
+        
+        // Animate opacity from 0 to 1
+        StartCoroutine(AnimateFloat(0f, 1f, 0.2f, (value) => {
+            if (popupContainer != null)
+                popupContainer.style.opacity = value;
+        }));
+        
+        // Animate scale from 0.8 to 1
+        StartCoroutine(AnimateFloat(0.8f, 1f, 0.3f, (value) => {
+            if (popupCard != null)
+                popupCard.style.scale = new Vector2(value, value);
+        }));
+    }
+    
+    private void AnimatePopupOut()
+    {
+        if (popupContainer == null || popupCard == null) return;
+        
+        // Animate opacity from 1 to 0
+        StartCoroutine(AnimateFloat(1f, 0f, 0.2f, (value) => {
+            if (popupContainer != null)
+                popupContainer.style.opacity = value;
+        }));
+        
+        // Animate scale from 1 to 0.8
+        StartCoroutine(AnimateFloat(1f, 0.8f, 0.2f, (value) => {
+            if (popupCard != null)
+                popupCard.style.scale = new Vector2(value, value);
+        }, () => {
+            // Animation completed callback
+            if (popupContainer != null && popupContainer.parent != null)
+            {
+                popupContainer.parent.Remove(popupContainer);
+            }
+        }));
+    }
+    
+    private System.Collections.IEnumerator AnimateFloat(float from, float to, float duration, System.Action<float> onUpdate, System.Action onComplete = null)
+    {
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / duration;
+            // Ease out back approximation
+            t = t < 0.5f ? 2f * t * t : -1f + (4f - 2f * t) * t;
+            float value = Mathf.Lerp(from, to, t);
+            onUpdate?.Invoke(value);
+            yield return null;
+        }
+        onUpdate?.Invoke(to);
+        onComplete?.Invoke();
+    }
+    
+    private System.Collections.IEnumerator CloseAfterDelay()
+    {
+        yield return new WaitForSeconds(showDuration - 0.5f); // Start closing animation 0.5s before destroy
+        AnimatePopupOut();
     }
 }
 

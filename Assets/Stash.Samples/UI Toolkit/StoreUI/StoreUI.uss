@@ -142,7 +142,6 @@
     flex-direction: column;
     width: 100%;
     max-width: 600px;
-    box-sizing: border-box;
 }
 
 .profile-card-header {
@@ -442,7 +441,8 @@
     position: absolute;
     bottom: -14px;
     left: 50%;
-    translate: -50% 0;
+    margin-left: -50px;
+    width: 100px;
     z-index: 10;
     font-weight: 900;
 }
@@ -653,7 +653,7 @@
     font-size: 18px;
     -unity-font-style: bold;
     margin-bottom: 16px;
-    color: var(--unity-colors-default-text);
+    color: rgb(255, 255, 255);
 }
 
 .settings-row {
@@ -663,15 +663,15 @@
 
 .settings-row > Label {
     margin-bottom: 4px;
-    color: var(--unity-colors-default-text);
+    color: rgb(255, 255, 255);
 }
 
 .settings-dropdown {
     min-width: 200px;
     height: 24px;
-    background-color: var(--unity-colors-button-background);
+    background-color: rgba(60, 60, 60, 0.8);
     border-width: 1px;
-    border-color: var(--unity-colors-button-border);
+    border-color: rgba(255, 255, 255, 0.2);
     border-radius: 4px;
 }
 
@@ -826,19 +826,16 @@
 
 .test-url-button:hover {
     background-color: rgb(56, 142, 60);
-    translate: 0 -1px;
     border-color: rgba(76, 175, 80, 0.8);
 }
 
 .test-url-button:active {
     background-color: rgb(46, 120, 50);
-    translate: 0 1px;
 }
 
 .test-url-button:disabled {
     background-color: rgba(76, 175, 80, 0.5);
     color: rgba(255, 255, 255, 0.5);
-    translate: 0 0;
 }
 
 .webshop-container {
@@ -875,7 +872,6 @@
     flex-direction: column;
     gap: 16px;
     width: 100%;
-    box-sizing: border-box;
 }
 
 .webshop-description {
@@ -891,7 +887,6 @@
     -unity-text-overflow-mode: word-wrap;
     -unity-text-overflow-ellipsis: "...";
     padding: 0 20px;
-    box-sizing: border-box;
 }
 
 .action-button {
@@ -952,7 +947,6 @@
     border-radius: 12px;
     width: 100%;
     max-width: 600px;
-    box-sizing: border-box;
 }
 
 .account-description {
@@ -965,7 +959,6 @@
     -unity-text-overflow-mode: word-wrap;
     -unity-text-overflow-ellipsis: "...";
     padding: 0 20px;
-    box-sizing: border-box;
 }
 
 .help-button-container {
@@ -1091,7 +1084,7 @@
 
 .help-description-dialog {
     position: absolute;
-    bottom: 0;
+    bottom: -100%;
     left: 0;
     right: 0;
     background-color: rgba(67, 67, 75, 0.75);
@@ -1101,15 +1094,14 @@
     padding: 16px;
     flex-direction: column;
     transition-duration: 0.3s;
-    transition-property: translate;
-    translate: 0 100%;
+    transition-property: bottom;
     z-index: 100;
     margin: 0;
     width: 100%;
 }
 
 .help-description-dialog.visible {
-    translate: 0 0;
+    bottom: 0;
 }
 
 .help-description-header {
@@ -1179,102 +1171,145 @@
     opacity: 1;
 }
 
-/* Payment Popup Styles */
+/* Payment Popup Styles - Fixed for Unity UI Toolkit */
 .payment-popup {
     position: absolute;
     top: 0;
     left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: rgba(0, 0, 0, 0.7);
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.75);
     z-index: 2000;
+    opacity: 0;
+    visibility: hidden;
+    transition-duration: 0.25s;
+    transition-property: opacity, visibility;
     justify-content: center;
     align-items: center;
-    display: none;
-}
-.payment-popup.visible {
     display: flex;
+    padding: 20px;
 }
+
+.payment-popup.visible {
+    opacity: 1;
+    visibility: visible;
+}
+
 .payment-popup-content {
     background-color: rgb(67, 67, 75);
     background-image: url("project://database/Assets/Stash.Samples/Assets/card_bg.png?fileID=21300000&guid=987d48a503707487f8fa551bc69b6915&type=3#card_bg");
-    background-size: 180px 180px;
+    background-size: 120px 120px;
     background-repeat: repeat;
-    border-width: 3px;
+    border-width: 2px;
     border-color: rgba(47, 47, 47, 0.96);
-    border-radius: 16px;
-    padding: 32px 24px 24px 24px;
-    width: 340px;
+    border-radius: 12px;
+    padding: 20px;
+    width: 300px;
     max-width: 90%;
+    min-width: 240px;
     flex-direction: column;
-    align-items: center;
-    gap: 18px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+    align-items: stretch;
+    gap: 16px;
 }
+
 .payment-popup-header {
     flex-direction: row;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
     width: 100%;
-    margin-bottom: 8px;
+    position: relative;
 }
+
 .payment-popup-title {
     color: rgb(255, 255, 255);
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 900;
+    -unity-text-align: middle-center;
+    flex-grow: 1;
 }
+
 .payment-popup-close-button {
-    width: 28px;
-    height: 28px;
-    background-color: rgba(0, 0, 0, 0.2);
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 24px;
+    height: 24px;
+    background-color: rgba(0, 0, 0, 0.3);
     border-width: 0;
-    border-radius: 14px;
+    border-radius: 12px;
     color: rgb(255, 255, 255);
-    font-size: 18px;
+    font-size: 16px;
     -unity-font-style: bold;
     transition-duration: 0.2s;
     justify-content: center;
     align-items: center;
 }
+
 .payment-popup-close-button:hover {
-    background-color: rgba(0, 0, 0, 0.3);
+    background-color: rgba(0, 0, 0, 0.5);
     scale: 1.1;
 }
+
 .payment-popup-close-button:active {
-    scale: 0.95;
+    scale: 0.9;
 }
+
 .payment-popup-item-name {
     display: none;
 }
+
 .payment-popup-item-price {
     display: none;
 }
+
 .payment-options-container {
     flex-direction: column;
-    gap: 12px;
+    gap: 15px;
     width: 100%;
     align-items: stretch;
+    margin-top: 8px;
 }
+
 .payment-option-button {
     background-color: rgb(95, 159, 251);
     color: white;
-    border-radius: 10px;
+    border-radius: 8px;
     border-width: 0;
-    padding: 16px 0;
-    margin-top: 8px;
-    font-size: 15px;
+    padding: 16px 12px;
+    font-size: 14px;
     font-weight: 700;
-    flex-direction: row;
-    align-items: center;
+    height: auto;
+    min-height: 50px;
+    width: 100%;
     justify-content: center;
+    align-items: center;
     transition-duration: 0.2s;
+    -unity-text-align: middle-center;
+    white-space: normal;
+    flex-shrink: 0;
 }
+
 .payment-option-button:hover {
     background-color: rgb(85, 149, 241);
+    scale: 1.02;
 }
+
 .payment-option-button:active {
     background-color: rgb(75, 139, 231);
+    scale: 0.98;
 }
+
+.payment-option-button > .unity-text-element {
+    color: rgb(255, 255, 255);
+    font-size: 14px;
+    font-weight: 700;
+    -unity-text-align: middle-center;
+    white-space: normal;
+    width: 100%;
+    overflow: visible;
+    -unity-text-overflow-position: end;
+}
+
 .payment-option-icon {
     display: none;
 }

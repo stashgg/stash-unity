@@ -111,14 +111,8 @@
                 <ui:Label name="payment-popup-item-name" class="payment-popup-item-name" />
                 <ui:Label name="payment-popup-item-price" class="payment-popup-item-price" />
                 <ui:VisualElement class="payment-options-container">
-                    <ui:Button name="direct-checkout-button" class="payment-option-button direct-checkout-button">
-                        <ui:VisualElement class="payment-option-icon direct-checkout-icon" />
-                        <ui:Label text="Direct Checkout With Stash" class="payment-option-text" />
-                    </ui:Button>
-                    <ui:Button name="apple-pay-button" class="payment-option-button apple-pay-button">
-                        <ui:VisualElement class="payment-option-icon apple-pay-icon" />
-                        <ui:Label text="Apple IAP" class="payment-option-text" />
-                    </ui:Button>
+                    <ui:Button name="direct-checkout-button" class="payment-option-button direct-checkout-button" text="Direct Checkout With Stash" />
+                    <ui:Button name="apple-pay-button" class="payment-option-button apple-pay-button" text="Apple IAP" />
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>
