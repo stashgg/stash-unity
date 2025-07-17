@@ -58,9 +58,11 @@ static BOOL _isCardExpanded = NO;
 @property (nonatomic, strong) UIView *dragTrayView;
 @property (nonatomic, strong) UIView *navigationBarView;
 @property (nonatomic, strong) UIView *closeButtonView;
+@property (nonatomic, strong) NSURL *initialURL;
 @property (nonatomic, assign) CGFloat initialY;
 @property (nonatomic, assign) BOOL isObservingKeyboard;
 @property (nonatomic, assign) BOOL isNavigationBarVisible;
+@property (nonatomic, assign) BOOL isPurchaseProcessing;
 - (void)handleDismiss:(UITapGestureRecognizer *)gesture;
 - (void)dismissButtonTapped:(UIButton *)button;
 - (void)handlePanGesture:(UIPanGestureRecognizer *)gesture;
@@ -78,6 +80,7 @@ static BOOL _isCardExpanded = NO;
 - (void)hideFloatingBackButton:(WKWebView *)webView;
 - (UIView *)createFloatingCloseButton;
 - (void)showFloatingCloseButton;
+- (void)hideFloatingCloseButton;
 - (void)backButtonTapped:(UIButton *)button;
 - (void)closeButtonTapped:(UIButton *)button;
 - (void)startKeyboardObserving;
@@ -472,6 +475,7 @@ static BOOL _isCardExpanded = NO;
                 [webView.configuration.userContentController removeScriptMessageHandlerForName:@"windowClose"];
                 [webView.configuration.userContentController removeScriptMessageHandlerForName:@"stashPaymentSuccess"];
                 [webView.configuration.userContentController removeScriptMessageHandlerForName:@"stashPaymentFailure"];
+                [webView.configuration.userContentController removeScriptMessageHandlerForName:@"stashPurchaseProcessing"];
                 
                 // Remove associated objects (delegates) to prevent memory leaks
                 objc_setAssociatedObject(self.currentPresentedVC, "webViewDelegate", nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -488,8 +492,12 @@ static BOOL _isCardExpanded = NO;
     // Clear the view controller reference
     self.currentPresentedVC = nil;
     
+    // Clear the initial URL reference
+    self.initialURL = nil;
+    
     // Reset all state flags
     self.isNavigationBarVisible = NO;
+    self.isPurchaseProcessing = NO;
     _isCardExpanded = NO;
     _isCardCurrentlyPresented = NO;
     
@@ -516,6 +524,11 @@ static BOOL _isCardExpanded = NO;
 }
 
 - (void)dismissButtonTapped:(UIButton *)button {
+    // Disable dismiss if purchase is processing
+    if (self.isPurchaseProcessing) {
+        return;
+    }
+    
     if (self.currentPresentedVC) {
         [self.currentPresentedVC dismissViewControllerAnimated:YES completion:^{
             [self cleanupCardInstance];
@@ -526,6 +539,11 @@ static BOOL _isCardExpanded = NO;
 
 - (void)handlePanGesture:(UIPanGestureRecognizer *)gesture {
     if (!self.currentPresentedVC) return;
+    
+    // Disable drag gesture if purchase is processing
+    if (self.isPurchaseProcessing) {
+        return;
+    }
     
     UIView *view = self.currentPresentedVC.view;
     CGFloat height = view.frame.size.height;
@@ -1606,8 +1624,26 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     } completion:nil];
 }
 
+- (void)hideFloatingCloseButton {
+    if (!self.closeButtonView) return;
+    
+    // Animate the close button out of view with scale and fade
+    [UIView animateWithDuration:0.25 delay:0 usingSpringWithDamping:0.8 initialSpringVelocity:0.3 options:UIViewAnimationOptionCurveEaseIn animations:^{
+        self.closeButtonView.alpha = 0.0;
+        self.closeButtonView.transform = CGAffineTransformMakeScale(0.6, 0.6); // Scale down while fading
+    } completion:^(BOOL finished) {
+        [self.closeButtonView removeFromSuperview];
+        self.closeButtonView = nil;
+    }];
+}
+
 - (void)handleDragTrayPanGesture:(UIPanGestureRecognizer *)gesture {
     if (!self.currentPresentedVC) return;
+    
+    // Disable drag gesture if purchase is processing
+    if (self.isPurchaseProcessing) {
+        return;
+    }
     
     UIView *cardView = self.currentPresentedVC.view;
     CGFloat height = cardView.frame.size.height;
@@ -1873,6 +1909,9 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     else if ([message.name isEqualToString:@"stashPaymentSuccess"]) {
         NSLog(@"Payment success received from JavaScript");
         
+        // Re-enable dismissal since processing is complete
+        self.isPurchaseProcessing = NO;
+        
         // Prevent multiple payment success handling
         if (_paymentSuccessHandled) {
             NSLog(@"Payment success already handled, ignoring duplicate");
@@ -1907,6 +1946,9 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     else if ([message.name isEqualToString:@"stashPaymentFailure"]) {
         NSLog(@"Payment failure received from JavaScript");
         
+        // Re-enable dismissal since processing is complete
+        self.isPurchaseProcessing = NO;
+        
         // Call the payment failure callback if available
         if (_paymentFailureCallback != NULL) {
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -1923,6 +1965,15 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
                 // Don't call callUnityCallbackOnce here since we already handled the failure callback
             }];
         }
+    }
+    else if ([message.name isEqualToString:@"stashPurchaseProcessing"]) {
+        NSLog(@"Purchase processing started - disabling dismiss gesture and hiding close button");
+        
+        // Set processing state
+        self.isPurchaseProcessing = YES;
+        
+        // Hide the close button during processing
+        [self hideFloatingCloseButton];
     }
 }
 
@@ -1969,15 +2020,18 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
 
 
 - (void)backButtonTapped:(UIButton *)button {
-    // Find the WebView and navigate back
-    if (!self.currentPresentedVC) return;
+    // Find the WebView and return to initial URL
+    if (!self.currentPresentedVC || !self.initialURL) return;
     
     for (UIView *subview in self.currentPresentedVC.view.subviews) {
         if ([subview isKindOfClass:NSClassFromString(@"WKWebView")]) {
             WKWebView *webView = (WKWebView *)subview;
-            if ([webView canGoBack]) {
-                [webView goBack];
-            }
+            
+            // Create request to initial URL and load it
+            NSURLRequest *request = [NSURLRequest requestWithURL:self.initialURL];
+            [webView loadRequest:request];
+            
+            NSLog(@"Back button: returning to initial URL: %@", self.initialURL.absoluteString);
             break;
         }
     }
@@ -2168,6 +2222,9 @@ extern "C" {
         NSString* nsUrlStr = [NSString stringWithUTF8String:urlString];
         NSURL* url = [NSURL URLWithString:nsUrlStr];
         
+        // Store the initial URL for back button functionality
+        [[StashPayCardSafariDelegate sharedInstance] setInitialURL:url];
+        
         if (url == nil) {
             NSLog(@"Error: Invalid URL format");
             return;
@@ -2342,6 +2399,9 @@ extern "C" {
                     "window.stash_sdk.onPaymentFailure = function(data) {"
                         "window.webkit.messageHandlers.stashPaymentFailure.postMessage(data || {});"
                     "};"
+                    "window.stash_sdk.onPurchaseProcessing = function(data) {"
+                        "window.webkit.messageHandlers.stashPurchaseProcessing.postMessage(data || {});"
+                    "};"
                 "})();";
                 
                 WKUserScript *stashSDKInjection = [[WKUserScript alloc] initWithSource:stashSDKScript 
@@ -2353,6 +2413,7 @@ extern "C" {
                 [userContentController addScriptMessageHandler:[StashPayCardSafariDelegate sharedInstance] name:@"windowClose"];
                 [userContentController addScriptMessageHandler:[StashPayCardSafariDelegate sharedInstance] name:@"stashPaymentSuccess"];
                 [userContentController addScriptMessageHandler:[StashPayCardSafariDelegate sharedInstance] name:@"stashPaymentFailure"];
+                [userContentController addScriptMessageHandler:[StashPayCardSafariDelegate sharedInstance] name:@"stashPurchaseProcessing"];
                 
                 config.userContentController = userContentController;
                 
