@@ -472,7 +472,6 @@ static BOOL _isCardExpanded = NO;
                 webView.UIDelegate = nil;
                 
                 // Clear user content controller and message handlers
-                [webView.configuration.userContentController removeScriptMessageHandlerForName:@"windowClose"];
                 [webView.configuration.userContentController removeScriptMessageHandlerForName:@"stashPaymentSuccess"];
                 [webView.configuration.userContentController removeScriptMessageHandlerForName:@"stashPaymentFailure"];
                 [webView.configuration.userContentController removeScriptMessageHandlerForName:@"stashPurchaseProcessing"];
@@ -1909,15 +1908,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
 
 // WKScriptMessageHandler implementation for handling JavaScript calls
 - (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message {
-    if ([message.name isEqualToString:@"windowClose"]) {
-        if (self.currentPresentedVC) {
-            [self.currentPresentedVC dismissViewControllerAnimated:YES completion:^{
-                [self cleanupCardInstance];
-                [self callUnityCallbackOnce];
-            }];
-        }
-    }
-    else if ([message.name isEqualToString:@"stashPaymentSuccess"]) {
+    if ([message.name isEqualToString:@"stashPaymentSuccess"]) {
         NSLog(@"Payment success received from JavaScript");
         
         // Re-enable dismissal since processing is complete
@@ -2322,19 +2313,7 @@ extern "C" {
                                                                  forMainFrameOnly:YES];
                 [userContentController addUserScript:styleInjection];
                 
-                // JavaScript code to intercept window.close() calls
-                NSString *windowCloseScript = @"(function() {"
-                    "var originalClose = window.close;"
-                    "window.close = function() {"
-                        "window.webkit.messageHandlers.windowClose.postMessage('close');"
-                        "originalClose.call(window);"
-                    "};"
-                "})();";
-                
-                WKUserScript *windowScript = [[WKUserScript alloc] initWithSource:windowCloseScript 
-                                                              injectionTime:WKUserScriptInjectionTimeAtDocumentStart 
-                                                           forMainFrameOnly:YES];
-                [userContentController addUserScript:windowScript];
+
                 
                 // JavaScript code to override window.open() to prevent new windows
                 NSString *windowOpenOverrideScript = @"(function() {"
@@ -2421,7 +2400,6 @@ extern "C" {
                 [userContentController addUserScript:stashSDKInjection];
                 
                 // Add the script message handlers
-                [userContentController addScriptMessageHandler:[StashPayCardSafariDelegate sharedInstance] name:@"windowClose"];
                 [userContentController addScriptMessageHandler:[StashPayCardSafariDelegate sharedInstance] name:@"stashPaymentSuccess"];
                 [userContentController addScriptMessageHandler:[StashPayCardSafariDelegate sharedInstance] name:@"stashPaymentFailure"];
                 [userContentController addScriptMessageHandler:[StashPayCardSafariDelegate sharedInstance] name:@"stashPurchaseProcessing"];
