@@ -1418,22 +1418,22 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     dragTrayView.frame = CGRectMake(0, 0, cardWidth, 44); // 44pt tall touch area
     dragTrayView.tag = 8888; // Tag to find it later
     
-    // Add very subtle gradient for visual separation - even more subtle on iPad
+    // Add black gradient fade for visual separation
     CAGradientLayer *gradientLayer = [CAGradientLayer layer];
     gradientLayer.frame = dragTrayView.bounds;
     
     if (isRunningOniPad()) {
-        // Ultra-minimal gradient on iPad for cleaner appearance
+        // Subtle but visible gradient on iPad
         gradientLayer.colors = @[
-            (id)[UIColor colorWithWhite:0.0 alpha:0.05].CGColor,  // Minimal shadow at top
-            (id)[UIColor colorWithWhite:0.0 alpha:0.02].CGColor,  // Barely visible middle
+            (id)[UIColor colorWithWhite:0.0 alpha:0.25].CGColor,  // More visible shadow at top
+            (id)[UIColor colorWithWhite:0.0 alpha:0.15].CGColor,  // Gentle middle fade
             (id)[UIColor colorWithWhite:0.0 alpha:0.0].CGColor    // Fully transparent bottom
         ];
     } else {
-        // Standard gradient on iPhone
+        // More prominent gradient on iPhone for better visual definition
         gradientLayer.colors = @[
-            (id)[UIColor colorWithWhite:0.0 alpha:0.15].CGColor,  // Very light shadow at top
-            (id)[UIColor colorWithWhite:0.0 alpha:0.05].CGColor,  // Barely visible middle
+            (id)[UIColor colorWithWhite:0.0 alpha:0.35].CGColor,  // Stronger shadow at top
+            (id)[UIColor colorWithWhite:0.0 alpha:0.20].CGColor,  // Visible middle fade
             (id)[UIColor colorWithWhite:0.0 alpha:0.0].CGColor    // Fully transparent bottom
         ];
     }
