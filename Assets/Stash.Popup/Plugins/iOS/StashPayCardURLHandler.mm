@@ -1190,8 +1190,10 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
         cardView.layer.mask = maskLayer;
     }
     
-    // Update background opacity
-    CGFloat baseOpacity = 0.4 + (0.2 * progress); // 0.4 to 0.6
+    // Update background opacity - lighter on iPad for cleaner appearance
+    CGFloat minOpacity = isRunningOniPad() ? 0.25 : 0.4; // Lighter base on iPad
+    CGFloat maxOpacity = isRunningOniPad() ? 0.45 : 0.6; // Lighter max on iPad
+    CGFloat baseOpacity = minOpacity + ((maxOpacity - minOpacity) * progress);
     cardView.superview.backgroundColor = [UIColor colorWithWhite:0.0 alpha:baseOpacity];
 }
 
@@ -1416,16 +1418,25 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     dragTrayView.frame = CGRectMake(0, 0, cardWidth, 44); // 44pt tall touch area
     dragTrayView.tag = 8888; // Tag to find it later
     
-    // Add very subtle gradient for visual separation without causing black bars
+    // Add very subtle gradient for visual separation - even more subtle on iPad
     CAGradientLayer *gradientLayer = [CAGradientLayer layer];
     gradientLayer.frame = dragTrayView.bounds;
     
-    // Ultra-subtle gradient that won't interfere with content
-    gradientLayer.colors = @[
-        (id)[UIColor colorWithWhite:0.0 alpha:0.15].CGColor,  // Very light shadow at top
-        (id)[UIColor colorWithWhite:0.0 alpha:0.05].CGColor,  // Barely visible middle
-        (id)[UIColor colorWithWhite:0.0 alpha:0.0].CGColor    // Fully transparent bottom
-    ];
+    if (isRunningOniPad()) {
+        // Ultra-minimal gradient on iPad for cleaner appearance
+        gradientLayer.colors = @[
+            (id)[UIColor colorWithWhite:0.0 alpha:0.05].CGColor,  // Minimal shadow at top
+            (id)[UIColor colorWithWhite:0.0 alpha:0.02].CGColor,  // Barely visible middle
+            (id)[UIColor colorWithWhite:0.0 alpha:0.0].CGColor    // Fully transparent bottom
+        ];
+    } else {
+        // Standard gradient on iPhone
+        gradientLayer.colors = @[
+            (id)[UIColor colorWithWhite:0.0 alpha:0.15].CGColor,  // Very light shadow at top
+            (id)[UIColor colorWithWhite:0.0 alpha:0.05].CGColor,  // Barely visible middle
+            (id)[UIColor colorWithWhite:0.0 alpha:0.0].CGColor    // Fully transparent bottom
+        ];
+    }
     gradientLayer.locations = @[@0.0, @0.5, @1.0];
     [dragTrayView.layer addSublayer:gradientLayer];
     
@@ -1438,11 +1449,11 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     handleView.layer.cornerRadius = 2.5;
     handleView.frame = CGRectMake(cardWidth/2 - 20, 12, 40, 5);
     
-    // Add strong shadow to handle for maximum visibility over web content
+    // Add shadow to handle - reduced on iPad for cleaner appearance
     handleView.layer.shadowColor = [UIColor blackColor].CGColor;
     handleView.layer.shadowOffset = CGSizeMake(0, 2);
-    handleView.layer.shadowOpacity = 0.8;
-    handleView.layer.shadowRadius = 4.0;
+    handleView.layer.shadowOpacity = isRunningOniPad() ? 0.3 : 0.8; // Reduced shadow on iPad
+    handleView.layer.shadowRadius = isRunningOniPad() ? 2.0 : 4.0; // Smaller shadow radius on iPad
     
     [dragTrayView addSubview:handleView];
     
@@ -1492,12 +1503,12 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
         floatingBackButton.backgroundColor = [UIColor colorWithWhite:0.95 alpha:0.5]; // Very transparent
     }
     
-    // Make it circular and add shadow
+    // Make it circular and add shadow - reduced on iPad
     floatingBackButton.layer.cornerRadius = 20; // Half of 40 for perfect circle
     floatingBackButton.layer.shadowColor = [UIColor blackColor].CGColor;
-    floatingBackButton.layer.shadowOffset = CGSizeMake(0, 2);
-    floatingBackButton.layer.shadowOpacity = 0.2;
-    floatingBackButton.layer.shadowRadius = 4;
+    floatingBackButton.layer.shadowOffset = CGSizeMake(0, isRunningOniPad() ? 1 : 2);
+    floatingBackButton.layer.shadowOpacity = isRunningOniPad() ? 0.1 : 0.2; // Reduced shadow on iPad
+    floatingBackButton.layer.shadowRadius = isRunningOniPad() ? 2 : 4; // Smaller shadow radius on iPad
     
     // Add subtle border
     floatingBackButton.layer.borderWidth = 0.5;
@@ -1560,12 +1571,12 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
         floatingCloseButton.backgroundColor = [UIColor colorWithWhite:0.95 alpha:0.5]; // Very transparent
     }
     
-    // Make it circular and add shadow (same style as back button)
+    // Make it circular and add shadow - reduced on iPad (same style as back button)
     floatingCloseButton.layer.cornerRadius = 20; // Half of 40 for perfect circle
     floatingCloseButton.layer.shadowColor = [UIColor blackColor].CGColor;
-    floatingCloseButton.layer.shadowOffset = CGSizeMake(0, 2);
-    floatingCloseButton.layer.shadowOpacity = 0.2;
-    floatingCloseButton.layer.shadowRadius = 4;
+    floatingCloseButton.layer.shadowOffset = CGSizeMake(0, isRunningOniPad() ? 1 : 2);
+    floatingCloseButton.layer.shadowOpacity = isRunningOniPad() ? 0.1 : 0.2; // Reduced shadow on iPad
+    floatingCloseButton.layer.shadowRadius = isRunningOniPad() ? 2 : 4; // Smaller shadow radius on iPad
     
     // Add subtle border (same style as back button)
     floatingCloseButton.layer.borderWidth = 0.5;
@@ -1659,8 +1670,8 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
             CGFloat currentTravel = translation.y;
             CGFloat screenHeight = cardView.superview.bounds.size.height;
             
-            if (currentTravel < 0 && !_isCardExpanded) {
-                // Dragging up to expand - linear progress that directly follows finger
+            if (currentTravel < 0 && !_isCardExpanded && !isRunningOniPad()) {
+                // Dragging up to expand - linear progress that directly follows finger (disabled on iPad)
                 CGFloat expandDistance = height * 0.4;
                 CGFloat expandProgress = MIN(1.0, fabs(currentTravel) / expandDistance);
                 
@@ -1712,12 +1723,12 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
                     cardView.frame = CGRectMake(cardView.frame.origin.x, newY, cardView.frame.size.width, height);
                 }
                 
-                // Smooth background opacity change
+                // Smooth background opacity change - lighter on iPad
                 CGFloat maxTravel = _isCardExpanded ? (height * 0.8) : (height * 0.6);
                 CGFloat ratio = 1.0 - (currentTravel / maxTravel);
                 ratio = MAX(0.1, MIN(1.0, ratio)); // Clamp between 0.1 and 1.0
                 
-                CGFloat baseOpacity = _isCardExpanded ? 0.6 : 0.4;
+                CGFloat baseOpacity = _isCardExpanded ? (isRunningOniPad() ? 0.45 : 0.6) : (isRunningOniPad() ? 0.25 : 0.4);
                 cardView.superview.backgroundColor = [UIColor colorWithWhite:0.0 alpha:baseOpacity * ratio];
             }
             break;
@@ -1743,8 +1754,8 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
             BOOL shouldDismiss = NO;
             
             if (currentTravel < -expandThreshold || velocity.y < expandVelocityThreshold) {
-                // Dragged up sufficiently or fast upward velocity
-                if (!_isCardExpanded) {
+                // Dragged up sufficiently or fast upward velocity (disabled on iPad)
+                if (!_isCardExpanded && !isRunningOniPad()) {
                     shouldExpand = YES;
                 }
             } else if (currentTravel > 0) {
@@ -2539,8 +2550,9 @@ extern "C" {
                     // Set initial position off-screen
                     containerVC.view.frame = CGRectMake(x, y, width, height);
                     
-                    // Set background overlay color immediately before animation
-                    containerVC.view.superview.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.4];
+                    // Set background overlay color immediately before animation - lighter on iPad
+                    CGFloat overlayOpacity = isRunningOniPad() ? 0.25 : 0.4; // Lighter overlay on iPad
+                    containerVC.view.superview.backgroundColor = [UIColor colorWithWhite:0.0 alpha:overlayOpacity];
                     
                     // Animate into position with faster animation
                     [UIView animateWithDuration:0.15 animations:^{
