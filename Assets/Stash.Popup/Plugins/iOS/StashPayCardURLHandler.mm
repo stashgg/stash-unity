@@ -67,6 +67,7 @@ static BOOL _isCardExpanded = NO;
 - (void)handleDragTrayPanGesture:(UIPanGestureRecognizer *)gesture;
 - (void)fallbackToSafariVC:(NSURL *)url topController:(UIViewController *)topController;
 - (void)callUnityCallbackOnce;
+- (void)cleanupCardInstance;
 - (void)expandCardToFullScreen;
 - (void)collapseCardToOriginal;
 - (void)updateCardExpansionProgress:(CGFloat)progress cardView:(UIView *)cardView;
@@ -429,15 +430,86 @@ static BOOL _isCardExpanded = NO;
     }
 }
 
+// Comprehensive cleanup method to properly deallocate all card resources
+- (void)cleanupCardInstance {
+    // Stop keyboard observing to prevent memory leaks
+    [self stopKeyboardObserving];
+    
+    // Clear all view references and remove from superview
+    if (self.dragTrayView) {
+        [self.dragTrayView removeFromSuperview];
+        self.dragTrayView = nil;
+    }
+    
+    if (self.navigationBarView) {
+        [self.navigationBarView removeFromSuperview];
+        self.navigationBarView = nil;
+    }
+    
+    if (self.closeButtonView) {
+        [self.closeButtonView removeFromSuperview];
+        self.closeButtonView = nil;
+    }
+    
+    // Remove and clear gesture recognizer
+    if (self.panGestureRecognizer && self.currentPresentedVC) {
+        [self.currentPresentedVC.view removeGestureRecognizer:self.panGestureRecognizer];
+        self.panGestureRecognizer.delegate = nil;
+        self.panGestureRecognizer = nil;
+    }
+    
+    // Clean up WebView delegates and associated objects if present
+    if (self.currentPresentedVC) {
+        for (UIView *subview in self.currentPresentedVC.view.subviews) {
+            if ([subview isKindOfClass:NSClassFromString(@"WKWebView")]) {
+                WKWebView *webView = (WKWebView *)subview;
+                
+                // Clear delegates to prevent callbacks to deallocated objects
+                webView.navigationDelegate = nil;
+                webView.UIDelegate = nil;
+                
+                // Clear user content controller and message handlers
+                [webView.configuration.userContentController removeScriptMessageHandlerForName:@"windowClose"];
+                [webView.configuration.userContentController removeScriptMessageHandlerForName:@"stashPaymentSuccess"];
+                [webView.configuration.userContentController removeScriptMessageHandlerForName:@"stashPaymentFailure"];
+                
+                // Remove associated objects (delegates) to prevent memory leaks
+                objc_setAssociatedObject(self.currentPresentedVC, "webViewDelegate", nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                objc_setAssociatedObject(self.currentPresentedVC, "webViewUIDelegate", nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                
+                // Stop any ongoing loading
+                [webView stopLoading];
+                
+                break;
+            }
+        }
+    }
+    
+    // Clear the view controller reference
+    self.currentPresentedVC = nil;
+    
+    // Reset all state flags
+    self.isNavigationBarVisible = NO;
+    _isCardExpanded = NO;
+    _isCardCurrentlyPresented = NO;
+    
+    // Reset callback flags
+    _callbackWasCalled = NO;
+    _paymentSuccessHandled = NO;
+    _paymentSuccessCallbackCalled = NO;
+    
+    NSLog(@"Card instance properly cleaned up and deallocated");
+}
+
 - (void)safariViewControllerDidFinish:(SFSafariViewController *)controller {
-    _isCardCurrentlyPresented = NO; // Reset the presentation flag
+    [self cleanupCardInstance];
     [self callUnityCallbackOnce];
 }
 
 - (void)handleDismiss:(UITapGestureRecognizer *)gesture {
     if (self.currentPresentedVC) {
         [self.currentPresentedVC dismissViewControllerAnimated:YES completion:^{
-            _isCardCurrentlyPresented = NO; // Reset the presentation flag
+            [self cleanupCardInstance];
             [self callUnityCallbackOnce];
         }];
     }
@@ -446,7 +518,7 @@ static BOOL _isCardExpanded = NO;
 - (void)dismissButtonTapped:(UIButton *)button {
     if (self.currentPresentedVC) {
         [self.currentPresentedVC dismissViewControllerAnimated:YES completion:^{
-            _isCardCurrentlyPresented = NO; // Reset the presentation flag
+            [self cleanupCardInstance];
             [self callUnityCallbackOnce];
         }];
     }
@@ -539,7 +611,7 @@ static BOOL _isCardExpanded = NO;
                     view.superview.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.0];
                 } completion:^(BOOL finished) {
                     [self.currentPresentedVC dismissViewControllerAnimated:NO completion:^{
-                        _isCardCurrentlyPresented = NO; // Reset the presentation flag
+                        [self cleanupCardInstance];
                         [self callUnityCallbackOnce];
                     }];
                 }];
@@ -902,17 +974,43 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
                 webView.scrollView.backgroundColor = [UIColor whiteColor];
             }
             
-            // Configure WebView for full screen - pure overlay approach (no insets)
+            // Configure WebView for full screen - prevent black bars with proper scroll behavior
             if (@available(iOS 11.0, *)) {
-                webView.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentAutomatic;
+                webView.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
             }
             webView.scrollView.contentInset = UIEdgeInsetsZero;
             webView.scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
             
-            // Allow natural scrolling but prevent overscroll at bottom
-            webView.scrollView.bounces = YES;
+            // Prevent overscroll bounce to avoid black bars in expanded state
+            webView.scrollView.bounces = NO;
             webView.scrollView.alwaysBounceVertical = NO;
             webView.scrollView.alwaysBounceHorizontal = NO;
+            
+            // Ensure scroll view fills content properly
+            webView.scrollView.showsVerticalScrollIndicator = YES;
+            webView.scrollView.showsHorizontalScrollIndicator = NO;
+            
+            // Inject CSS to prevent web-level overscroll behaviors
+            NSString *preventOverscrollScript = @"(function() {"
+                "var style = document.createElement('style');"
+                "style.innerHTML = '"
+                    "body, html { "
+                        "overscroll-behavior: none !important; "
+                        "overflow-x: hidden !important; "
+                        "-webkit-overflow-scrolling: touch !important; "
+                    "} "
+                    "* { "
+                        "overscroll-behavior: none !important; "
+                    "}"
+                "';"
+                "document.head.appendChild(style);"
+            "})();";
+            
+            [webView evaluateJavaScript:preventOverscrollScript completionHandler:^(id result, NSError *error) {
+                if (error) {
+                    NSLog(@"Error injecting overscroll prevention: %@", error.localizedDescription);
+                }
+            }];
             
             break;
         }
@@ -1184,17 +1282,39 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
                 [webView.bottomAnchor constraintEqualToAnchor:cardView.bottomAnchor]
             ]];
             
-            // Configure WebView for collapsed state - pure overlay approach (no insets)
+            // Configure WebView for collapsed state - maintain consistent settings to prevent overscroll
             if (@available(iOS 11.0, *)) {
-                webView.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentAutomatic;
+                webView.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
             }
             webView.scrollView.contentInset = UIEdgeInsetsZero;
             webView.scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
             
-            // Prevent overscroll bounce to avoid black bars
+            // Prevent overscroll bounce to avoid black bars (keep consistent with initial setup)
             webView.scrollView.bounces = NO;
             webView.scrollView.alwaysBounceVertical = NO;
             webView.scrollView.alwaysBounceHorizontal = NO;
+            
+            // Inject CSS to prevent web-level overscroll behaviors in collapsed state too
+            NSString *preventOverscrollScript = @"(function() {"
+                "var style = document.createElement('style');"
+                "style.innerHTML = '"
+                    "body, html { "
+                        "overscroll-behavior: none !important; "
+                        "overflow-x: hidden !important; "
+                        "-webkit-overflow-scrolling: touch !important; "
+                    "} "
+                    "* { "
+                        "overscroll-behavior: none !important; "
+                    "}"
+                "';"
+                "document.head.appendChild(style);"
+            "})();";
+            
+            [webView evaluateJavaScript:preventOverscrollScript completionHandler:^(id result, NSError *error) {
+                if (error) {
+                    NSLog(@"Error injecting overscroll prevention: %@", error.localizedDescription);
+                }
+            }];
             
             break;
         }
@@ -1666,7 +1786,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
                     cardView.superview.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.0];
                 } completion:^(BOOL finished) {
                     [self.currentPresentedVC dismissViewControllerAnimated:NO completion:^{
-                        _isCardCurrentlyPresented = NO;
+                        [self cleanupCardInstance];
                         [self callUnityCallbackOnce];
                     }];
                 }];
@@ -1745,7 +1865,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     if ([message.name isEqualToString:@"windowClose"]) {
         if (self.currentPresentedVC) {
             [self.currentPresentedVC dismissViewControllerAnimated:YES completion:^{
-                _isCardCurrentlyPresented = NO; // Reset the presentation flag
+                [self cleanupCardInstance];
                 [self callUnityCallbackOnce];
             }];
         }
@@ -1779,8 +1899,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
         // Automatically close the Stash Pay Card without calling the regular dismissal callback
         if (self.currentPresentedVC) {
             [self.currentPresentedVC dismissViewControllerAnimated:YES completion:^{
-                _isCardCurrentlyPresented = NO; // Reset the presentation flag
-                _callbackWasCalled = YES; // Mark callback as called to prevent dismissal callback
+                [self cleanupCardInstance];
                 // Don't call callUnityCallbackOnce here since we already handled the success callback
             }];
         }
@@ -1800,8 +1919,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
         // Automatically close the Stash Pay Card without calling the regular dismissal callback
         if (self.currentPresentedVC) {
             [self.currentPresentedVC dismissViewControllerAnimated:YES completion:^{
-                _isCardCurrentlyPresented = NO; // Reset the presentation flag
-                _callbackWasCalled = YES; // Mark callback as called to prevent dismissal callback
+                [self cleanupCardInstance];
                 // Don't call callUnityCallbackOnce here since we already handled the failure callback
             }];
         }
@@ -1869,7 +1987,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     // Dismiss the entire card
     if (self.currentPresentedVC) {
         [self.currentPresentedVC dismissViewControllerAnimated:YES completion:^{
-            _isCardCurrentlyPresented = NO; // Reset the presentation flag
+            [self cleanupCardInstance];
             [self callUnityCallbackOnce];
         }];
     }
@@ -2483,13 +2601,13 @@ extern "C" {
 
     // Resets the card presentation state (useful for debugging or force reset)
     void _StashPayCardResetPresentationState() {
-        _isCardCurrentlyPresented = NO;
-        _callbackWasCalled = NO;
-        _paymentSuccessHandled = NO;
-        _paymentSuccessCallbackCalled = NO;
         if ([StashPayCardSafariDelegate sharedInstance].currentPresentedVC) {
-            [[StashPayCardSafariDelegate sharedInstance].currentPresentedVC dismissViewControllerAnimated:NO completion:nil];
-            [StashPayCardSafariDelegate sharedInstance].currentPresentedVC = nil;
+            [[StashPayCardSafariDelegate sharedInstance].currentPresentedVC dismissViewControllerAnimated:NO completion:^{
+                [[StashPayCardSafariDelegate sharedInstance] cleanupCardInstance];
+            }];
+        } else {
+            // If no view controller is presented, just clean up the state
+            [[StashPayCardSafariDelegate sharedInstance] cleanupCardInstance];
         }
     }
 
