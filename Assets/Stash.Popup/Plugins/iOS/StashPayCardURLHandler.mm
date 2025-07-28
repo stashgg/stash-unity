@@ -40,6 +40,9 @@ static CGFloat _cardHeightRatio = 0.4; // Default to 40% of screen height
 static CGFloat _cardVerticalPosition = 1.0; // Default to bottom of screen (1.0)
 static CGFloat _cardWidthRatio = 1.0; // Default to 100% of screen width
 
+// Flag to control whether to force use of SFSafariViewController over WKWebView
+static BOOL _forceSafariViewController = NO; // Default to WKWebView implementation
+
 // Compile-time flag to disable iPad detection for debugging (set to 0 to disable iPad features)
 #define ENABLE_IPAD_SUPPORT 1
 
@@ -509,8 +512,19 @@ static BOOL _isCardExpanded = NO;
 }
 
 - (void)safariViewControllerDidFinish:(SFSafariViewController *)controller {
-    [self cleanupCardInstance];
-    [self callUnityCallbackOnce];
+    // Check if we're using native Safari (no custom modifications)
+    if (_forceSafariViewController) {
+        // For native Safari, just call the callback on main thread - no other cleanup needed
+        if (_safariViewDismissedCallback != NULL) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                _safariViewDismissedCallback();
+            });
+        }
+    } else {
+        // For custom implementations, do full cleanup
+        [self cleanupCardInstance];
+        [self callUnityCallbackOnce];
+    }
 }
 
 - (void)handleDismiss:(UITapGestureRecognizer *)gesture {
@@ -676,6 +690,21 @@ static BOOL _isCardExpanded = NO;
 - (void)fallbackToSafariVC:(NSURL *)url topController:(UIViewController *)topController {
     SFSafariViewController* safariViewController = [[SFSafariViewController alloc] initWithURL:url];
     
+    // Safety check: if _forceSafariViewController is true, this method should never be called
+    // But if it is called for some reason, use completely native behavior
+    if (_forceSafariViewController) {
+        safariViewController.delegate = self;
+        [topController presentViewController:safariViewController animated:YES completion:nil];
+        self.safariViewDismissedCallback = ^{
+            if (_safariViewDismissedCallback != NULL) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    _safariViewDismissedCallback();
+                });
+            }
+        };
+        return;
+    }
+    
     // Use automatic style which works better with Safari View Controller
     safariViewController.modalPresentationStyle = UIModalPresentationOverFullScreen;
     
@@ -810,6 +839,17 @@ BOOL shouldUseFullScreenSafari() {
     return isFullScreen;
 }
 
+// Helper function to determine if we should use SFSafariViewController (respects explicit switch)
+BOOL shouldUseSafariViewController() {
+    // If explicitly forced to use Safari view controller, always use it
+    if (_forceSafariViewController) {
+        return YES;
+    }
+    
+    // Otherwise, fall back to the original logic (full-screen mode)
+    return shouldUseFullScreenSafari();
+}
+
 // Helper function to detect if we're running on iPad
 BOOL isRunningOniPad() {
     // Check compile-time flag first
@@ -894,8 +934,25 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
 - (void)presentSafariViewController:(NSURL *)url topController:(UIViewController *)topController {
     SFSafariViewController* safariViewController = [[SFSafariViewController alloc] initWithURL:url];
     
-    if (shouldUseFullScreenSafari()) {
-        // Full-screen native Safari experience
+    // Safety check: if _forceSafariViewController is true, this method should never be called
+    // But if it is called for some reason, use completely native behavior
+    if (_forceSafariViewController) {
+        safariViewController.delegate = self;
+        [topController presentViewController:safariViewController animated:YES completion:nil];
+        self.safariViewDismissedCallback = ^{
+            if (_safariViewDismissedCallback != NULL) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    _safariViewDismissedCallback();
+                });
+            }
+        };
+        return;
+    }
+    
+    if (shouldUseSafariViewController()) {
+        // NOTE: _forceSafariViewController is handled above and in the main function, this is only for full-screen mode
+        
+        // Full-screen native Safari experience (but with some modifications for full-screen)
         safariViewController.modalPresentationStyle = UIModalPresentationFullScreen;
         
         // Set the delegate
@@ -2199,33 +2256,8 @@ extern "C" {
             return;
         }
         
-        // Check if a card is already being presented
-        if (_isCardCurrentlyPresented) {
-            NSLog(@"Warning: Card is already being presented. Ignoring new request.");
-            return;
-        }
-        
-        // Reset all callback flags for new payment session to ensure callbacks work properly
-        _paymentSuccessHandled = NO;
-        _paymentSuccessCallbackCalled = NO;
-        _callbackWasCalled = NO;
-        
-        // Set the presentation flag
-        _isCardCurrentlyPresented = YES;
-        
-        // Reset expansion state for new card
-        _isCardExpanded = NO;
-        
-        // Reset navigation bar and close button state for new card
-        [[StashPayCardSafariDelegate sharedInstance] setIsNavigationBarVisible:NO];
-        [[StashPayCardSafariDelegate sharedInstance] setNavigationBarView:nil];
-        [[StashPayCardSafariDelegate sharedInstance] setCloseButtonView:nil];
-        
         NSString* nsUrlStr = [NSString stringWithUTF8String:urlString];
         NSURL* url = [NSURL URLWithString:nsUrlStr];
-        
-        // Store the initial URL for back button functionality
-        [[StashPayCardSafariDelegate sharedInstance] setInitialURL:url];
         
         if (url == nil) {
             NSLog(@"Error: Invalid URL format");
@@ -2241,8 +2273,54 @@ extern "C" {
         }
         
         if (@available(iOS 9.0, *)) {
-            // Check if we should use full-screen Safari directly
-            if (shouldUseFullScreenSafari()) {
+            // Handle native Safari controller first (completely separate path)
+            if (_forceSafariViewController) {
+                // Use completely native SFSafariViewController with absolutely NO modifications
+                SFSafariViewController* safariViewController = [[SFSafariViewController alloc] initWithURL:url];
+                
+                // Set delegate ONLY for basic dismissal callback - no other modifications
+                safariViewController.delegate = [StashPayCardSafariDelegate sharedInstance];
+                
+                // Present with completely default system behavior - no custom presentation styles
+                [topController presentViewController:safariViewController animated:YES completion:nil];
+                
+                // Set a simple callback for when the native Safari is dismissed
+                [StashPayCardSafariDelegate sharedInstance].safariViewDismissedCallback = ^{
+                    if (_safariViewDismissedCallback != NULL) {
+                        _safariViewDismissedCallback();
+                    }
+                };
+                
+                return;
+            }
+            
+            // Check if a card is already being presented (only for custom implementations)
+            if (_isCardCurrentlyPresented) {
+                NSLog(@"Warning: Card is already being presented. Ignoring new request.");
+                return;
+            }
+            
+            // Reset all callback flags for new payment session to ensure callbacks work properly
+            _paymentSuccessHandled = NO;
+            _paymentSuccessCallbackCalled = NO;
+            _callbackWasCalled = NO;
+            
+            // Set the presentation flag
+            _isCardCurrentlyPresented = YES;
+            
+            // Reset expansion state for new card
+            _isCardExpanded = NO;
+            
+            // Reset navigation bar and close button state for new card
+            [[StashPayCardSafariDelegate sharedInstance] setIsNavigationBarVisible:NO];
+            [[StashPayCardSafariDelegate sharedInstance] setNavigationBarView:nil];
+            [[StashPayCardSafariDelegate sharedInstance] setCloseButtonView:nil];
+            
+            // Store the initial URL for back button functionality
+            [[StashPayCardSafariDelegate sharedInstance] setInitialURL:url];
+            
+            // Check if we should use Safari view controller (for custom full-screen mode)
+            if (shouldUseSafariViewController()) {
                 [[StashPayCardSafariDelegate sharedInstance] presentSafariViewController:url topController:topController];
                 return;
             }
@@ -2665,6 +2743,16 @@ extern "C" {
     // Returns whether a card is currently being presented
     bool _StashPayCardIsCurrentlyPresented() {
         return _isCardCurrentlyPresented;
+    }
+
+    // Sets whether to force use of SFSafariViewController over WKWebView
+    void _StashPayCardSetForceSafariViewController(bool force) {
+        _forceSafariViewController = force;
+    }
+
+    // Gets whether to force use of SFSafariViewController over WKWebView
+    bool _StashPayCardGetForceSafariViewController() {
+        return _forceSafariViewController;
     }
 }
 

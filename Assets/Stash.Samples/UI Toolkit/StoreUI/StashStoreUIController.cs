@@ -11,8 +11,11 @@ using UnityEngine.Networking;
 using Canvas = UnityEngine.Canvas;
 using CanvasScaler = UnityEngine.UI.CanvasScaler;
 using Button = UnityEngine.UIElements.Button; // Specify we want UI Toolkit buttons
+using Stash.Samples;
 
-public class StashStoreUIController : MonoBehaviour
+namespace Stash.Samples
+{
+    public class StashStoreUIController : MonoBehaviour
 {
     [SerializeField] private UIDocument storeUIDocument;
     [SerializeField] private Texture2D[] itemImages;
@@ -25,11 +28,7 @@ public class StashStoreUIController : MonoBehaviour
     [SerializeField] private StashEnvironment environment = StashEnvironment.Test;
     
     [Header("User Information")]
-    [SerializeField] private string externalUserId = "user123";
-    [SerializeField] private string userEmail = "example@example.com";
-    [SerializeField] private string displayName = "Example User";
-    [SerializeField] private string avatarIconUrl = "";
-    [SerializeField] private string profileUrl = "";
+    // User information is now handled by AuthenticationManager
     
     [Header("Shop Configuration")]
     [SerializeField] private string shopHandle = "demo-shop";
@@ -37,6 +36,10 @@ public class StashStoreUIController : MonoBehaviour
 
     private VisualElement root;
     private List<Button> buyButtons = new List<Button>();
+    
+    // Safari WebView toggle
+    private bool useSafariWebView = false; // Default to false (unchecked)
+    private Toggle safariToggle;
     
     // Delegate for purchase callbacks
     public delegate void PurchaseCompletedDelegate(string itemId, bool success);
@@ -60,6 +63,12 @@ public class StashStoreUIController : MonoBehaviour
         // Get the root of the UI document
         root = storeUIDocument.rootVisualElement;
         
+        // Initialize IAP Manager for Apple Pay functionality
+        InitializeIAP();
+        
+        // Setup Safari WebView toggle at the top
+        SetupSafariToggle();
+        
         // Ensure we have the right number of store items defined based on the UI
         ValidateAndInitializeStoreItems();
         
@@ -69,6 +78,84 @@ public class StashStoreUIController : MonoBehaviour
         // Setup payment popup
         SetupPaymentPopup();
         
+    }
+    
+    private void SetupSafariToggle()
+    {
+        // Find the items scroll view container
+        VisualElement itemsScrollView = root.Q<VisualElement>("items-scroll-view");
+        if (itemsScrollView == null)
+        {
+            Debug.LogError("[StoreUI] Could not find items-scroll-view container for Safari toggle");
+            return;
+        }
+        
+        // Create a container for the toggle at the top of the store
+        VisualElement toggleContainer = new VisualElement();
+        toggleContainer.name = "safari-toggle-container";
+        toggleContainer.style.flexDirection = FlexDirection.Row;
+        toggleContainer.style.alignItems = Align.Center;
+        toggleContainer.style.justifyContent = Justify.Center;
+        toggleContainer.style.marginBottom = 20;
+        toggleContainer.style.marginTop = 15;
+        toggleContainer.style.paddingLeft = 20;
+        toggleContainer.style.paddingRight = 20;
+        toggleContainer.style.backgroundColor = new Color(0.1f, 0.1f, 0.1f, 0.8f);
+        toggleContainer.style.borderTopLeftRadius = 8;
+        toggleContainer.style.borderTopRightRadius = 8;
+        toggleContainer.style.borderBottomLeftRadius = 8;
+        toggleContainer.style.borderBottomRightRadius = 8;
+        toggleContainer.style.paddingTop = 10;
+        toggleContainer.style.paddingBottom = 10;
+        
+        // Create label for the toggle
+        Label toggleLabel = new Label("Use Safari WebView:");
+        toggleLabel.style.color = Color.white;
+        toggleLabel.style.fontSize = 14;
+        toggleLabel.style.marginRight = 10;
+        toggleLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+        toggleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        
+        // Create the toggle
+        safariToggle = new Toggle();
+        safariToggle.value = useSafariWebView; // Set initial value
+        safariToggle.style.marginLeft = 5;
+        
+        // Add event handler for toggle changes
+        safariToggle.RegisterValueChangedCallback(OnSafariToggleChanged);
+        
+        // Add elements to container
+        toggleContainer.Add(toggleLabel);
+        toggleContainer.Add(safariToggle);
+        
+        // Insert the toggle container as the first child of the scroll view
+        itemsScrollView.Insert(0, toggleContainer);
+        
+        // Safari WebView toggle initialized
+    }
+    
+    private void OnSafariToggleChanged(ChangeEvent<bool> evt)
+    {
+        useSafariWebView = evt.newValue;
+        // Safari WebView setting updated
+    }
+    
+    private void InitializeIAP()
+    {
+        // Initializing IAP system
+        
+        // Create SimpleIAPManager if it doesn't exist
+        if (SimpleIAPManager.Instance == null)
+        {
+            GameObject iapManager = new GameObject("SimpleIAPManager");
+            iapManager.AddComponent<SimpleIAPManager>();
+            DontDestroyOnLoad(iapManager);
+            // Created new SimpleIAPManager instance
+        }
+        else
+        {
+            // IAP Manager instance found
+        }
     }
     
     private void ValidateAndInitializeStoreItems()
@@ -150,34 +237,34 @@ public class StashStoreUIController : MonoBehaviour
     {
         // Add default store items only if none were defined in the editor
         storeItems.Add(new StoreItem {
-            id = "premium_sword",
-            name = "Item 1",
-            description = "Description 1",
-            pricePerItem = "4.99",
-            imageUrl = ""
-        });
-        
-        storeItems.Add(new StoreItem {
-            id = "health_potion",
-            name = "Item 2",
-            description = "Description 2",
+            id = "fistful_of_potions",
+            name = "Fistful of Potions",
+            description = "A handful of powerful potions",
             pricePerItem = "0.99",
             imageUrl = ""
         });
         
         storeItems.Add(new StoreItem {
-            id = "magic_shield",
-            name = "Item 3",
-            description = "Description 3",
-            pricePerItem = "2.99",
+            id = "barrel_of_potions",
+            name = "Barrel of Potions",
+            description = "A whole barrel of potions",
+            pricePerItem = "4.99",
             imageUrl = ""
         });
         
         storeItems.Add(new StoreItem {
-            id = "xp_booster",
-            name = "Item 4",
-            description = "Description 4",
-            pricePerItem = "5.99",
+            id = "battle_pass",
+            name = "Battle Pass",
+            description = "Premium battle pass with exclusive rewards",
+            pricePerItem = "9.99",
+            imageUrl = ""
+        });
+        
+        storeItems.Add(new StoreItem {
+            id = "small_resource_shipment_1",
+            name = "Resource Shipment",
+            description = "Small shipment of valuable resources",
+            pricePerItem = "2.99",
             imageUrl = ""
         });
     }
@@ -212,7 +299,7 @@ public class StashStoreUIController : MonoBehaviour
 
     private void ShowPaymentPopup(int itemIndex)
     {
-        Debug.Log($"[StoreUI] ShowPaymentPopup called with itemIndex: {itemIndex}, storeItems.Count: {storeItems?.Count ?? 0}");
+        // Showing payment popup for item
         
         if (itemIndex < 0 || itemIndex >= storeItems.Count)
         {
@@ -223,7 +310,7 @@ public class StashStoreUIController : MonoBehaviour
         currentPopupItemIndex = itemIndex;
         StoreItem item = storeItems[itemIndex];
         
-        Debug.Log($"[StoreUI] Setting popup for item: {item.name} (ID: {item.id}) at index: {itemIndex}");
+        // Configuring payment popup
         
         // Update item details (even though they're hidden, keep for potential future use)
         if (paymentPopupItemName != null)
@@ -233,7 +320,7 @@ public class StashStoreUIController : MonoBehaviour
             
         if (paymentPopup != null)
         {
-            Debug.Log("[StoreUI] Payment popup element found, making it visible");
+            // Payment popup displayed
             
             // Ensure it's displayed and visible
             paymentPopup.style.display = DisplayStyle.Flex;
@@ -242,7 +329,7 @@ public class StashStoreUIController : MonoBehaviour
             // Add the visible class for CSS animation
             paymentPopup.AddToClassList("visible");
             
-            Debug.Log($"[StoreUI] Payment popup visibility: {paymentPopup.visible}, has visible class: {paymentPopup.ClassListContains("visible")}");
+            // Payment popup displayed
         }
         else
         {
@@ -254,7 +341,7 @@ public class StashStoreUIController : MonoBehaviour
     {
         if (paymentPopup != null)
         {
-            Debug.Log("[StoreUI] Hiding payment popup");
+            // Hiding payment popup
             
             // Remove the visible class to trigger CSS animation
             paymentPopup.RemoveFromClassList("visible");
@@ -273,7 +360,7 @@ public class StashStoreUIController : MonoBehaviour
 
     private void OnDirectCheckoutClicked()
     {
-        Debug.Log($"[StoreUI] OnDirectCheckoutClicked called. currentPopupItemIndex: {currentPopupItemIndex}");
+        // Direct checkout initiated
         
         if (storeItems == null)
         {
@@ -299,8 +386,7 @@ public class StashStoreUIController : MonoBehaviour
             }
             
             HidePaymentPopup();
-            Debug.Log($"[StoreUI] Direct Checkout for item: {item.id}");
-            Debug.Log($"[StoreUI] About to call ProcessPurchase with index: {itemIndex}");
+                    // Processing direct checkout
             // Use the existing Stash implementation
             ProcessPurchase(itemIndex);
         }
@@ -312,7 +398,7 @@ public class StashStoreUIController : MonoBehaviour
 
     private void OnApplePayClicked()
     {
-        Debug.Log($"[StoreUI] OnApplePayClicked called. currentPopupItemIndex: {currentPopupItemIndex}");
+        // Apple Pay (IAP) initiated
         
         if (storeItems == null)
         {
@@ -338,10 +424,10 @@ public class StashStoreUIController : MonoBehaviour
             }
             
             HidePaymentPopup();
-            Debug.Log($"[StoreUI] Apple Pay selected for item: {item.id}");
-            // TODO: Implement Apple IAP logic here
-            // For now, show a placeholder message
-            ShowApplePayPlaceholder();
+            // Processing Apple Pay purchase
+            
+            // Process IAP purchase using Unity IAP
+            ProcessIAPPurchase(itemIndex);
         }
         catch (System.Exception ex)
         {
@@ -349,26 +435,107 @@ public class StashStoreUIController : MonoBehaviour
         }
     }
 
-    private void ShowApplePayPlaceholder()
+    private void ProcessIAPPurchase(int itemIndex)
     {
-        // Create a simple popup to inform user that Apple Pay is not yet implemented
-        var placeholderPopup = new GameObject("ApplePayPlaceholder");
-        var popupScript = placeholderPopup.AddComponent<SuccessPopup>();
+        // Processing IAP purchase
         
-        // Set the root element directly to avoid search issues
-        if (root != null)
+        if (storeItems == null || itemIndex < 0 || itemIndex >= storeItems.Count)
         {
-            popupScript.SetRootElement(root);
+            Debug.LogError($"[StoreUI] Invalid item index in ProcessIAPPurchase: {itemIndex}! Store items count: {storeItems?.Count ?? 0}");
+            return;
+        }
+
+        StoreItem item = storeItems[itemIndex];
+        
+        // Starting IAP transaction
+        
+        // Check if IAP Manager is ready
+        if (SimpleIAPManager.Instance == null)
+        {
+            Debug.LogError("[StoreUI] ❌ SimpleIAPManager instance is null");
+            Debug.LogError("[StoreUI] This means the IAP manager was never created or was destroyed");
+            ShowIAPErrorMessage("In-app purchases are not available. Please restart the app and try again.");
+            OnPurchaseCompleted?.Invoke(item.id, false);
+            return;
         }
         
-        popupScript.Show("Apple Pay", "Not available in Testflight.");
+        if (!SimpleIAPManager.Instance.IsReady())
+        {
+            Debug.LogWarning("[StoreUI] ⚠️ SimpleIAPManager not ready yet");
+            Debug.LogWarning("[StoreUI] This usually means Unity IAP is still initializing or failed to initialize");
+            ShowIAPErrorMessage("In-app purchases are still loading. Please wait a moment and try again.");
+            OnPurchaseCompleted?.Invoke(item.id, false);
+            return;
+        }
+        
+                    // IAP Manager ready, proceeding
+        
+        // Subscribe to purchase events temporarily
+        System.Action<string> onSuccess = null;
+        System.Action<string, string> onFailure = null;
+        
+        onSuccess = (productId) => {
+            if (productId == item.id)
+            {
+                Debug.Log($"[StoreUI] ✅ IAP purchase successful for: {productId}");
+                ShowSuccessPopupWithConfetti("Purchase Successful!", $"You successfully purchased {item.name}!");
+                OnPurchaseCompleted?.Invoke(item.id, true);
+                
+                // Unsubscribe
+                SimpleIAPManager.Instance.OnPurchaseSuccess -= onSuccess;
+                SimpleIAPManager.Instance.OnPurchaseFailure -= onFailure;
+            }
+        };
+        
+        onFailure = (productId, error) => {
+            if (productId == item.id)
+            {
+                Debug.LogError($"[StoreUI] ❌ IAP purchase failed for: {productId}, error: {error}");
+                ShowIAPErrorMessage($"Purchase failed: {error}");
+                OnPurchaseCompleted?.Invoke(item.id, false);
+                
+                // Unsubscribe
+                SimpleIAPManager.Instance.OnPurchaseSuccess -= onSuccess;
+                SimpleIAPManager.Instance.OnPurchaseFailure -= onFailure;
+            }
+        };
+        
+        // Subscribe to events
+        SimpleIAPManager.Instance.OnPurchaseSuccess += onSuccess;
+        SimpleIAPManager.Instance.OnPurchaseFailure += onFailure;
+        
+        // Start the purchase
+                    // Initiating purchase
+        SimpleIAPManager.Instance.BuyProduct(item.id);
+    }
+    
+
+    
+    private void ShowIAPErrorMessage(string errorMessage)
+    {
+        try
+        {
+            // Create an error popup
+            var errorPopup = new GameObject("IAPErrorPopup");
+            var popupScript = errorPopup.AddComponent<SuccessPopup>(); // Reusing SuccessPopup class
+            
+            // Set the root element directly to avoid search issues
+            if (root != null)
+            {
+                popupScript.SetRootElement(root);
+            }
+            
+            popupScript.Show("Purchase Error", errorMessage);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[StoreUI] Error showing IAP error message: {ex.Message}");
+        }
     }
 
     private void ProcessPurchase(int itemIndex)
     {
-        Debug.Log($"[StoreUI] ProcessPurchase called with itemIndex: {itemIndex}");
-        Debug.Log($"[StoreUI] storeItems null? {storeItems == null}");
-        Debug.Log($"[StoreUI] storeItems.Count: {storeItems?.Count ?? -1}");
+        // Processing purchase request
         
         if (storeItems == null)
         {
@@ -421,15 +588,26 @@ public class StashStoreUIController : MonoBehaviour
                 // Generate random credentials for unauthenticated users
                 userId = $"guest_{Guid.NewGuid().ToString("N").Substring(0, 8)}";
                 email = $"guest_{Guid.NewGuid().ToString("N").Substring(0, 8)}@example.com";
-                Debug.Log($"[Stash] Using generated guest credentials - UserId: {userId}, Email: {email}");
+                // Using generated guest credentials
             }
             
+            // Create CheckoutItemData from StoreItem
+            var checkoutItem = new StashCheckout.CheckoutItemData
+            {
+                id = item.id,
+                pricePerItem = item.pricePerItem,
+                quantity = 1,
+                imageUrl = item.imageUrl,
+                name = item.name,
+                description = item.description
+            };
+
             // Generate the checkout URL using the Stash Checkout API
-            var (url, id) = await StashCheckout.CreateCheckoutLink(
+            (string url, string id) = await StashCheckout.CreateCheckoutLink(
                 userId,
                 email,
                 shopHandle,
-                item.id,
+                checkoutItem,
                 apiKey,
                 environment
             );
@@ -438,9 +616,10 @@ public class StashStoreUIController : MonoBehaviour
             currentCheckoutId = id;
             currentItemIndex = itemIndex;
             
-            Debug.Log($"[Stash] Generated checkout URL: {url} with ID: {id}");
+            // Generated checkout URL and opening browser
             
-            // Open the checkout URL in the StashPayCard
+            // Open the checkout URL in the StashPayCard with user-selected setting
+            StashPayCard.Instance.ForceSafariViewController = useSafariWebView;
             StashPayCard.Instance.OpenURL(url, () => OnBrowserClosed(), () => OnPaymentSuccessDetected(), () => OnPaymentFailureDetected());
         }
         catch (Exception ex)
@@ -456,7 +635,7 @@ public class StashStoreUIController : MonoBehaviour
     
     private void OnBrowserClosed()
     {
-        Debug.Log($"[Stash] Browser closed for checkout ID: {currentCheckoutId}");
+        // Browser closed, verifying purchase
         
         // Re-enable the buy button since checkout was dismissed
         SetButtonEnabled(buyButtons[currentItemIndex], true);
@@ -479,7 +658,7 @@ public class StashStoreUIController : MonoBehaviour
         
         // Create the verification request URL
         string verifyUrl = GetVerificationUrl(currentCheckoutId);
-        Debug.Log($"[Stash] Verification URL: {verifyUrl}");
+                    // Verifying purchase with backend
         
         using (UnityWebRequest request = UnityWebRequest.PostWwwForm(verifyUrl, ""))
         {
@@ -497,7 +676,7 @@ public class StashStoreUIController : MonoBehaviour
             {
                 // Parse the response to get item details
                 string responseText = request.downloadHandler.text;
-                Debug.Log($"[Stash] Purchase response: {responseText}");
+                // Purchase response received
                 
                 try
                 {
@@ -512,7 +691,7 @@ public class StashStoreUIController : MonoBehaviour
                         purchaseResponse.items != null && 
                         purchaseResponse.items.Length > 0;
                         
-                    Debug.Log($"[Stash] Purchase verification result: {isSuccessful}");
+                    // Purchase verification completed
                     
                     // Additional logging to help debug
                     if (purchaseResponse == null)
@@ -549,7 +728,7 @@ public class StashStoreUIController : MonoBehaviour
             if (isSuccessful)
             {
                 // Purchase was successful
-                Debug.Log($"[Stash] Purchase verified successfully for ID: {currentCheckoutId}");
+                                    // Purchase verified successfully
                 HandleSuccessfulPurchase(currentItemIndex);
                 
                 // Get item name and payment details
@@ -665,7 +844,7 @@ public class StashStoreUIController : MonoBehaviour
             return;
         }
         
-        Debug.Log($"Purchase successful for item: {storeItems[itemIndex].id}");
+        // Purchase completed for item
         
         // Re-enable the buy button after successful purchase
         if (buyButtons != null && itemIndex < buyButtons.Count)
@@ -688,7 +867,7 @@ public class StashStoreUIController : MonoBehaviour
             return;
         }
         
-        Debug.LogError($"Purchase failed for item: {storeItems[itemIndex].id}");
+        Debug.LogError("Purchase failed for selected item");
         
         // Re-enable the buy button after failed purchase
         if (buyButtons != null && itemIndex < buyButtons.Count)
@@ -939,131 +1118,27 @@ public class StashStoreUIController : MonoBehaviour
     {
         try
         {
-            // Create confetti system that renders in front of UI
-            GameObject confettiGO = new GameObject("ConfettiSystem");
+            // Create a simple success popup without confetti to avoid particle system issues
+            var successPopup = new GameObject("SuccessPopup");
+            var popupScript = successPopup.AddComponent<SuccessPopup>();
             
-            // Add Canvas component for UI rendering
-            Canvas confettiCanvas = confettiGO.AddComponent<Canvas>();
-            confettiCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            confettiCanvas.sortingOrder = 1000; // Very high sorting order to render in front of everything
-            
-            // Add CanvasScaler for consistent scaling
-            CanvasScaler scaler = confettiGO.AddComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920, 1080);
-            
-            // Position the confetti container at the top of the screen
-            RectTransform rectTransform = confettiGO.GetComponent<RectTransform>();
-            rectTransform.anchorMin = new Vector2(0, 1); // Top-left anchor
-            rectTransform.anchorMax = new Vector2(1, 1); // Top-right anchor
-            rectTransform.anchoredPosition = new Vector2(0, 100); // Slightly above screen
-            rectTransform.sizeDelta = new Vector2(0, 200); // Full width, 200px height
-            
-            // Create multiple confetti emitters across the screen width
-            for (int i = 0; i < 5; i++)
+            // Set the root element directly
+            if (root != null)
             {
-                GameObject emitter = new GameObject($"ConfettiEmitter_{i}");
-                emitter.transform.SetParent(confettiGO.transform, false);
-                
-                RectTransform emitterRect = emitter.AddComponent<RectTransform>();
-                float xPos = (i / 4.0f) - 0.5f; // Spread across screen: -0.5 to 0.5
-                emitterRect.anchorMin = new Vector2(0.5f + xPos, 0.5f);
-                emitterRect.anchorMax = new Vector2(0.5f + xPos, 0.5f);
-                emitterRect.anchoredPosition = Vector2.zero;
-                
-                ParticleSystem confetti = emitter.AddComponent<ParticleSystem>();
-                
-                // Configure main module for UI-space confetti
-                var main = confetti.main;
-                main.startLifetime = 4.0f;
-                main.startSpeed = 300.0f; // Higher speed for UI space
-                main.startSize = 20.0f; // Larger size for UI space (pixels)
-                main.startColor = GetRandomConfettiColor(i);
-                main.maxParticles = 40; // Per emitter
-                main.simulationSpace = ParticleSystemSimulationSpace.Local;
-                
-                // Configure emission for staggered bursts
-                var emission = confetti.emission;
-                emission.rateOverTime = 0;
-                emission.SetBursts(new ParticleSystem.Burst[] {
-                    new ParticleSystem.Burst(i * 0.1f, 20), // Stagger the bursts
-                    new ParticleSystem.Burst(i * 0.1f + 0.3f, 25),
-                    new ParticleSystem.Burst(i * 0.1f + 0.6f, 15)
-                });
-                
-                // Configure shape for wide spread
-                var shape = confetti.shape;
-                shape.enabled = true;
-                shape.shapeType = ParticleSystemShapeType.Circle;
-                shape.radius = 50; // Spread radius in UI pixels
-                
-                // Configure velocity for falling effect
-                var velocityOverLifetime = confetti.velocityOverLifetime;
-                velocityOverLifetime.enabled = true;
-                velocityOverLifetime.space = ParticleSystemSimulationSpace.Local;
-                velocityOverLifetime.y = new ParticleSystem.MinMaxCurve(-400f, -200f); // Downward fall
-                velocityOverLifetime.x = new ParticleSystem.MinMaxCurve(-100f, 100f); // Side drift
-                
-                // Configure size over lifetime
-                var sizeOverLifetime = confetti.sizeOverLifetime;
-                sizeOverLifetime.enabled = true;
-                AnimationCurve sizeCurve = new AnimationCurve();
-                sizeCurve.AddKey(0, 1.0f);
-                sizeCurve.AddKey(0.3f, 1.3f); // Grow slightly
-                sizeCurve.AddKey(1, 0.8f); // Shrink at end
-                sizeOverLifetime.size = new ParticleSystem.MinMaxCurve(1.0f, sizeCurve);
-                
-                // Configure vibrant colors
-                var colorOverLifetime = confetti.colorOverLifetime;
-                colorOverLifetime.enabled = true;
-                Gradient gradient = new Gradient();
-                gradient.SetKeys(
-                    new GradientColorKey[] { 
-                        new GradientColorKey(GetRandomConfettiColor(i), 0.0f), 
-                        new GradientColorKey(GetRandomConfettiColor(i + 1), 0.5f),
-                        new GradientColorKey(GetRandomConfettiColor(i + 2), 1.0f)
-                    },
-                    new GradientAlphaKey[] { 
-                        new GradientAlphaKey(1.0f, 0.0f), 
-                        new GradientAlphaKey(1.0f, 0.7f),
-                        new GradientAlphaKey(0.0f, 1.0f) 
-                    }
-                );
-                colorOverLifetime.color = gradient;
-                
-                // Configure rotation for spinning effect
-                var rotationOverLifetime = confetti.rotationOverLifetime;
-                rotationOverLifetime.enabled = true;
-                rotationOverLifetime.z = new ParticleSystem.MinMaxCurve(-360f, 360f);
-                
-                // Play each emitter
-                confetti.Play();
+                popupScript.SetRootElement(root);
             }
             
-            Debug.Log($"[Stash] UI-space confetti system created with 5 emitters");
-            Debug.Log($"[Stash] Canvas sorting order: {confettiCanvas.sortingOrder}");
-            Debug.Log($"[Stash] Confetti will render in front of UI elements");
+            popupScript.Show(title, message);
+            
+            Debug.Log($"[Stash] Success popup shown: {title} - {message}");
         }
         catch (Exception ex)
         {
-            Debug.LogError($"[Stash] Error creating confetti effect: {ex.Message}");
+            Debug.LogError($"[Stash] Error showing success popup: {ex.Message}");
         }
     }
     
-    private Color GetRandomConfettiColor(int seed)
-    {
-        Color[] colors = {
-            Color.yellow,
-            Color.magenta,
-            Color.cyan,
-            Color.green,
-            Color.red,
-            new Color(1f, 0.5f, 0f), // Orange
-            new Color(0.5f, 0f, 1f), // Purple
-            new Color(1f, 0.75f, 0.8f) // Pink
-        };
-        return colors[seed % colors.Length];
-    }
+
     
     private void OnDestroy()
     {
@@ -1344,4 +1419,5 @@ public class EnhancedSuccessPopup : SuccessPopup
             Destroy(confettiSystem.gameObject);
         }
     }
-} 
+}
+}

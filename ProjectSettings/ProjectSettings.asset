@@ -935,7 +935,7 @@ PlayerSettings:
   XboxOneOverrideIdentityPublisher: 
   vrEditorSettings: {}
   cloudServicesEnabled:
-    Purchasing: 0
+    Purchasing: 1
     UNet: 1
     Unity Ads: 0
   luminIcon:
@@ -957,10 +957,10 @@ PlayerSettings:
   apiCompatibilityLevel: 3
   activeInputHandler: 0
   windowsGamepadBackendHint: 0
-  cloudProjectId: 314fa7c3-56ae-4be8-83f8-349749e5d051
+  cloudProjectId: 15048eb0-c875-46dc-be03-8fb4992609d0
   framebufferDepthMemorylessMode: 0
   qualitySettingsNames: []
-  projectName: StashKit
+  projectName: stash-demo
   organizationId: olirehacek
   cloudEnabled: 0
   legacyClampBlendShapeWeights: 0

@@ -99,6 +99,14 @@ namespace StashPopup
         
         [DllImport("__Internal")]
         private static extern bool _StashPayCardIsCurrentlyPresented();
+
+        // Force the use of native SFSafariViewController
+        [DllImport("__Internal")]
+        private static extern void _StashPayCardSetForceSafariViewController(bool force);
+
+        // Check current setting
+        [DllImport("__Internal")]
+        private static extern bool _StashPayCardGetForceSafariViewController();
 #endif
 
         #endregion
@@ -170,8 +178,9 @@ namespace StashPopup
             _StashPayCardSetSafariViewDismissedCallback(OnIOSSafariViewDismissed);
             _StashPayCardSetPaymentSuccessCallback(OnIOSPaymentSuccess);
             _StashPayCardSetPaymentFailureCallback(OnIOSPaymentFailure);
-            
+
             // Open the URL using the native iOS plugin
+            // The decision to use SFSafariViewController vs WKWebView is now controlled by the ForceSafariViewController property
             _StashPayCardOpenURLInSafariVC(url);
 #else
             // For Android and other platforms, just open in default browser without callbacks
@@ -201,6 +210,29 @@ namespace StashPopup
                 return _StashPayCardIsCurrentlyPresented();
 #else
                 return false;
+#endif
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets whether to force the use of SFSafariViewController over WKWebView.
+        /// When true, always uses SFSafariViewController for a full-screen browser experience.
+        /// When false (default), uses WKWebView for custom card UI and only falls back to SFSafariViewController for full-screen mode.
+        /// </summary>
+        public bool ForceSafariViewController
+        {
+            get
+            {
+#if UNITY_IOS && !UNITY_EDITOR
+                return _StashPayCardGetForceSafariViewController();
+#else
+                return false;
+#endif
+            }
+            set
+            {
+#if UNITY_IOS && !UNITY_EDITOR
+                _StashPayCardSetForceSafariViewController(value);
 #endif
             }
         }

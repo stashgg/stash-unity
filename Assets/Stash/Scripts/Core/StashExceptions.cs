@@ -10,7 +10,7 @@ namespace Stash.Core.Exceptions
     public class StashRequestError : Exception
     {
         public long Code { get; }
-        public string Message { get; }
+        public new string Message { get; }
         
         public StashRequestError() { }
 

@@ -31,12 +31,12 @@ namespace Stash.Core
         }
         
         /// <summary>
-        /// Creates a checkout link for Stash payments using the new simplified API.
+        /// Creates a checkout link for Stash payments using the new API with item definitions.
         /// </summary>
         /// <param name="userId">The user ID.</param>
         /// <param name="validatedEmail">The validated email of the user.</param>
         /// <param name="shopHandle">The handle of the shop.</param>
-        /// <param name="itemId">The ID of the item to purchase.</param>
+        /// <param name="item">The item to purchase with full definition.</param>
         /// <param name="apiKey">The Stash API key.</param>
         /// <param name="environment">The Stash environment (defaults to Test).</param>
         /// <returns>A response containing the URL and ID.</returns>
@@ -44,7 +44,7 @@ namespace Stash.Core
             string userId,
             string validatedEmail,
             string shopHandle,
-            string itemId,
+            CheckoutItemData item,
             string apiKey,
             StashEnvironment environment = StashEnvironment.Test)
         {
@@ -55,8 +55,11 @@ namespace Stash.Core
                 Value = apiKey
             };
 
-            // Create the request body JSON string with the new simplified structure
-            string requestBody = $"{{\"user\":{{\"id\":\"{userId}\",\"validated_email\":\"{validatedEmail}\",\"platform\":\"IOS\"}},\"shop_handle\":\"{shopHandle}\",\"item_id\":\"{itemId}\"}}";
+            // Build the item JSON object
+            string itemJson = $"{{\"id\":\"{item.id}\",\"pricePerItem\":\"{item.pricePerItem}\",\"quantity\":{item.quantity},\"imageUrl\":\"{item.imageUrl}\",\"name\":\"{item.name}\",\"description\":\"{item.description}\"}}";
+
+            // Create the request body JSON string with the user and item objects
+            string requestBody = $"{{\"user\":{{\"platform\":\"IOS\",\"id\":\"{userId}\",\"validatedEmail\":\"{validatedEmail}\",\"displayName\":\"user_name\",\"avatarIconUrl\":\"https://storage.googleapis.com/stash-demo-f9550.firebasestorage.app/avatars/6564ced3-c163-4b0d-aa4e-c1a19e42aa65.png\",\"profileUrl\":\"https://storage.googleapis.com/stash-demo-f9550.firebasestorage.app/avatars/6564ced3-c163-4b0d-aa4e-c1a19e42aa65.png\"}},\"currency\":\"USD\",\"item\":{itemJson}}}";
 
             // Set the URL for the checkout link creation endpoint
             string requestUrl = environment.GetRootUrl() + StashConstants.CheckoutLinks;
@@ -86,8 +89,8 @@ namespace Stash.Core
 
         /// <summary>
         /// Creates a checkout link for Stash payments with structured item data.
-        /// This method is kept for backward compatibility but now uses the simplified API.
-        /// Only the first item from the array will be used.
+        /// This method is kept for backward compatibility and now uses the new API with full item definitions.
+        /// Note: Only the first item in the array will be processed as the API now supports single items only.
         /// </summary>
         /// <param name="externalUserId">The external user ID.</param>
         /// <param name="validatedEmail">The validated email of the user.</param>
@@ -96,7 +99,7 @@ namespace Stash.Core
         /// <param name="profileUrl">The URL of the user's profile (ignored in new API).</param>
         /// <param name="shopHandle">The handle of the shop.</param>
         /// <param name="currency">The currency to use for the checkout (ignored in new API).</param>
-        /// <param name="items">Array of checkout items (only the first item's ID will be used).</param>
+        /// <param name="items">Array of checkout items - only the first item will be processed.</param>
         /// <param name="apiKey">The Stash API key.</param>
         /// <param name="environment">The Stash environment (defaults to Test).</param>
         /// <returns>A response containing the URL and ID.</returns>
@@ -117,15 +120,20 @@ namespace Stash.Core
                 throw new ArgumentException("At least one item must be provided");
             }
 
-            // Use the first item's ID for the new API
-            string itemId = items[0].id;
+            // Only use the first item since CreateCheckoutLink now accepts single items only
+            var firstItem = items[0];
+            
+            if (items.Length > 1)
+            {
+                Debug.LogWarning($"[STASH] CreateCheckoutLinkWithItems: Multiple items provided but only the first item '{firstItem.name}' will be processed. Consider using CreateCheckoutLink for single items.");
+            }
 
-            // Call the new simplified method
+            // Call the new method with the first item only
             return await CreateCheckoutLink(
                 externalUserId,
                 validatedEmail,
                 shopHandle,
-                itemId,
+                firstItem,
                 apiKey,
                 environment);
         }
