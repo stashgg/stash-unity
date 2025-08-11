@@ -133,10 +133,9 @@ static BOOL _isCardExpanded = NO;
     NSURL *url = navigationAction.request.URL;
     NSString *urlString = url.absoluteString;
     
-    // Check if URL contains klarna, paypal, or stripe and show/hide navigation bar accordingly
+    // Check if URL contains klarna or paypal and show/hide navigation bar accordingly
     BOOL shouldShowNavigationBar = ([urlString.lowercaseString containsString:@"klarna"] || 
-                                   [urlString.lowercaseString containsString:@"paypal"] ||
-                                   [urlString.lowercaseString containsString:@"payments.stripe.com"]);
+                                   [urlString.lowercaseString containsString:@"paypal"]);
     
     if (shouldShowNavigationBar && ![[StashPayCardSafariDelegate sharedInstance] isNavigationBarVisible]) {
         [[StashPayCardSafariDelegate sharedInstance] showFloatingBackButton:webView];
@@ -1522,7 +1521,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
 }
 
 - (UIView *)createFloatingBackButton {
-    // Create a floating back button for klarna/paypal/stripe pages
+    // Create a floating home button for Klarna/PayPal pages (returns to initial URL)
     UIButton *floatingBackButton = [UIButton buttonWithType:UIButtonTypeSystem];
     
     // Get safe area insets for proper positioning
@@ -1547,7 +1546,8 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     }
     
     // Set back arrow icon
-    [floatingBackButton setTitle:@"←" forState:UIControlStateNormal];
+    // Use a home glyph; alternatives: @"⌂" or emoji @"🏠" if preferred
+    [floatingBackButton setTitle:@"⌂" forState:UIControlStateNormal];
     floatingBackButton.titleLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightSemibold]; // Slightly smaller font
     
     // Set colors with more transparency
