@@ -196,8 +196,10 @@ public class StashPayCardPlugin {
             } else if (useCardDrawer) {
                 // Try card-style popup first, fallback to regular dialog if it fails
                 if (isMaterialComponentsAvailable()) {
+                    Log.i(TAG, "Material Components available, using card drawer");
                     createAndShowCardDrawer(finalUrl);
                 } else {
+                    Log.i(TAG, "Material Components not available, using custom card dialog");
                     createAndShowCardStyleDialog(finalUrl);
                 }
             } else {
@@ -277,11 +279,25 @@ public class StashPayCardPlugin {
     }
 
     /**
-     * Checks if Material Components library is available
+     * Checks if Material Components library is available and functional
      */
     private boolean isMaterialComponentsAvailable() {
         try {
+            // Check if the main class exists
             Class.forName("com.google.android.material.bottomsheet.BottomSheetDialog");
+            
+            // Also check if the callback interface exists and is properly defined
+            try {
+                Class<?> callbackClass = Class.forName("com.google.android.material.bottomsheet.BottomSheetBehavior$BottomSheetCallback");
+                if (!callbackClass.isInterface()) {
+                    Log.w(TAG, "Material Components available but BottomSheetCallback is not an interface");
+                    return false;
+                }
+            } catch (ClassNotFoundException e) {
+                Log.w(TAG, "Material Components available but BottomSheetCallback not found");
+                return false;
+            }
+            
             return true;
         } catch (ClassNotFoundException e) {
             return false;
@@ -363,10 +379,11 @@ public class StashPayCardPlugin {
             setBottomSheetWindowFlags();
             setBottomSheetBackgroundDim();
         } catch (Exception e) {
-            Log.e(TAG, "Error creating card: " + e.getMessage());
+            Log.e(TAG, "Error creating card drawer: " + e.getMessage());
             e.printStackTrace();
-            // Fallback to regular dialog
-            createAndShowDialog(url);
+            // Fallback to custom card dialog (more reliable than regular dialog)
+            Log.i(TAG, "Falling back to custom card dialog");
+            createAndShowCardStyleDialog(url);
             return;
         }
 
@@ -927,9 +944,11 @@ public class StashPayCardPlugin {
                 java.lang.reflect.Method getWindowMethod = currentBottomSheetDialog.getClass().getMethod("getWindow");
                 Window window = (Window) getWindowMethod.invoke(currentBottomSheetDialog);
                 if (window != null) {
+                    // REMOVED FLAG_NOT_FOCUSABLE to allow proper input focus and keyboard
+                    // The dialog should be focusable for WebView input to work properly
                     window.setFlags(
-                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+                        WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
                     );
                 }
             }
@@ -1072,8 +1091,8 @@ public class StashPayCardPlugin {
         dragArea.setOrientation(LinearLayout.VERTICAL);
         dragArea.setGravity(Gravity.CENTER_HORIZONTAL);
 
-        // Padding for card look with semi-transparent background so it shows over WebView
-        dragArea.setPadding(0, dpToPx(12), 0, dpToPx(12));
+        // Reduced padding to minimize obstruction of input fields
+        dragArea.setPadding(0, dpToPx(8), 0, dpToPx(8));
 
         // Completely transparent background - no white overlay
         dragArea.setBackgroundColor(Color.TRANSPARENT);
@@ -1082,13 +1101,13 @@ public class StashPayCardPlugin {
         View dragHandle = new View(activity);
         GradientDrawable handleDrawable = new GradientDrawable();
         handleDrawable.setColor(Color.parseColor("#D1D1D6")); // System gray color
-        handleDrawable.setCornerRadius(dpToPx(3));
+        handleDrawable.setCornerRadius(dpToPx(2));
         dragHandle.setBackground(handleDrawable);
 
-        // Standard drag handle dimensions
+        // Smaller drag handle dimensions to reduce obstruction
         LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams(
-            dpToPx(40), // Slightly wider for better visibility
-            dpToPx(6)   // Slightly taller for better touch target
+            dpToPx(32), // Smaller width to reduce obstruction
+            dpToPx(4)   // Thinner for less visual interference
         );
         dragHandle.setLayoutParams(handleParams);
 
@@ -1182,8 +1201,13 @@ public class StashPayCardPlugin {
                     // Add callback for state changes and card-like behavior
                     addBottomSheetCallback(bottomSheet);
 
-                    // Enable smooth animation
-                    setBottomSheetProperty("setUpdateImportantForAccessibility", boolean.class, true);
+                    // Enable smooth animation (only if method exists)
+                    try {
+                        setBottomSheetProperty("setUpdateImportantForAccessibility", boolean.class, true);
+                    } catch (Exception e) {
+                        // Method doesn't exist in this version, ignore gracefully
+                        Log.d(TAG, "setUpdateImportantForAccessibility not available in this Material Components version");
+                    }
                 }
             }
         } catch (Exception e) {
@@ -1201,8 +1225,11 @@ public class StashPayCardPlugin {
                 java.lang.reflect.Method method = bottomSheetBehavior.getClass().getMethod(methodName, paramType);
                 method.invoke(bottomSheetBehavior, value);
             }
+        } catch (NoSuchMethodException e) {
+            // Method doesn't exist in this version, log as debug info
+            Log.d(TAG, "BottomSheetBehavior method " + methodName + " not available in this version");
         } catch (Exception e) {
-            Log.e(TAG, "Failed to set BottomSheetBehavior property " + methodName + ": " + e.getMessage());
+            Log.d(TAG, "Failed to set BottomSheetBehavior property " + methodName + " (non-critical): " + e.getMessage());
         }
     }
 
@@ -1213,8 +1240,26 @@ public class StashPayCardPlugin {
         try {
             if (bottomSheetBehavior == null) return;
 
-            // Create callback using proxy
-            Class<?> callbackClass = Class.forName("com.google.android.material.bottomsheet.BottomSheetBehavior$BottomSheetCallback");
+            // Try to find the callback class - handle different versions gracefully
+            Class<?> callbackClass = null;
+            try {
+                callbackClass = Class.forName("com.google.android.material.bottomsheet.BottomSheetBehavior$BottomSheetCallback");
+            } catch (ClassNotFoundException e) {
+                // Try alternative class name for older versions
+                try {
+                    callbackClass = Class.forName("com.google.android.material.bottomsheet.BottomSheetBehavior$BottomSheetCallback");
+                } catch (ClassNotFoundException e2) {
+                    Log.d(TAG, "BottomSheetCallback class not found, skipping callback registration");
+                    return;
+                }
+            }
+
+            // Verify it's an interface before creating proxy
+            if (!callbackClass.isInterface()) {
+                Log.d(TAG, "BottomSheetCallback is not an interface, skipping callback registration");
+                return;
+            }
+
             Object callback = java.lang.reflect.Proxy.newProxyInstance(
                 callbackClass.getClassLoader(),
                 new Class[]{callbackClass},
@@ -1239,7 +1284,7 @@ public class StashPayCardPlugin {
             java.lang.reflect.Method addCallbackMethod = bottomSheetBehavior.getClass().getMethod("addBottomSheetCallback", callbackClass);
             addCallbackMethod.invoke(bottomSheetBehavior, callback);
         } catch (Exception e) {
-            Log.e(TAG, "Failed to add BottomSheetBehavior callback: " + e.getMessage());
+            Log.d(TAG, "Failed to add BottomSheetBehavior callback (non-critical): " + e.getMessage());
         }
     }
 
@@ -1292,13 +1337,13 @@ public class StashPayCardPlugin {
             closeButton.setElevation(dpToPx(6));
         }
 
-        // Position in top-right corner of card
+        // Position in top-right corner of card - moved higher to avoid input field obstruction
         FrameLayout.LayoutParams buttonParams = new FrameLayout.LayoutParams(
-            dpToPx(40), // Touch-friendly size
-            dpToPx(40)
+            dpToPx(36), // Slightly smaller to reduce obstruction
+            dpToPx(36)
         );
         buttonParams.gravity = Gravity.TOP | Gravity.END;
-        buttonParams.setMargins(0, dpToPx(20), dpToPx(16), 0); // Top and right margins
+        buttonParams.setMargins(0, dpToPx(12), dpToPx(12), 0); // Moved higher and closer to edge
         closeButton.setLayoutParams(buttonParams);
 
         // Set click listener to dismiss the card
@@ -1336,11 +1381,11 @@ public class StashPayCardPlugin {
         }
 
         FrameLayout.LayoutParams buttonParams = new FrameLayout.LayoutParams(
-            dpToPx(40),
-            dpToPx(40)
+            dpToPx(36), // Slightly smaller to reduce obstruction
+            dpToPx(36)
         );
         buttonParams.gravity = Gravity.TOP | Gravity.START;
-        buttonParams.setMargins(dpToPx(16), dpToPx(20), 0, 0);
+        buttonParams.setMargins(dpToPx(12), dpToPx(12), 0, 0); // Moved higher and closer to edge
         homeButton.setLayoutParams(buttonParams);
 
         homeButton.setOnClickListener(v -> navigateHome());
@@ -1751,7 +1796,17 @@ public class StashPayCardPlugin {
         // Add JavaScript interface
         webView.addJavascriptInterface(new StashJavaScriptInterface(), "StashAndroid");
 
-        // Do not set a WebView onTouchListener; follow close button behavior exactly
+        // Add touch listener to ensure proper focus handling
+        webView.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                    // Request focus when user touches the WebView
+                    v.requestFocus();
+                }
+                return false; // Don't consume the touch event
+            }
+        });
 
         // Use MATCH_PARENT for height to allow seamless expansion with card
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
@@ -1766,7 +1821,7 @@ public class StashPayCardPlugin {
         params.rightMargin = 0;    // No right margin - fill edge to edge
         webView.setLayoutParams(params);
 
-        // Ensure WebView is visible and properly configured
+        // Ensure WebView is properly configured for input handling
         webView.setVisibility(View.INVISIBLE);
         webView.setFocusable(true);
         webView.setFocusableInTouchMode(true);
@@ -1779,6 +1834,10 @@ public class StashPayCardPlugin {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
             webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         }
+        
+        // Ensure WebView can receive input events properly
+        webView.setClickable(true);
+        webView.setLongClickable(true);
 
         // Set clean theme-aware background to match card
         webView.setBackgroundColor(getThemeBackgroundColor());
@@ -1816,6 +1875,9 @@ public class StashPayCardPlugin {
         webView.setVisibility(View.INVISIBLE);
 
         webView.loadUrl(url);
+        
+        // Ensure proper input focus after a short delay
+        webView.postDelayed(() -> ensureWebViewInputFocus(webView), 500);
     }
 
     /**
@@ -2325,5 +2387,32 @@ public class StashPayCardPlugin {
      */
     private int getThemeBorderColor() {
         return isDarkTheme() ? Color.parseColor("#38383A") : Color.parseColor("#E5E5EA"); // Theme-aware border colors
+    }
+    
+    /**
+     * Ensures proper input focus handling for WebView
+     */
+    private void ensureWebViewInputFocus(WebView webView) {
+        if (webView != null && activity != null) {
+            activity.runOnUiThread(() -> {
+                try {
+                    // Request focus for the WebView
+                    webView.requestFocus();
+                    
+                    // Ensure the WebView can receive input events
+                    webView.setFocusable(true);
+                    webView.setFocusableInTouchMode(true);
+                    
+                    // Force the input method to show when needed
+                    android.view.inputmethod.InputMethodManager imm = 
+                        (android.view.inputmethod.InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) {
+                        imm.showSoftInput(webView, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error ensuring WebView input focus: " + e.getMessage());
+                }
+            });
+        }
     }
 }
