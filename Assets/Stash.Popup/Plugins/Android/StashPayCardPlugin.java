@@ -677,6 +677,12 @@ public class StashPayCardPlugin {
                                     FrameLayout.LayoutParams webViewParams = (FrameLayout.LayoutParams) webView.getLayoutParams();
                                     webViewParams.height = newHeight; // Match card height exactly
                                     webView.setLayoutParams(webViewParams);
+                                    
+                                    // Force webview to reflow content after size change
+                                    webView.post(() -> {
+                                        webView.requestLayout();
+                                        webView.invalidate();
+                                    });
                                 }
 
                                 // Visual feedback - slight scale effect
@@ -788,6 +794,12 @@ public class StashPayCardPlugin {
                     FrameLayout.LayoutParams webViewParams = (FrameLayout.LayoutParams) webView.getLayoutParams();
                     webViewParams.height = animatedHeight; // Match exactly
                     webView.setLayoutParams(webViewParams);
+                    
+                    // Force webview to reflow content after size change
+                    webView.post(() -> {
+                        webView.requestLayout();
+                        webView.invalidate();
+                    });
                 }
             });
             heightAnimator.start();
@@ -810,6 +822,12 @@ public class StashPayCardPlugin {
                 FrameLayout.LayoutParams webViewParams = (FrameLayout.LayoutParams) webView.getLayoutParams();
                 webViewParams.height = expandedHeight;
                 webView.setLayoutParams(webViewParams);
+                
+                // Force webview to reflow content after size change
+                webView.post(() -> {
+                    webView.requestLayout();
+                    webView.invalidate();
+                });
             }
         }
 
@@ -847,6 +865,12 @@ public class StashPayCardPlugin {
                         FrameLayout.LayoutParams webViewParams = (FrameLayout.LayoutParams) webView.getLayoutParams();
                         webViewParams.height = animatedHeight; // Always match card height
                         webView.setLayoutParams(webViewParams);
+                        
+                        // Force webview to reflow content after size change
+                        webView.post(() -> {
+                            webView.requestLayout();
+                            webView.invalidate();
+                        });
                     }
                 });
                 heightAnimator.start();
@@ -859,6 +883,12 @@ public class StashPayCardPlugin {
                     FrameLayout.LayoutParams webViewParams = (FrameLayout.LayoutParams) webView.getLayoutParams();
                     webViewParams.height = targetHeight;
                     webView.setLayoutParams(webViewParams);
+                    
+                    // Force webview to reflow content after size change
+                    webView.post(() -> {
+                        webView.requestLayout();
+                        webView.invalidate();
+                    });
                 }
             }
         }
@@ -1722,15 +1752,11 @@ public class StashPayCardPlugin {
         webView.addJavascriptInterface(new StashJavaScriptInterface(), "StashAndroid");
 
         // Do not set a WebView onTouchListener; follow close button behavior exactly
-        // Get screen dimensions to ensure WebView is large enough
-        DisplayMetrics metrics = activity.getResources().getDisplayMetrics();
-        int screenHeight = metrics.heightPixels;
 
-        // Calculate WebView height to fill the entire card (68% of screen)
-        int webViewHeight = (int) (screenHeight * 0.68f); // Same as card height - fill entire card
+        // Use MATCH_PARENT for height to allow seamless expansion with card
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
-            webViewHeight // Explicit height instead of MATCH_PARENT
+            FrameLayout.LayoutParams.MATCH_PARENT // Allow webview to expand with card
         );
 
         // Fill entire card - no margins at all
@@ -1744,28 +1770,47 @@ public class StashPayCardPlugin {
         webView.setVisibility(View.INVISIBLE);
         webView.setFocusable(true);
         webView.setFocusableInTouchMode(true);
+        
+        // Ensure content clipping works properly
+        webView.setClipChildren(true);
+        webView.setClipToPadding(true);
+        
+        // Force hardware acceleration for better clipping performance
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
+            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        }
 
         // Set clean theme-aware background to match card
         webView.setBackgroundColor(getThemeBackgroundColor());
 
         // Apply corner radius to WebView - ONLY top corners for card style
-        GradientDrawable webViewBackground = new GradientDrawable();
-        webViewBackground.setColor(getThemeBackgroundColor());
-        webViewBackground.setCornerRadii(new float[]{
-            dpToPx(25), dpToPx(25), // top-left corner - rounded
-            dpToPx(25), dpToPx(25), // top-right corner - rounded
-            0, 0,                   // bottom-right corner - square (card style)
-            0, 0                    // bottom-left corner - square (card style)
-        });
-        webView.setBackground(webViewBackground);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            // Use clipToOutline for API 21+ to properly clip webview content to rounded corners
+            webView.setOutlineProvider(new ViewOutlineProvider() {
+                @Override
+                public void getOutline(View view, Outline outline) {
+                    // Rounded corners for WebView content area - match card corner radius
+                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), dpToPx(25));
+                }
+            });
+            webView.setClipToOutline(true);
+        } else {
+            // Fallback for older Android versions
+            GradientDrawable background = new GradientDrawable();
+            background.setColor(getThemeBackgroundColor());
+            background.setCornerRadii(new float[]{
+                dpToPx(25), dpToPx(25), // top-left corner - rounded
+                dpToPx(25), dpToPx(25), // top-right corner - rounded
+                0, 0,                   // bottom-right corner - square (card style)
+                0, 0                    // bottom-left corner - square (card style)
+            });
+            webView.setBackground(background);
+        }
 
         // Add elevation for modern look
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             webView.setElevation(dpToPx(2)); // Slightly lower than drag handle
         }
-
-        // Ensure theme-aware background
-        webView.setBackgroundColor(getThemeBackgroundColor());
 
         // Force visibility and load URL
         webView.setVisibility(View.INVISIBLE);
@@ -1782,8 +1827,8 @@ public class StashPayCardPlugin {
             webView.setOutlineProvider(new ViewOutlineProvider() {
                 @Override
                 public void getOutline(View view, Outline outline) {
-                    // Rounded corners for WebView content area
-                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), dpToPx(16));
+                    // Rounded corners for WebView content area - match card corner radius
+                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), dpToPx(25));
                 }
             });
             webView.setClipToOutline(true);
@@ -1791,7 +1836,7 @@ public class StashPayCardPlugin {
             // Fallback for older Android versions
             GradientDrawable background = new GradientDrawable();
             background.setColor(getThemeBackgroundColor());
-            background.setCornerRadius(dpToPx(16));
+            background.setCornerRadius(dpToPx(25));
             webView.setBackground(background);
         }
     }
@@ -1924,11 +1969,12 @@ public class StashPayCardPlugin {
      */
     private void applyRoundedCornersToWebView(WebView webView) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            // Use clipToOutline for API 21+
+            // Use clipToOutline for API 21+ with card-specific radius
             webView.setOutlineProvider(new ViewOutlineProvider() {
                 @Override
                 public void getOutline(View view, Outline outline) {
-                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), dpToPx(16));
+                    // Rounded corners for WebView content area - match card corner radius
+                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), dpToPx(25));
                 }
             });
             webView.setClipToOutline(true);
@@ -1936,7 +1982,7 @@ public class StashPayCardPlugin {
             // Fallback: Use a rounded background drawable for older versions
             GradientDrawable background = new GradientDrawable();
             background.setColor(getThemeBackgroundColor());
-            background.setCornerRadius(dpToPx(16));
+            background.setCornerRadius(dpToPx(25));
             webView.setBackground(background);
         }
     }
