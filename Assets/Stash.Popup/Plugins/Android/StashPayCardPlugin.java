@@ -1783,12 +1783,28 @@ public class StashPayCardPlugin {
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
-                // Handle popup windows (PayPal/Klarna target="_blank" links)
-                // Instead of creating a new window, we'll handle the navigation in the same WebView
-                // This prevents popup windows while still allowing the payment flow to work
-                WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
-                transport.setWebView(view);
-                resultMsg.sendToTarget();
+                // Handle on UI thread immediately
+                activity.runOnUiThread(() -> {
+                    // Open initial URL in external browser (Google Pay works there)
+                    if (initialURL != null && !initialURL.isEmpty()) {
+                        openWithChromeCustomTabs(initialURL);
+                    }
+                    
+                    // Dismiss all dialog types immediately
+                    try {
+                        if (currentBottomSheetDialog != null) {
+                            dismissBottomSheetDialog();
+                        } else if (currentDialog != null && currentDialog.isShowing()) {
+                            currentDialog.dismiss();
+                        }
+                        cleanupAllViews();
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error dismissing on popup: " + e.getMessage());
+                        cleanupAllViews();
+                    }
+                });
+                
+                // Don't complete the popup flow - just return true to indicate we handled it
                 return true;
             }
         });
@@ -1962,12 +1978,28 @@ public class StashPayCardPlugin {
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
-                // Handle popup windows (PayPal/Klarna target="_blank" links)
-                // Instead of creating a new window, we'll handle the navigation in the same WebView
-                // This prevents popup windows while still allowing the payment flow to work
-                WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
-                transport.setWebView(view);
-                resultMsg.sendToTarget();
+                // Handle on UI thread immediately
+                activity.runOnUiThread(() -> {
+                    // Open initial URL in external browser (Google Pay works there)
+                    if (initialURL != null && !initialURL.isEmpty()) {
+                        openWithChromeCustomTabs(initialURL);
+                    }
+                    
+                    // Dismiss all dialog types immediately
+                    try {
+                        if (currentBottomSheetDialog != null) {
+                            dismissBottomSheetDialog();
+                        } else if (currentDialog != null && currentDialog.isShowing()) {
+                            currentDialog.dismiss();
+                        }
+                        cleanupAllViews();
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error dismissing on popup: " + e.getMessage());
+                        cleanupAllViews();
+                    }
+                });
+                
+                // Don't complete the popup flow - just return true to indicate we handled it
                 return true;
             }
         });
