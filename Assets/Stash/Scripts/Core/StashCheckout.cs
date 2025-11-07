@@ -67,6 +67,7 @@ namespace Stash.Core
             // Make a POST request to create the checkout link
             Response result = await RestClient.Post(requestUrl, requestBody, new List<RequestHeader> { authorizationHeader });
 
+            Debug.Log(requestBody);
             // Check the response status code
             if (result.StatusCode == 200)
             {

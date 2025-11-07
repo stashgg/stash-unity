@@ -1,8 +1,3 @@
-
-<p align="center">
-  <img src="https://i.ibb.co/RRfh8df/2025-05-27-13-33-27-High-Res-Screenshot-portrait.png" width="70%" />
-</p>
-
 # Stash Pay Popup
 
 A Unity plugin that provides a customizable card-style popup for Stash Pay. The plugin uses native WebKit implementation on iOS to provide a native looking

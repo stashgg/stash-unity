@@ -3,19 +3,49 @@
     padding: 0;
     font-size: 12px;
     padding-top: 0;
-    -unity-font: url("project://database/Assets/Stash.Samples/Assets/FactorA-Medium.ttf?fileID=102900000&guid=37e4d4308bfff4b4c960eecc029e5188&type=3#FactorA-Medium");
+    -unity-font: url("project://database/Assets/Stash.Samples/Assets/FactorA-Medium.woff2?fileID=102900000&guid=37e4d4308bfff4b4c960eecc029e5188&type=3#FactorA-Medium");
     -unity-font-style: normal;
     -unity-font-weight: 400;
 }
 
-.unity-base-field__label,
-.unity-base-field__input,
-.unity-base-popup-field__input,
-.unity-base-text-field__input,
-.unity-dropdown__label,
-.unity-slider__input,
+.unity-base-field__label {
+    -unity-font: url("project://database/Assets/Stash.Samples/Assets/FactorA-Medium.woff2?fileID=102900000&guid=37e4d4308bfff4b4c960eecc029e5188&type=3#FactorA-Medium");
+    -unity-font-style: normal;
+    -unity-font-weight: 400;
+}
+
+.unity-base-field__input {
+    -unity-font: url("project://database/Assets/Stash.Samples/Assets/FactorA-Medium.woff2?fileID=102900000&guid=37e4d4308bfff4b4c960eecc029e5188&type=3#FactorA-Medium");
+    -unity-font-style: normal;
+    -unity-font-weight: 400;
+}
+
+.unity-base-popup-field__input {
+    -unity-font: url("project://database/Assets/Stash.Samples/Assets/FactorA-Medium.woff2?fileID=102900000&guid=37e4d4308bfff4b4c960eecc029e5188&type=3#FactorA-Medium");
+    -unity-font-style: normal;
+    -unity-font-weight: 400;
+}
+
+.unity-base-text-field__input {
+    -unity-font: url("project://database/Assets/Stash.Samples/Assets/FactorA-Medium.woff2?fileID=102900000&guid=37e4d4308bfff4b4c960eecc029e5188&type=3#FactorA-Medium");
+    -unity-font-style: normal;
+    -unity-font-weight: 400;
+}
+
+.unity-dropdown__label {
+    -unity-font: url("project://database/Assets/Stash.Samples/Assets/FactorA-Medium.woff2?fileID=102900000&guid=37e4d4308bfff4b4c960eecc029e5188&type=3#FactorA-Medium");
+    -unity-font-style: normal;
+    -unity-font-weight: 400;
+}
+
+.unity-slider__input {
+    -unity-font: url("project://database/Assets/Stash.Samples/Assets/FactorA-Medium.woff2?fileID=102900000&guid=37e4d4308bfff4b4c960eecc029e5188&type=3#FactorA-Medium");
+    -unity-font-style: normal;
+    -unity-font-weight: 400;
+}
+
 .unity-button__text {
-    -unity-font: url("project://database/Assets/Stash.Samples/Assets/FactorA-Medium.ttf?fileID=102900000&guid=37e4d4308bfff4b4c960eecc029e5188&type=3#FactorA-Medium");
+    -unity-font: url("project://database/Assets/Stash.Samples/Assets/FactorA-Medium.woff2?fileID=102900000&guid=37e4d4308bfff4b4c960eecc029e5188&type=3#FactorA-Medium");
     -unity-font-style: normal;
     -unity-font-weight: 400;
 }
@@ -134,7 +164,7 @@
 }
 
 .profile-card {
-    background-color: #1E2017;
+    background-color: rgb(30, 32, 23);
     padding: 16px;
     border-width: 3px;
     border-color: rgba(47, 47, 47, 0.96);
@@ -785,6 +815,33 @@
     border-color: rgba(76, 175, 80, 0.2);
 }
 
+.channel-selection-button {
+    background-color: rgba(33, 150, 243, 0.15);
+    border-radius: 8px;
+    margin: 16px;
+    margin-bottom: 24px;
+    padding: 10px 20px;
+    border-width: 1px;
+    border-color: rgba(33, 150, 243, 0.4);
+    height: 40px;
+    color: rgb(100, 180, 255);
+    font-size: 13px;
+    font-weight: 600;
+    -unity-text-align: middle-center;
+    transition-duration: 0.2s;
+}
+
+.channel-selection-button:hover {
+    background-color: rgba(33, 150, 243, 0.25);
+    border-color: rgba(33, 150, 243, 0.6);
+    scale: 1.01;
+}
+
+.channel-selection-button:active {
+    background-color: rgba(33, 150, 243, 0.35);
+    scale: 0.99;
+}
+
 .url-input {
     flex-grow: 1;
     max-width: 400px;
@@ -851,7 +908,7 @@
 .webshop-card {
     width: 100%;
     height: 100%;
-    background-image: url("project://database/Assets/Stash.Samples/Assets/webshop_card.png");
+    background-image: url("project://database/Assets/Stash.Samples/Assets/webshop_card.png?fileID=21300000&guid=8845fdefeee344b6b8514acea604f565&type=3#webshop_card");
     background-size: cover;
     background-position: center;
     border-width: 3px;
@@ -962,7 +1019,7 @@
 }
 
 .help-button-container {
-    margin-right: 0px;
+    margin-right: 0;
     margin-top: 45px;
     align-self: center;
 }
@@ -1171,8 +1228,33 @@
     opacity: 1;
 }
 
-/* Payment Popup Styles - Fixed for Unity UI Toolkit */
-.payment-popup {
+.settings-button {
+    position: absolute;
+    right: 16px;
+    top: 47px;
+    width: 36px;
+    height: 36px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-width: 0;
+    border-radius: 18px;
+    color: rgb(0, 0, 0);
+    font-size: 20px;
+    -unity-font-style: normal;
+    transition-duration: 0.2s;
+    justify-content: center;
+    align-items: center;
+}
+
+.settings-button:hover {
+    background-color: rgba(0, 0, 0, 0.3);
+    scale: 1.1;
+}
+
+.settings-button:active {
+    scale: 0.95;
+}
+
+.settings-popup {
     position: absolute;
     top: 0;
     left: 0;
@@ -1190,29 +1272,26 @@
     padding: 20px;
 }
 
-.payment-popup.visible {
+.settings-popup.visible {
     opacity: 1;
     visibility: visible;
 }
 
-.payment-popup-content {
-    background-color: rgb(67, 67, 75);
-    background-image: url("project://database/Assets/Stash.Samples/Assets/card_bg.png?fileID=21300000&guid=987d48a503707487f8fa551bc69b6915&type=3#card_bg");
-    background-size: 120px 120px;
-    background-repeat: repeat;
+.settings-popup-content {
+    background-color: rgb(40, 40, 45);
     border-width: 2px;
     border-color: rgba(47, 47, 47, 0.96);
     border-radius: 12px;
     padding: 20px;
-    width: 300px;
+    width: 320px;
     max-width: 90%;
-    min-width: 240px;
+    min-width: 260px;
     flex-direction: column;
     align-items: stretch;
     gap: 16px;
 }
 
-.payment-popup-header {
+.settings-popup-header {
     flex-direction: row;
     justify-content: center;
     align-items: center;
@@ -1220,7 +1299,7 @@
     position: relative;
 }
 
-.payment-popup-title {
+.settings-popup-title {
     color: rgb(255, 255, 255);
     font-size: 16px;
     font-weight: 900;
@@ -1228,7 +1307,7 @@
     flex-grow: 1;
 }
 
-.payment-popup-close-button {
+.settings-popup-close-button {
     position: absolute;
     top: 0;
     right: 0;
@@ -1245,71 +1324,39 @@
     align-items: center;
 }
 
-.payment-popup-close-button:hover {
+.settings-popup-close-button:hover {
     background-color: rgba(0, 0, 0, 0.5);
     scale: 1.1;
 }
 
-.payment-popup-close-button:active {
+.settings-popup-close-button:active {
     scale: 0.9;
 }
 
-.payment-popup-item-name {
-    display: none;
-}
-
-.payment-popup-item-price {
-    display: none;
-}
-
-.payment-options-container {
+.settings-options-container {
     flex-direction: column;
-    gap: 15px;
+    gap: 12px;
     width: 100%;
     align-items: stretch;
     margin-top: 8px;
 }
 
-.payment-option-button {
-    background-color: rgb(95, 159, 251);
-    color: white;
-    border-radius: 8px;
-    border-width: 0;
-    padding: 16px 12px;
-    font-size: 14px;
-    font-weight: 700;
-    height: auto;
-    min-height: 50px;
-    width: 100%;
-    justify-content: center;
+.settings-option-row {
+    flex-direction: row;
+    justify-content: space-between;
     align-items: center;
-    transition-duration: 0.2s;
-    -unity-text-align: middle-center;
-    white-space: normal;
-    flex-shrink: 0;
+    padding: 12px 16px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
 }
 
-.payment-option-button:hover {
-    background-color: rgb(85, 149, 241);
-    scale: 1.02;
-}
-
-.payment-option-button:active {
-    background-color: rgb(75, 139, 231);
-    scale: 0.98;
-}
-
-.payment-option-button > .unity-text-element {
+.settings-option-label {
     color: rgb(255, 255, 255);
     font-size: 14px;
-    font-weight: 700;
-    -unity-text-align: middle-center;
-    white-space: normal;
-    width: 100%;
-    overflow: visible;
-    -unity-text-overflow-position: end;
+    font-weight: 600;
+    flex-grow: 1;
 }
 
-.payment-option-icon {
-    display: none;
+.settings-option-toggle {
+    flex-shrink: 0;
 }

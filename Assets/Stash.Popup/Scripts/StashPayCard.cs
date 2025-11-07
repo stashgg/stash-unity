@@ -1,20 +1,21 @@
 using System;
 using UnityEngine;
 using System.Runtime.InteropServices;
+using System.Collections;
+using UnityEngine.Networking;
 using AOT;
 
 namespace StashPopup
 {
     /// <summary>
-    /// Provides a cross-platform wrapper for opening Stash Pay URLs.
-    /// On iOS, opens a specialized StashPayCard with callback support.
-    /// On Android, opens a custom WebView dialog with payment callbacks.
-    /// On other platforms, falls back to opening the URL in the default browser.
+    /// Cross-platform wrapper for Stash Pay checkout.
     /// </summary>
     public class StashPayCard : MonoBehaviour
     {
         #region Singleton Implementation
         private static StashPayCard _instance;
+        private const string FLAGSMITH_API_KEY = "ZmnWzYYR29AHDYwMVXtw68";
+        private const string FLAGSMITH_API_URL = "https://edge.api.flagsmith.com/api/v1/identities/";
 
         public static StashPayCard Instance
         {
@@ -30,12 +31,14 @@ namespace StashPopup
             }
         }
 
+        // Initialize singleton and fetch remote configuration
         private void Awake()
         {
             if (_instance == null)
             {
                 _instance = this;
                 DontDestroyOnLoad(gameObject);
+                _flagsmithFetchCoroutine = StartCoroutine(FetchFlagsmithConfiguration());
             }
             else if (_instance != this)
             {
@@ -45,36 +48,26 @@ namespace StashPopup
         #endregion
 
         #region Events
-        /// <summary>
-        /// Event triggered when the Safari view is dismissed.
-        /// </summary>
         public event Action OnSafariViewDismissed;
-
-        /// <summary>
-        /// Event triggered when a payment succeeds.
-        /// </summary>
         public event Action OnPaymentSuccess;
-
-        /// <summary>
-        /// Event triggered when a payment fails.
-        /// </summary>
         public event Action OnPaymentFailure;
         #endregion
 
         #region Private Fields
-        // Card configuration values with defaults. 
-        private float _cardHeightRatio = 0.6f; // Default: 60% of screen height
-        private float _cardVerticalPosition = 1.0f; // Default: bottom of screen
-        private float _cardWidthRatio = 1.0f; // Default: 100% of screen width
+        private float _cardHeightRatio = 0.6f;
+        private float _cardVerticalPosition = 1.0f;
+        private float _cardWidthRatio = 1.0f;
+        private bool _flagsmithConfigLoaded = false;
+        private Coroutine _flagsmithFetchCoroutine = null;
         #endregion
 
         #region Native Plugin Interface
 
 #if UNITY_ANDROID && !UNITY_EDITOR
-        // Android plugin interface
         private AndroidJavaClass androidPlugin;
         private AndroidJavaObject androidPluginInstance;
         
+        // Lazy initialization of Android native plugin
         private void InitializeAndroidPlugin()
         {
             if (androidPlugin == null)
@@ -83,7 +76,6 @@ namespace StashPopup
                 {
                     androidPlugin = new AndroidJavaClass("com.stash.popup.StashPayCardPlugin");
                     androidPluginInstance = androidPlugin.CallStatic<AndroidJavaObject>("getInstance");
-                    Debug.Log("StashPayCard: Android plugin initialized");
                 }
                 catch (System.Exception e)
                 {
@@ -92,34 +84,34 @@ namespace StashPopup
             }
         }
         
-        // Android callback methods (called by Unity message system)
+        // Android callback: payment succeeded
         public void OnAndroidPaymentSuccess(string message)
         {
-            Debug.Log("[StashPayCard] Android payment success callback received");
             OnPaymentSuccess?.Invoke();
         }
         
+        // Android callback: payment failed
         public void OnAndroidPaymentFailure(string message)
         {
-            Debug.Log("[StashPayCard] Android payment failure callback received");
             OnPaymentFailure?.Invoke();
         }
         
+        // Android callback: dialog dismissed
         public void OnAndroidDialogDismissed(string message)
         {
-            Debug.Log("[StashPayCard] Android dialog dismissed callback received");
             OnSafariViewDismissed?.Invoke();
         }
 
 #elif UNITY_IOS && !UNITY_EDITOR
-        // Delegate types for iOS callbacks
         private delegate void SafariViewDismissedCallback();
         private delegate void PaymentSuccessCallback();
         private delegate void PaymentFailureCallback();
         
-        // Import the native iOS plugin functions
         [DllImport("__Internal")]
         private static extern void _StashPayCardOpenURLInSafariVC(string url);
+        
+        [DllImport("__Internal")]
+        private static extern void _StashPayCardOpenPopup(string url);
         
         [DllImport("__Internal")]
         private static extern void _StashPayCardSetSafariViewDismissedCallback(SafariViewDismissedCallback callback);
@@ -142,11 +134,9 @@ namespace StashPopup
         [DllImport("__Internal")]
         private static extern bool _StashPayCardIsCurrentlyPresented();
 
-        // Force the use of native SFSafariViewController
         [DllImport("__Internal")]
         private static extern void _StashPayCardSetForceSafariViewController(bool force);
 
-        // Check current setting
         [DllImport("__Internal")]
         private static extern bool _StashPayCardGetForceSafariViewController();
 #endif
@@ -155,164 +145,138 @@ namespace StashPopup
 
         #region Public Methods
 
-        /// <summary>
-        /// Applies the current card configuration settings to the native plugin.
-        /// Called automatically when settings are changed.
-        /// </summary>
+        // Applies current card size/position configuration to native plugin
         private void ApplyCardConfiguration()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
-            if (androidPluginInstance != null)
-            {
-                try
-                {
-                    androidPluginInstance.Call("setCardConfiguration", _cardHeightRatio, _cardVerticalPosition, _cardWidthRatio);
-                }
-                catch (System.Exception e)
-                {
-                    Debug.LogError($"StashPayCard: Android config error: {e.Message}");
-                }
-            }
+            androidPluginInstance?.Call("setCardConfiguration", _cardHeightRatio, _cardVerticalPosition, _cardWidthRatio);
 #elif UNITY_IOS && !UNITY_EDITOR
             _StashPayCardSetCardConfigurationWithWidth(_cardHeightRatio, _cardVerticalPosition, _cardWidthRatio);
 #endif
         }
 
         /// <summary>
-        /// Opens a URL in the appropriate platform-specific browser view.
-        /// On iOS, opens the URL in StashPayCard with Safari/WebView and supports callbacks.
-        /// On Android, opens the URL in a custom WebView dialog with payment callbacks.
-        /// On other platforms and editor, simply opens the URL in the default browser as a fallback.
+        /// Opens a URL in a sliding card view from the bottom of the screen.
         /// </summary>
-        /// <param name="url">Stash Pay URL to open</param>
-        /// <param name="dismissCallback">Callback triggered when the browser view is dismissed.</param>
-        /// <param name="successCallback">Callback triggered when payment succeeds.</param>
-        /// <param name="failureCallback">Callback triggered when payment fails.</param>
         public void OpenURL(string url, Action dismissCallback = null, Action successCallback = null, Action failureCallback = null)
         {
-            if (string.IsNullOrEmpty(url))
-            {
-                Debug.LogError("StashPayCard: URL is null or empty");
-                return;
-            }
+            StartCoroutine(OpenURLWithFlagsmithConfig(url, dismissCallback, successCallback, failureCallback, false));
+        }
+        
+        // Internal handler: waits for Flagsmith config then opens URL or popup
+        private IEnumerator OpenURLWithFlagsmithConfig(string url, Action dismissCallback, Action successCallback, Action failureCallback, bool isPopup)
+        {
+            if (string.IsNullOrEmpty(url)) yield break;
 
-            // Ensure URL is properly formatted
             if (!url.StartsWith("http://") && !url.StartsWith("https://"))
             {
                 url = "https://" + url;
             }
 
-            Debug.Log($"StashPayCard: Opening URL {url}");
-
-            // Clear previous callbacks to prevent multiple registrations
-            OnSafariViewDismissed = null;
-            OnPaymentSuccess = null;
-            OnPaymentFailure = null;
-            
-            if (dismissCallback != null)
+            // Wait for Flagsmith configuration to be loaded before opening
+            if (!_flagsmithConfigLoaded && _flagsmithFetchCoroutine != null)
             {
-                OnSafariViewDismissed += dismissCallback;
+                yield return _flagsmithFetchCoroutine;
             }
 
-            if (successCallback != null)
-            {
-                OnPaymentSuccess += successCallback;
-            }
+            OnSafariViewDismissed = dismissCallback;
+            OnPaymentSuccess = successCallback;
+            OnPaymentFailure = failureCallback;
 
-            if (failureCallback != null)
+            // Popup mode always uses custom implementation - temporarily disable ForceWebBasedCheckout
+            bool originalForceSafari = false;
+            if (isPopup)
             {
-                OnPaymentFailure += failureCallback;
+                originalForceSafari = ForceWebBasedCheckout;
+                if (originalForceSafari)
+                {
+                    ForceWebBasedCheckout = false;
+                }
             }
 
 #if UNITY_ANDROID && !UNITY_EDITOR
-            // Android implementation using WebView dialog
             InitializeAndroidPlugin();
             
             if (androidPluginInstance != null)
             {
-                try
+                if (isPopup)
                 {
-                    // Apply card configuration
+                    float smallerDimension = Mathf.Min(Screen.width, Screen.height);
+                    // Tablet gets compact popup (50% of screen), phone uses 75%
+                    bool isTablet = smallerDimension > 600;
+                    float minSize = isTablet ? 400f : 300f;
+                    float maxSize = isTablet ? 500f : 500f;
+                    float percentage = isTablet ? 0.5f : 0.75f;
+                    float squareSize = Mathf.Clamp(smallerDimension * percentage, minSize, maxSize);
+                    float squareWidthRatio = squareSize / Screen.width;
+                    float squareHeightRatio = squareSize / Screen.height;
+                    float centerPosition = 0.5f + (squareHeightRatio / 2.0f);
+                    androidPluginInstance.Call("setCardConfiguration", squareHeightRatio, centerPosition, squareWidthRatio);
+                }
+                else
+                {
                     androidPluginInstance.Call("setCardConfiguration", _cardHeightRatio, _cardVerticalPosition, _cardWidthRatio);
-                    
-                    // Open URL in Android WebView dialog
-                    androidPluginInstance.Call("openURL", url);
                 }
-                catch (System.Exception e)
-                {
-                    Debug.LogError($"StashPayCard: Android plugin error: {e.Message}");
-                    // Fallback to default browser
-                    Application.OpenURL(url);
-                }
+                androidPluginInstance.Call("openURL", url);
             }
             else
             {
-                Debug.LogWarning("StashPayCard: Android plugin not available, falling back to default browser");
                 Application.OpenURL(url);
             }
 #elif UNITY_IOS && !UNITY_EDITOR
-                      
-            ApplyCardConfiguration();
-
-            // Always re-register the native iOS callbacks to ensure they're properly hooked up
-            // This is safe to do multiple times and ensures callbacks work on every call
+            if (!isPopup)
+            {
+                ApplyCardConfiguration();
+            }
             _StashPayCardSetSafariViewDismissedCallback(OnIOSSafariViewDismissed);
             _StashPayCardSetPaymentSuccessCallback(OnIOSPaymentSuccess);
             _StashPayCardSetPaymentFailureCallback(OnIOSPaymentFailure);
-
-            // Open the URL using the native iOS plugin
-            // The decision to use SFSafariViewController vs WKWebView is now controlled by the ForceSafariViewController property
-            _StashPayCardOpenURLInSafariVC(url);
+            
+            if (isPopup)
+            {
+                _StashPayCardOpenPopup(url);
+            }
+            else
+            {
+                _StashPayCardOpenURLInSafariVC(url);
+            }
 #else
-            // For other platforms (Editor, etc.), just open in default browser without callbacks
             Application.OpenURL(url);
 #endif
+
+            // Restore original ForceWebBasedCheckout setting after popup call
+            if (isPopup && originalForceSafari)
+            {
+                ForceWebBasedCheckout = originalForceSafari;
+            }
         }
 
         /// <summary>
-        /// Resets the card presentation state. Useful for debugging or force resetting the card state.
-        /// This will dismiss any currently presented card and reset internal flags.
+        /// Opens a URL in a centered modal square popup.
+        /// Perfect square (75% of smaller screen dimension), centered, with fade animation.
+        /// Modal behavior: close button only, no drag gestures or tap-outside-to-dismiss.
         /// </summary>
+        public void OpenPopup(string url, Action dismissCallback = null, Action successCallback = null, Action failureCallback = null)
+        {
+            StartCoroutine(OpenURLWithFlagsmithConfig(url, dismissCallback, successCallback, failureCallback, true));
+        }
+
+        // Resets and dismisses any currently presented card
         public void ResetPresentationState()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
-            if (androidPluginInstance != null)
-            {
-                try
-                {
-                    androidPluginInstance.Call("resetPresentationState");
-                }
-                catch (System.Exception e)
-                {
-                    Debug.LogError($"StashPayCard: Android reset error: {e.Message}");
-                }
-            }
+            androidPluginInstance?.Call("resetPresentationState");
 #elif UNITY_IOS && !UNITY_EDITOR
             _StashPayCardResetPresentationState();
 #endif
         }
 
-        /// <summary>
-        /// Gets whether a card is currently being presented.
-        /// </summary>
         public bool IsCurrentlyPresented
         {
             get
             {
 #if UNITY_ANDROID && !UNITY_EDITOR
-                if (androidPluginInstance != null)
-                {
-                    try
-                    {
-                        return androidPluginInstance.Call<bool>("isCurrentlyPresented");
-                    }
-                    catch (System.Exception e)
-                    {
-                        Debug.LogError($"StashPayCard: Android isPresented error: {e.Message}");
-                        return false;
-                    }
-                }
-                return false;
+                return androidPluginInstance?.Call<bool>("isCurrentlyPresented") ?? false;
 #elif UNITY_IOS && !UNITY_EDITOR
                 return _StashPayCardIsCurrentlyPresented();
 #else
@@ -322,29 +286,14 @@ namespace StashPopup
         }
 
         /// <summary>
-        /// Gets or sets whether to force the use of native browser components.
-        /// On iOS: Uses SFSafariViewController over WKWebView for full-screen browser experience.
-        /// On Android: Uses Chrome Custom Tabs over WebView dialog for native browser experience.
-        /// When false (default), uses custom card UI implementations.
+        /// Forces native browser instead of custom card UI (Safari on iOS, Chrome Custom Tabs on Android).
         /// </summary>
-        public bool ForceSafariViewController
+        public bool ForceWebBasedCheckout
         {
             get
             {
 #if UNITY_ANDROID && !UNITY_EDITOR
-                if (androidPluginInstance != null)
-                {
-                    try
-                    {
-                        return androidPluginInstance.Call<bool>("getForceSafariViewController");
-                    }
-                    catch (System.Exception e)
-                    {
-                        Debug.LogError($"StashPayCard: Android getForceSafariViewController error: {e.Message}");
-                        return false;
-                    }
-                }
-                return false;
+                return androidPluginInstance?.Call<bool>("getForceSafariViewController") ?? false;
 #elif UNITY_IOS && !UNITY_EDITOR
                 return _StashPayCardGetForceSafariViewController();
 #else
@@ -354,75 +303,13 @@ namespace StashPopup
             set
             {
 #if UNITY_ANDROID && !UNITY_EDITOR
-                if (androidPluginInstance != null)
-                {
-                    try
-                    {
-                        androidPluginInstance.Call("setForceSafariViewController", value);
-                    }
-                    catch (System.Exception e)
-                    {
-                        Debug.LogError($"StashPayCard: Android setForceSafariViewController error: {e.Message}");
-                    }
-                }
+                androidPluginInstance?.Call("setForceSafariViewController", value);
 #elif UNITY_IOS && !UNITY_EDITOR
                 _StashPayCardSetForceSafariViewController(value);
 #endif
             }
         }
 
-        /// <summary>
-        /// Gets or sets whether to use the card drawer experience on Android (iOS-style sliding card).
-        /// When true, displays a card that slides up from the bottom with drag-to-expand/collapse.
-        /// When false, uses the traditional dialog experience.
-        /// Default: true (card drawer enabled) - requires Material Components library
-        /// Android only - ignored on other platforms.
-        /// Note: Automatically falls back to traditional dialog if Material Components is not available.
-        /// </summary>
-        public bool UseCardDrawer
-        {
-            get
-            {
-#if UNITY_ANDROID && !UNITY_EDITOR
-                if (androidPluginInstance != null)
-                {
-                    try
-                    {
-                        return androidPluginInstance.Call<bool>("getUseCardDrawer");
-                    }
-                    catch (System.Exception e)
-                    {
-                        Debug.LogError($"StashPayCard: Android getUseCardDrawer error: {e.Message}");
-                        return true; // Default to card drawer
-                    }
-                }
-                return true; // Default to card drawer
-#else
-                return false; // Not applicable on other platforms
-#endif
-            }
-            set
-            {
-#if UNITY_ANDROID && !UNITY_EDITOR
-                if (androidPluginInstance != null)
-                {
-                    try
-                    {
-                        androidPluginInstance.Call("setUseCardDrawer", value);
-                    }
-                    catch (System.Exception e)
-                    {
-                        Debug.LogError($"StashPayCard: Android setUseCardDrawer error: {e.Message}");
-                    }
-                }
-#endif
-            }
-        }
-
-        /// <summary>
-        /// Sets the card height as a ratio of screen height (0.0 to 1.0).
-        /// Default is 0.6 (60% of screen height).
-        /// </summary>
         public float CardHeightRatio
         {
             get { return _cardHeightRatio; }
@@ -433,10 +320,6 @@ namespace StashPopup
             }
         }
 
-        /// <summary>
-        /// Sets the card vertical position (0.0 = top, 1.0 = bottom, 0.5 = center).
-        /// Default is 1.0 (bottom of screen).
-        /// </summary>
         public float CardVerticalPosition
         {
             get { return _cardVerticalPosition; }
@@ -447,10 +330,6 @@ namespace StashPopup
             }
         }
 
-        /// <summary>
-        /// Sets the card width as a ratio of screen width (0.0 to 1.0).
-        /// Default is 1.0 (100% of screen width).
-        /// </summary>
         public float CardWidthRatio
         {
             get { return _cardWidthRatio; }
@@ -465,55 +344,136 @@ namespace StashPopup
 
         #region Private Methods
 
-#if UNITY_IOS && !UNITY_EDITOR
-        /// <summary>
-        /// Unity callback method called from iOS when Safari view is dismissed.
-        /// </summary>
-        [MonoPInvokeCallback(typeof(SafariViewDismissedCallback))]
-        private static void OnIOSSafariViewDismissed()
+        // Fetches remote feature flags from Flagsmith API with device traits
+        private IEnumerator FetchFlagsmithConfiguration()
         {
-            if (Instance != null)
-            {
-                Instance.OnSafariViewDismissed?.Invoke();
-            }
-        }
-        
-        /// <summary>
-        /// Unity callback method called from iOS when payment succeeds.
-        /// </summary>
-        [MonoPInvokeCallback(typeof(PaymentSuccessCallback))]
-        private static void OnIOSPaymentSuccess()
-        {
-            Debug.Log("[StashPayCard] Payment success callback received from iOS");
+            string deviceId = SystemInfo.deviceUniqueIdentifier;
+            string bundleId = Application.identifier;
+            string deviceModel = SystemInfo.deviceModel;
+            string osVersion = SystemInfo.operatingSystem;
             
-            if (Instance != null)
+            FlagsmithIdentityRequest identityRequest = new FlagsmithIdentityRequest
             {
-                Instance.OnPaymentSuccess?.Invoke();
+                identifier = deviceId,
+                traits = new FlagsmithTrait[]
+                {
+                    new FlagsmithTrait { trait_key = "bundle_id", trait_value = bundleId },
+                    new FlagsmithTrait { trait_key = "device_model", trait_value = deviceModel },
+                    new FlagsmithTrait { trait_key = "os_version", trait_value = osVersion },
+                }
+            };
+            
+            string jsonPayload = JsonUtility.ToJson(identityRequest);
+            
+            using (UnityWebRequest request = new UnityWebRequest(FLAGSMITH_API_URL, "POST"))
+            {
+                byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonPayload);
+                request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+                request.downloadHandler = new DownloadHandlerBuffer();
+                request.SetRequestHeader("Content-Type", "application/json");
+                request.SetRequestHeader("X-Environment-Key", FLAGSMITH_API_KEY);
+                request.timeout = 5;
+                
+                yield return request.SendWebRequest();
+                
+                if (request.result == UnityWebRequest.Result.Success)
+                {
+                    try
+                    {
+                        FlagsmithIdentityResponse response = JsonUtility.FromJson<FlagsmithIdentityResponse>(request.downloadHandler.text);
+                        ApplyFlagsmithConfiguration(response);
+                    }
+                    catch
+                    {
+                        Debug.LogWarning("StashPayCard: Failed to parse Flagsmith response - using defaults");
+                    }
+                }
             }
-            else
+            
+            _flagsmithConfigLoaded = true;
+        }
+
+        // Applies feature flags from Flagsmith response
+        private void ApplyFlagsmithConfiguration(FlagsmithIdentityResponse response)
+        {
+            if (response?.flags == null) return;
+
+            foreach (var flag in response.flags)
             {
-                Debug.LogWarning("[StashPayCard] Payment success callback received but Instance is null");
+                if (flag.feature.name == "force_sfsafariviewcontroller" && flag.enabled)
+                {
+#if UNITY_IOS && !UNITY_EDITOR
+                    ForceWebBasedCheckout = true;
+#endif
+                }
+                else if (flag.feature.name == "force_chromecustomtab" && flag.enabled)
+                {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                    ForceWebBasedCheckout = true;
+#endif
+                }
             }
         }
 
-        /// <summary>
-        /// Unity callback method called from iOS when payment fails.
-        /// </summary>
+#if UNITY_IOS && !UNITY_EDITOR
+        // iOS callback: card dismissed
+        [MonoPInvokeCallback(typeof(SafariViewDismissedCallback))]
+        private static void OnIOSSafariViewDismissed()
+        {
+            Instance?.OnSafariViewDismissed?.Invoke();
+        }
+        
+        // iOS callback: payment succeeded
+        [MonoPInvokeCallback(typeof(PaymentSuccessCallback))]
+        private static void OnIOSPaymentSuccess()
+        {
+            Instance?.OnPaymentSuccess?.Invoke();
+        }
+
+        // iOS callback: payment failed
         [MonoPInvokeCallback(typeof(PaymentFailureCallback))]
         private static void OnIOSPaymentFailure()
         {
-            Debug.Log("[StashPayCard] Payment failure callback received from iOS");
-            
-            if (Instance != null)
-            {
-                Instance.OnPaymentFailure?.Invoke();
-            }
-            else
-            {
-                Debug.LogWarning("[StashPayCard] Payment failure callback received but Instance is null");
-            }
+            Instance?.OnPaymentFailure?.Invoke();
         }
 #endif
+
+        #endregion
+
+        #region Flagsmith Data Structures
+        
+        [Serializable]
+        private class FlagsmithIdentityRequest
+        {
+            public string identifier;
+            public FlagsmithTrait[] traits;
+        }
+        
+        [Serializable]
+        private class FlagsmithTrait
+        {
+            public string trait_key;
+            public string trait_value;
+        }
+        
+        [Serializable]
+        private class FlagsmithIdentityResponse
+        {
+            public FlagsmithFlag[] flags;
+        }
+
+        [Serializable]
+        private class FlagsmithFlag
+        {
+            public bool enabled;
+            public FlagsmithFeature feature;
+        }
+
+        [Serializable]
+        private class FlagsmithFeature
+        {
+            public string name;
+        }
 
         #endregion
     }

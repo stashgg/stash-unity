@@ -1,10 +1,11 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="UnityEngine.UIElements" editor="UnityEditor.UIElements" schemaLocation="UnityEngine.UIElements ../UIElementsSchema/UnityEngine.UIElements.xsd" editor-extension-mode="False">
     <Style src="project://database/Assets/Stash.Samples/UI%20Toolkit/StoreUI/StoreUI.uss?fileID=7433441132597879392&amp;guid=6554e5a4da3944a0eb1ec160d6b1bd9a&amp;type=3#StoreUI" />
     <ui:VisualElement name="store-container" class="store-container" style="-unity-font: url(&quot;project://database/Assets/Stash.Samples/Assets/FactorA-Medium.ttf?fileID=12800000&amp;guid=6b89bab2b57b04955867564d42be558d&amp;type=3#FactorA-Medium&quot;);">
-        <ui:VisualElement name="header-bar" class="header-bar" style="background-color: rgb(235, 255, 0);">
+        <ui:VisualElement name="header-bar" class="header-bar" style="background-color: rgb(30, 30, 30); border-bottom-color: rgba(180, 180, 180, 0.5);">
             <ui:VisualElement name="title-container" class="title-container" style="justify-content: flex-start;">
-                <ui:Label name="app-title" class="app-title" style="color: rgb(0, 0, 0); background-image: url(&quot;project://database/Assets/Stash.Samples/Assets/logo_black.png?fileID=2800000&amp;guid=1a197255633f644688b4109926604a62&amp;type=3#logo_black&quot;); width: 160px; height: 23px;" />
+                <ui:Label name="app-title" class="app-title" style="color: rgb(0, 0, 0); background-image: url(&quot;project://database/Assets/Stash.Samples/Assets/logo.png?fileID=2800000&amp;guid=386678f932e38450ca636a3547441286&amp;type=3#logo&quot;); width: 106px; height: 25px; -unity-text-outline-color: rgba(0, 0, 0, 0); -unity-text-outline-width: 0; -unity-text-align: middle-left;" />
             </ui:VisualElement>
+            <ui:Button name="settings-button" text="S" class="settings-button" style="-unity-font: url(&quot;project://database/Assets/Stash.Samples/Assets/FactorA-Medium.ttf?fileID=12800000&amp;guid=6b89bab2b57b04955867564d42be558d&amp;type=3#FactorA-Medium&quot;); background-color: rgba(207, 206, 206, 0.2);" />
         </ui:VisualElement>
         <ui:VisualElement name="tabs-container" class="tabs-container">
             <ui:Button text="Account" name="user-tab-button" class="tab-button" />
@@ -77,6 +78,7 @@
                             </ui:VisualElement>
                         </ui:VisualElement>
                     </ui:VisualElement>
+                    <ui:Button name="open-channel-selection-button" text="Open Channel Selection" class="channel-selection-button" style="color: rgb(255, 255, 255); background-color: rgba(255, 255, 255, 0.15); border-left-color: rgba(219, 219, 219, 0.4); border-right-color: rgba(219, 219, 219, 0.4); border-top-color: rgba(219, 219, 219, 0.4); border-bottom-color: rgba(219, 219, 219, 0.4);" />
                     <ui:VisualElement name="items-container" class="items-container" />
                 </ui:ScrollView>
             </ui:VisualElement>
@@ -96,23 +98,21 @@
         <ui:VisualElement name="help-description-dialog" class="help-description-dialog">
             <ui:VisualElement class="help-description-header">
                 <ui:Label name="help-description-title" text="About" class="help-description-title" />
-                <ui:Button name="help-description-close-button" class="help-description-close-button" text="×" />
+                <ui:Button name="help-description-close-button" text="×" class="help-description-close-button" />
             </ui:VisualElement>
             <ui:Label name="help-description-text" class="help-description-content" />
         </ui:VisualElement>
-        
-        <!-- Payment Method Selection Popup -->
-        <ui:VisualElement name="payment-popup" class="payment-popup">
-            <ui:VisualElement class="payment-popup-content">
-                <ui:VisualElement class="payment-popup-header">
-                    <ui:Label text="Choose Payment Method" class="payment-popup-title" />
-                    <ui:Button name="payment-popup-close-button" class="payment-popup-close-button" text="×" />
+        <ui:VisualElement name="settings-popup" class="settings-popup">
+            <ui:VisualElement class="settings-popup-content">
+                <ui:VisualElement class="settings-popup-header">
+                    <ui:Label text="Settings" class="settings-popup-title" />
+                    <ui:Button name="settings-popup-close-button" text="×" class="settings-popup-close-button" />
                 </ui:VisualElement>
-                <ui:Label name="payment-popup-item-name" class="payment-popup-item-name" />
-                <ui:Label name="payment-popup-item-price" class="payment-popup-item-price" />
-                <ui:VisualElement class="payment-options-container">
-                    <ui:Button name="direct-checkout-button" class="payment-option-button direct-checkout-button" text="Direct Checkout With Stash" />
-                    <ui:Button name="apple-pay-button" class="payment-option-button apple-pay-button" text="Apple IAP" />
+                <ui:VisualElement class="settings-options-container">
+                    <ui:VisualElement class="settings-option-row">
+                        <ui:Label text="Use Web View" class="settings-option-label" />
+                        <ui:Toggle name="safari-webview-toggle" class="settings-option-toggle" />
+                    </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>

@@ -39,7 +39,12 @@ namespace Stash.Samples
     
     // Safari WebView toggle
     private bool useSafariWebView = false; // Default to false (unchecked)
-    private Toggle safariToggle;
+    
+    // Settings popup elements
+    private VisualElement settingsPopup;
+    private Toggle safariWebViewToggle;
+    private Button settingsButton;
+    private Button settingsPopupCloseButton;
     
     // Delegate for purchase callbacks
     public delegate void PurchaseCompletedDelegate(string itemId, bool success);
@@ -49,15 +54,6 @@ namespace Stash.Samples
     private string currentCheckoutId;
     private int currentItemIndex;
 
-    // Payment popup elements
-    private VisualElement paymentPopup;
-    private Label paymentPopupItemName;
-    private Label paymentPopupItemPrice;
-    private Button directCheckoutButton;
-    private Button applePayButton;
-    private Button paymentPopupCloseButton;
-    private int currentPopupItemIndex = -1;
-
     private void Start()
     {
         // Get the root of the UI document
@@ -66,8 +62,8 @@ namespace Stash.Samples
         // Initialize IAP Manager for Apple Pay functionality
         InitializeIAP();
         
-        // Setup Safari WebView toggle at the top
-        SetupSafariToggle();
+        // Setup settings popup
+        SetupSettingsPopup();
         
         // Ensure we have the right number of store items defined based on the UI
         ValidateAndInitializeStoreItems();
@@ -75,69 +71,83 @@ namespace Stash.Samples
         // Setup store UI elements
         UpdateUIFromStoreItems();
         
-        // Setup payment popup
-        SetupPaymentPopup();
+        // Setup channel selection button
+        SetupChannelSelectionButton();
         
     }
     
-    private void SetupSafariToggle()
+    private void SetupSettingsPopup()
     {
-        // Find the items scroll view container
-        VisualElement itemsScrollView = root.Q<VisualElement>("items-scroll-view");
-        if (itemsScrollView == null)
+        // Get settings button
+        settingsButton = root.Q<Button>("settings-button");
+        if (settingsButton != null)
         {
-            Debug.LogError("[StoreUI] Could not find items-scroll-view container for Safari toggle");
-            return;
+            settingsButton.clicked += ShowSettingsPopup;
+        }
+        else
+        {
+            Debug.LogWarning("[StoreUI] Could not find settings-button");
         }
         
-        // Create a container for the toggle at the top of the store
-        VisualElement toggleContainer = new VisualElement();
-        toggleContainer.name = "safari-toggle-container";
-        toggleContainer.style.flexDirection = FlexDirection.Row;
-        toggleContainer.style.alignItems = Align.Center;
-        toggleContainer.style.justifyContent = Justify.Center;
-        toggleContainer.style.marginBottom = 20;
-        toggleContainer.style.marginTop = 15;
-        toggleContainer.style.paddingLeft = 20;
-        toggleContainer.style.paddingRight = 20;
-        toggleContainer.style.backgroundColor = new Color(0.1f, 0.1f, 0.1f, 0.8f);
-        toggleContainer.style.borderTopLeftRadius = 8;
-        toggleContainer.style.borderTopRightRadius = 8;
-        toggleContainer.style.borderBottomLeftRadius = 8;
-        toggleContainer.style.borderBottomRightRadius = 8;
-        toggleContainer.style.paddingTop = 10;
-        toggleContainer.style.paddingBottom = 10;
+        // Get settings popup elements
+        settingsPopup = root.Q<VisualElement>("settings-popup");
+        safariWebViewToggle = root.Q<Toggle>("safari-webview-toggle");
+        settingsPopupCloseButton = root.Q<Button>("settings-popup-close-button");
         
-        // Create label for the toggle
-        Label toggleLabel = new Label("Use Safari WebView:");
-        toggleLabel.style.color = Color.white;
-        toggleLabel.style.fontSize = 14;
-        toggleLabel.style.marginRight = 10;
-        toggleLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
-        toggleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        if (settingsPopup != null)
+        {
+            settingsPopup.visible = false;
+        }
         
-        // Create the toggle
-        safariToggle = new Toggle();
-        safariToggle.value = useSafariWebView; // Set initial value
-        safariToggle.style.marginLeft = 5;
+        if (safariWebViewToggle != null)
+        {
+            safariWebViewToggle.value = useSafariWebView; // Set initial value
+            safariWebViewToggle.RegisterValueChangedCallback(OnSafariToggleChanged);
+        }
+        else
+        {
+            Debug.LogWarning("[StoreUI] Could not find safari-webview-toggle");
+        }
         
-        // Add event handler for toggle changes
-        safariToggle.RegisterValueChangedCallback(OnSafariToggleChanged);
-        
-        // Add elements to container
-        toggleContainer.Add(toggleLabel);
-        toggleContainer.Add(safariToggle);
-        
-        // Insert the toggle container as the first child of the scroll view
-        itemsScrollView.Insert(0, toggleContainer);
-        
-        // Safari WebView toggle initialized
+        if (settingsPopupCloseButton != null)
+        {
+            settingsPopupCloseButton.clicked += HideSettingsPopup;
+        }
+        else
+        {
+            Debug.LogWarning("[StoreUI] Could not find settings-popup-close-button");
+        }
+    }
+    
+    private void ShowSettingsPopup()
+    {
+        if (settingsPopup != null)
+        {
+            settingsPopup.style.display = DisplayStyle.Flex;
+            settingsPopup.visible = true;
+            settingsPopup.AddToClassList("visible");
+        }
+    }
+    
+    private void HideSettingsPopup()
+    {
+        if (settingsPopup != null)
+        {
+            settingsPopup.RemoveFromClassList("visible");
+            Invoke(() => {
+                if (settingsPopup != null && !settingsPopup.ClassListContains("visible"))
+                {
+                    settingsPopup.visible = false;
+                    settingsPopup.style.display = DisplayStyle.None;
+                }
+            }, 0.3f); // Match the CSS transition duration
+        }
     }
     
     private void OnSafariToggleChanged(ChangeEvent<bool> evt)
     {
         useSafariWebView = evt.newValue;
-        // Safari WebView setting updated
+        Debug.Log($"[StoreUI] Safari WebView mode changed to: {useSafariWebView}");
     }
     
     private void InitializeIAP()
@@ -217,8 +227,8 @@ namespace Stash.Samples
             buyButton.text = "$" + storeItem.pricePerItem;
             buyButton.AddToClassList("buy-button");
             
-            // Add click handler to show payment popup
-            buyButton.clicked += () => ShowPaymentPopup(itemIndex);
+            // Add click handler to directly process purchase with Stash checkout
+            buyButton.clicked += () => ProcessPurchase(itemIndex);
             
             // Add to tracking list
             buyButtons.Add(buyButton);
@@ -269,169 +279,39 @@ namespace Stash.Samples
         });
     }
 
-    private void SetupPaymentPopup()
+    private void SetupChannelSelectionButton()
     {
-        // Setup payment popup references
-        paymentPopup = root.Q<VisualElement>("payment-popup");
-        paymentPopupItemName = root.Q<Label>("payment-popup-item-name");
-        paymentPopupItemPrice = root.Q<Label>("payment-popup-item-price");
-        directCheckoutButton = root.Q<Button>("direct-checkout-button");
-        applePayButton = root.Q<Button>("apple-pay-button");
-        paymentPopupCloseButton = root.Q<Button>("payment-popup-close-button");
-
-        if (paymentPopup != null)
-        {
-            paymentPopup.visible = false;
-        }
-        if (paymentPopupCloseButton != null)
-        {
-            paymentPopupCloseButton.clicked += HidePaymentPopup;
-        }
-        if (directCheckoutButton != null)
-        {
-            directCheckoutButton.clicked += OnDirectCheckoutClicked;
-        }
-        if (applePayButton != null)
-        {
-            applePayButton.clicked += OnApplePayClicked;
-        }
-    }
-
-    private void ShowPaymentPopup(int itemIndex)
-    {
-        // Showing payment popup for item
+        // Setup channel selection button
+        Button channelSelectionButton = root.Q<Button>("open-channel-selection-button");
         
-        if (itemIndex < 0 || itemIndex >= storeItems.Count)
+        if (channelSelectionButton != null)
         {
-            Debug.LogError($"[StoreUI] Invalid itemIndex: {itemIndex} for ShowPaymentPopup");
-            return;
-        }
-        
-        currentPopupItemIndex = itemIndex;
-        StoreItem item = storeItems[itemIndex];
-        
-        // Configuring payment popup
-        
-        // Update item details (even though they're hidden, keep for potential future use)
-        if (paymentPopupItemName != null)
-            paymentPopupItemName.text = item.name;
-        if (paymentPopupItemPrice != null)
-            paymentPopupItemPrice.text = "$" + item.pricePerItem;
-            
-        if (paymentPopup != null)
-        {
-            // Payment popup displayed
-            
-            // Ensure it's displayed and visible
-            paymentPopup.style.display = DisplayStyle.Flex;
-            paymentPopup.visible = true;
-            
-            // Add the visible class for CSS animation
-            paymentPopup.AddToClassList("visible");
-            
-            // Payment popup displayed
+            channelSelectionButton.clicked += OpenPaymentChannelSelection;
+            Debug.Log("[StoreUI] Channel selection button setup complete");
         }
         else
         {
-            Debug.LogError("[StoreUI] Payment popup element not found! Check UXML setup.");
+            Debug.LogWarning("[StoreUI] Could not find open-channel-selection-button in UI");
         }
     }
 
-    private void HidePaymentPopup()
+    /// <summary>
+    /// Opens the payment channel selection popup.
+    /// This displays a centered popup for users to choose their preferred payment method.
+    /// </summary>
+    public void OpenPaymentChannelSelection()
     {
-        if (paymentPopup != null)
-        {
-            // Hiding payment popup
-            
-            // Remove the visible class to trigger CSS animation
-            paymentPopup.RemoveFromClassList("visible");
-            
-            // Hide after a short delay to allow animation to complete
-            Invoke(() => {
-                if (paymentPopup != null && !paymentPopup.ClassListContains("visible"))
-                {
-                    paymentPopup.visible = false;
-                    paymentPopup.style.display = DisplayStyle.None;
-                }
-            }, 0.3f); // Match the CSS transition duration
-        }
-        currentPopupItemIndex = -1;
-    }
-
-    private void OnDirectCheckoutClicked()
-    {
-        // Direct checkout initiated
-        
-        if (storeItems == null)
-        {
-            Debug.LogError("[StoreUI] storeItems is null!");
-            return;
-        }
-        
-        if (currentPopupItemIndex < 0 || currentPopupItemIndex >= storeItems.Count) 
-        {
-            Debug.LogError($"[StoreUI] Invalid popup item index: {currentPopupItemIndex}. Store items count: {storeItems?.Count ?? 0}");
-            return;
-        }
+        // Payment channel selection popup opening
         
         try
         {
-            // Store the index before hiding the popup (which resets currentPopupItemIndex to -1)
-            int itemIndex = currentPopupItemIndex;
-            StoreItem item = storeItems[itemIndex];
-            if (item == null)
-            {
-                Debug.LogError($"[StoreUI] Store item at index {itemIndex} is null!");
-                return;
-            }
-            
-            HidePaymentPopup();
-                    // Processing direct checkout
-            // Use the existing Stash implementation
-            ProcessPurchase(itemIndex);
+            // Open the payment channel selection URL in a centered popup
+            StashPayCard.Instance.OpenPopup("https://store.howlingwoods.shop/pay/channel-selection");
+            Debug.Log("[StoreUI] Payment channel selection popup opened");
         }
         catch (System.Exception ex)
         {
-            Debug.LogError($"[StoreUI] Exception in OnDirectCheckoutClicked: {ex.Message}\nStackTrace: {ex.StackTrace}");
-        }
-    }
-
-    private void OnApplePayClicked()
-    {
-        // Apple Pay (IAP) initiated
-        
-        if (storeItems == null)
-        {
-            Debug.LogError("[StoreUI] storeItems is null!");
-            return;
-        }
-        
-        if (currentPopupItemIndex < 0 || currentPopupItemIndex >= storeItems.Count) 
-        {
-            Debug.LogError($"[StoreUI] Invalid popup item index: {currentPopupItemIndex}. Store items count: {storeItems?.Count ?? 0}");
-            return;
-        }
-        
-        try
-        {
-            // Store the index before hiding the popup (which resets currentPopupItemIndex to -1)
-            int itemIndex = currentPopupItemIndex;
-            StoreItem item = storeItems[itemIndex];
-            if (item == null)
-            {
-                Debug.LogError($"[StoreUI] Store item at index {itemIndex} is null!");
-                return;
-            }
-            
-            HidePaymentPopup();
-            // Processing Apple Pay purchase
-            
-            // Process IAP purchase using Unity IAP
-            ProcessIAPPurchase(itemIndex);
-        }
-        catch (System.Exception ex)
-        {
-            Debug.LogError($"[StoreUI] Exception in OnApplePayClicked: {ex.Message}\nStackTrace: {ex.StackTrace}");
+            Debug.LogError($"[StoreUI] Exception opening payment channel selection: {ex.Message}\nStackTrace: {ex.StackTrace}");
         }
     }
 
@@ -616,10 +496,14 @@ namespace Stash.Samples
             currentCheckoutId = id;
             currentItemIndex = itemIndex;
             
-            // Generated checkout URL and opening browser
+            // Open the checkout URL in the StashPayCard
+            // Only override ForceWebBasedCheckout if user has explicitly enabled it
+            // This respects remote Flagsmith configuration while allowing local override
+            if (useSafariWebView)
+            {
+                StashPayCard.Instance.ForceWebBasedCheckout = true;
+            }
             
-            // Open the checkout URL in the StashPayCard with user-selected setting
-            StashPayCard.Instance.ForceSafariViewController = useSafariWebView;
             StashPayCard.Instance.OpenURL(url, () => OnBrowserClosed(), () => OnPaymentSuccessDetected(), () => OnPaymentFailureDetected());
         }
         catch (Exception ex)

@@ -3,54 +3,41 @@
 #import <WebKit/WebKit.h>
 #import <objc/runtime.h>
 
-// Tell Xcode to link WebKit framework
-#pragma comment(lib, "WebKit.framework")
-
-// Mark WebKit framework as required
 __attribute__((constructor))
 static void InitializeWebKit() {
 }
 
-// Define a Unity callback function typedef
+// Unity callbacks
 typedef void (*SafariViewDismissedCallback)();
-SafariViewDismissedCallback _safariViewDismissedCallback = NULL;
-
-// Define a payment success callback function typedef
 typedef void (*PaymentSuccessCallback)();
-PaymentSuccessCallback _paymentSuccessCallback = NULL;
-
-// Define a payment failure callback function typedef
 typedef void (*PaymentFailureCallback)();
+SafariViewDismissedCallback _safariViewDismissedCallback = NULL;
+PaymentSuccessCallback _paymentSuccessCallback = NULL;
 PaymentFailureCallback _paymentFailureCallback = NULL;
 
-// Flag to track if callback was already called
+// State flags
 BOOL _callbackWasCalled = NO;
-
-// Flag to track if a card is currently being presented
 BOOL _isCardCurrentlyPresented = NO;
-
-// Flag to track if payment success was already handled
 BOOL _paymentSuccessHandled = NO;
-
-// Flag to track if payment success callback was already called for this session
 BOOL _paymentSuccessCallbackCalled = NO;
 
-// Configuration options for card size and position
-static CGFloat _cardHeightRatio = 0.4; // Default to 40% of screen height
-static CGFloat _cardVerticalPosition = 1.0; // Default to bottom of screen (1.0)
-static CGFloat _cardWidthRatio = 1.0; // Default to 100% of screen width
-
-// Flag to control whether to force use of SFSafariViewController over WKWebView
-static BOOL _forceSafariViewController = NO; // Default to WKWebView implementation
-
-// Compile-time flag to disable iPad detection for debugging (set to 0 to disable iPad features)
-#define ENABLE_IPAD_SUPPORT 1
-
-// Store original configuration for expand/collapse functionality
+// Card configuration
+static CGFloat _cardHeightRatio = 0.4;
+static CGFloat _cardVerticalPosition = 1.0;
+static CGFloat _cardWidthRatio = 1.0;
 static CGFloat _originalCardHeightRatio = 0.4;
 static CGFloat _originalCardVerticalPosition = 1.0;
 static CGFloat _originalCardWidthRatio = 1.0;
+
+// Presentation modes
+static BOOL _forceSafariViewController = NO;
+static BOOL _usePopupPresentation = NO;
 static BOOL _isCardExpanded = NO;
+
+// Store original autorotate setting to restore later
+static BOOL _originalAutoRotateEnabled = YES;
+
+#define ENABLE_IPAD_SUPPORT 1
 
 // Define a delegate class to handle Safari View Controller callbacks
 @interface StashPayCardSafariDelegate : NSObject <SFSafariViewControllerDelegate, UIGestureRecognizerDelegate, WKScriptMessageHandler>
@@ -68,9 +55,9 @@ static BOOL _isCardExpanded = NO;
 @property (nonatomic, assign) BOOL isPurchaseProcessing;
 - (void)handleDismiss:(UITapGestureRecognizer *)gesture;
 - (void)dismissButtonTapped:(UIButton *)button;
+- (void)dismissWithAnimation:(void (^)(void))completion;
 - (void)handlePanGesture:(UIPanGestureRecognizer *)gesture;
 - (void)handleDragTrayPanGesture:(UIPanGestureRecognizer *)gesture;
-- (void)fallbackToSafariVC:(NSURL *)url topController:(UIViewController *)topController;
 - (void)callUnityCallbackOnce;
 - (void)cleanupCardInstance;
 - (void)expandCardToFullScreen;
@@ -102,6 +89,40 @@ static BOOL _isCardExpanded = NO;
 @interface WebViewUIDelegate : NSObject <WKUIDelegate>
 @end
 
+// Forward declaration
+BOOL isRunningOniPad();
+
+// Custom view controller to control orientation
+@interface OrientationLockedViewController : UIViewController
+@property (nonatomic, assign) BOOL lockPortrait;
+@end
+
+@implementation OrientationLockedViewController
+
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations {
+    // Lock to portrait for OpenURL on iPhone
+    if (self.lockPortrait && !isRunningOniPad()) {
+        return UIInterfaceOrientationMaskPortrait;
+    }
+    
+    // For popup or iPad, lock to current orientation
+    UIInterfaceOrientation currentOrientation = [[UIApplication sharedApplication] statusBarOrientation];
+    return (1 << currentOrientation);
+}
+
+- (BOOL)shouldAutorotate {
+    return NO; // Never auto-rotate while dialog is presented
+}
+
+- (UIInterfaceOrientation)preferredInterfaceOrientationForPresentation {
+    if (self.lockPortrait && !isRunningOniPad()) {
+        return UIInterfaceOrientationPortrait;
+    }
+    return [[UIApplication sharedApplication] statusBarOrientation];
+}
+
+@end
+
 @implementation WebViewLoadDelegate {
     __weak WKWebView* _webView;
     UIView* _loadingView;
@@ -118,7 +139,7 @@ static BOOL _isCardExpanded = NO;
         _hasStartedRendering = NO;
         
         // Create a fallback timer to handle cases where navigation events aren't fired
-        _timeoutTimer = [NSTimer scheduledTimerWithTimeInterval:0.3  // Reduced to 0.3 seconds
+        _timeoutTimer = [NSTimer scheduledTimerWithTimeInterval:0.2  // Fast timeout for immediate content display
                                                         target:self 
                                                       selector:@selector(handleTimeout:) 
                                                       userInfo:nil 
@@ -200,7 +221,8 @@ static BOOL _isCardExpanded = NO;
         _timeoutTimer = nil;
     }
     
-    if (_webView.hidden) {
+    // Check if we've already shown the webview (alpha > 0)
+    if (_webView.alpha < 0.01) {
         // Final check to ensure page is truly ready
         [_webView evaluateJavaScript:@"document.readyState === 'complete' && document.body !== null" completionHandler:^(id result, NSError *error) {
             if (![result boolValue]) {
@@ -220,12 +242,13 @@ static BOOL _isCardExpanded = NO;
                 backgroundColor = [UIColor whiteColor];
             }
             
-            // Set the WebView background color before showing
+            // Ensure WebView background is solid and matches loading view
             self->_webView.backgroundColor = backgroundColor;
             self->_webView.scrollView.backgroundColor = backgroundColor;
             self->_webView.scrollView.opaque = YES;
+            self->_webView.opaque = YES;
             
-            // Force background color one last time
+            // Force background color in the web content
             if (@available(iOS 13.0, *)) {
                 UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
                 if (currentStyle == UIUserInterfaceStyleDark) {
@@ -238,31 +261,18 @@ static BOOL _isCardExpanded = NO;
                 }
             }
             
-            // First fade out the loading view
-            [UIView animateWithDuration:0.2 animations:^{
+            // Seamless cross-fade: both views visible, just swap opacity
+            [UIView animateWithDuration:0.3 delay:0 options:UIViewAnimationOptionCurveEaseInOut animations:^{
                 self->_loadingView.alpha = 0.0;
+                self->_webView.alpha = 1.0;
             } completion:^(BOOL finished) {
-                // Make absolutely sure the page is ready before showing
-                [self->_webView evaluateJavaScript:@"document.body !== null && window.getComputedStyle(document.body).display !== 'none'" completionHandler:^(id result, NSError *error) {
-                    if ([result boolValue]) {
-                self->_webView.hidden = NO;
                 [self->_loadingView removeFromSuperview];
-                    } else {
-                        // If somehow not ready, restore loading view and try again
-                        self->_loadingView.alpha = 1.0;
-                        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                            [self showWebViewAndRemoveLoading];
-                        });
-                    }
-                }];
             }];
         }];
     }
 }
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
-    // Don't show the webview immediately after navigation finishes
-    // Wait for the first content to be drawn
     _hasStartedRendering = NO;
     
     // Function to check if page is truly ready
@@ -287,20 +297,16 @@ static BOOL _isCardExpanded = NO;
                                               style.innerHTML = 'body, html { background-color: black !important; }'; \
                                               document.head.appendChild(style);";
                         [webView evaluateJavaScript:forceColor completionHandler:^(id result, NSError *error) {
-                            // Wait a tiny bit more to ensure styles are applied
-                            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-    [self showWebViewAndRemoveLoading];
-                            });
+                            // Show immediately after forcing color
+                            [self showWebViewAndRemoveLoading];
                         }];
                     } else {
-                        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                            [self showWebViewAndRemoveLoading];
-                        });
+                        // Show immediately for light mode
+                        [self showWebViewAndRemoveLoading];
                     }
                 } else {
-                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                        [self showWebViewAndRemoveLoading];
-                    });
+                    // Show immediately if not iOS 13+
+                    [self showWebViewAndRemoveLoading];
                 }
             } else {
                 // Page not ready yet, check again after a short delay
@@ -322,7 +328,6 @@ static BOOL _isCardExpanded = NO;
 }
 
 - (void)webView:(WKWebView *)webView didStartProvisionalNavigation:(WKNavigation *)navigation {
-    // Keep loading view visible
     _hasStartedRendering = NO;
 }
 
@@ -436,12 +441,9 @@ static BOOL _isCardExpanded = NO;
     }
 }
 
-// Comprehensive cleanup method to properly deallocate all card resources
 - (void)cleanupCardInstance {
-    // Stop keyboard observing to prevent memory leaks
     [self stopKeyboardObserving];
     
-    // Clear all view references and remove from superview
     if (self.dragTrayView) {
         [self.dragTrayView removeFromSuperview];
         self.dragTrayView = nil;
@@ -457,71 +459,53 @@ static BOOL _isCardExpanded = NO;
         self.closeButtonView = nil;
     }
     
-    // Remove and clear gesture recognizer
     if (self.panGestureRecognizer && self.currentPresentedVC) {
         [self.currentPresentedVC.view removeGestureRecognizer:self.panGestureRecognizer];
         self.panGestureRecognizer.delegate = nil;
         self.panGestureRecognizer = nil;
     }
     
-    // Clean up WebView delegates and associated objects if present
     if (self.currentPresentedVC) {
         for (UIView *subview in self.currentPresentedVC.view.subviews) {
             if ([subview isKindOfClass:NSClassFromString(@"WKWebView")]) {
                 WKWebView *webView = (WKWebView *)subview;
-                
-                // Clear delegates to prevent callbacks to deallocated objects
                 webView.navigationDelegate = nil;
                 webView.UIDelegate = nil;
-                
-                // Clear user content controller and message handlers
                 [webView.configuration.userContentController removeScriptMessageHandlerForName:@"stashPaymentSuccess"];
                 [webView.configuration.userContentController removeScriptMessageHandlerForName:@"stashPaymentFailure"];
                 [webView.configuration.userContentController removeScriptMessageHandlerForName:@"stashPurchaseProcessing"];
-                
-                // Remove associated objects (delegates) to prevent memory leaks
                 objc_setAssociatedObject(self.currentPresentedVC, "webViewDelegate", nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 objc_setAssociatedObject(self.currentPresentedVC, "webViewUIDelegate", nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-                
-                // Stop any ongoing loading
                 [webView stopLoading];
-                
                 break;
             }
         }
     }
     
-    // Clear the view controller reference
     self.currentPresentedVC = nil;
-    
-    // Clear the initial URL reference
     self.initialURL = nil;
     
-    // Reset all state flags
     self.isNavigationBarVisible = NO;
     self.isPurchaseProcessing = NO;
     _isCardExpanded = NO;
     _isCardCurrentlyPresented = NO;
-    
-    // Reset callback flags
+    _usePopupPresentation = NO;
     _callbackWasCalled = NO;
     _paymentSuccessHandled = NO;
     _paymentSuccessCallbackCalled = NO;
     
-    NSLog(@"Card instance properly cleaned up and deallocated");
+    // Unlock rotation when dialog is dismissed
+    UnlockRotation();
 }
 
 - (void)safariViewControllerDidFinish:(SFSafariViewController *)controller {
-    // Check if we're using native Safari (no custom modifications)
     if (_forceSafariViewController) {
-        // For native Safari, just call the callback on main thread - no other cleanup needed
         if (_safariViewDismissedCallback != NULL) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 _safariViewDismissedCallback();
             });
         }
     } else {
-        // For custom implementations, do full cleanup
         [self cleanupCardInstance];
         [self callUnityCallbackOnce];
     }
@@ -529,7 +513,7 @@ static BOOL _isCardExpanded = NO;
 
 - (void)handleDismiss:(UITapGestureRecognizer *)gesture {
     if (self.currentPresentedVC) {
-        [self.currentPresentedVC dismissViewControllerAnimated:YES completion:^{
+        [self dismissWithAnimation:^{
             [self cleanupCardInstance];
             [self callUnityCallbackOnce];
         }];
@@ -537,38 +521,50 @@ static BOOL _isCardExpanded = NO;
 }
 
 - (void)dismissButtonTapped:(UIButton *)button {
-    // Disable dismiss if purchase is processing
-    if (self.isPurchaseProcessing) {
-        return;
-    }
+    if (self.isPurchaseProcessing) return;
     
     if (self.currentPresentedVC) {
-        [self.currentPresentedVC dismissViewControllerAnimated:YES completion:^{
+        [self dismissWithAnimation:^{
             [self cleanupCardInstance];
             [self callUnityCallbackOnce];
         }];
     }
 }
 
-- (void)handlePanGesture:(UIPanGestureRecognizer *)gesture {
-    if (!self.currentPresentedVC) return;
-    
-    // Disable drag gesture if purchase is processing
-    if (self.isPurchaseProcessing) {
+- (void)dismissWithAnimation:(void (^)(void))completion {
+    if (!self.currentPresentedVC) {
+        if (completion) completion();
         return;
     }
+    
+    if (_usePopupPresentation) {
+        [UIView animateWithDuration:0.2 animations:^{
+            self.currentPresentedVC.view.alpha = 0.0;
+            self.currentPresentedVC.view.transform = CGAffineTransformMakeScale(0.9, 0.9);
+            self.currentPresentedVC.view.superview.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.0];
+        } completion:^(BOOL finished) {
+            [self.currentPresentedVC dismissViewControllerAnimated:NO completion:completion];
+        }];
+    } else {
+        [self.currentPresentedVC dismissViewControllerAnimated:YES completion:completion];
+    }
+}
+
+- (void)handlePanGesture:(UIPanGestureRecognizer *)gesture {
+    if (!self.currentPresentedVC) return;
+    if (self.isPurchaseProcessing) return;
     
     UIView *view = self.currentPresentedVC.view;
     CGFloat height = view.frame.size.height;
     CGPoint translation = [gesture translationInView:view.superview];
     
-    // For iPad, allow both directions since card is centered
     // For iPhone, determine allowed swipe direction based on card position
     BOOL isNearTop = _cardVerticalPosition < 0.1;
     
-    // iPad gets more flexible gesture handling
-    BOOL allowUpward = isRunningOniPad() || isNearTop;
-    BOOL allowDownward = isRunningOniPad() || NO; // iPhone: only allow downward for very specific cases
+    // iPad: only allow downward (dismiss), not upward
+    // iPhone: allow upward only for top-positioned cards
+    BOOL allowUpward = !isRunningOniPad() && isNearTop;
+    BOOL allowDownward = isRunningOniPad() || NO;
     
     switch (gesture.state) {
         case UIGestureRecognizerStateBegan:
@@ -585,8 +581,8 @@ static BOOL _isCardExpanded = NO;
             } else if (allowDownward && translation.y > 0) {
                 // Allow downward movement
                 newY = self.initialY + translation.y;
-            } else if (!isRunningOniPad()) {
-                // iPhone: DISABLED for bottom/middle positioned cards
+            } else {
+                // Movement not allowed in this direction
                 return;
             }
             
@@ -613,13 +609,8 @@ static BOOL _isCardExpanded = NO;
             CGFloat finalY = 0;
             
             if (isRunningOniPad()) {
-                // iPad: allow dismissal in either direction
-                if ((velocity.y < -300 || currentY < (self.initialY - dismissThreshold)) && allowUpward) {
-                    // Dismiss upward
-                    shouldDismiss = YES;
-                    finalY = -height;
-                } else if ((velocity.y > 300 || currentY > (self.initialY + dismissThreshold)) && allowDownward) {
-                    // Dismiss downward
+                // iPad: only allow downward dismissal (not upward)
+                if ((velocity.y > 300 || currentY > (self.initialY + dismissThreshold)) && allowDownward) {
                     shouldDismiss = YES;
                     finalY = view.superview.bounds.size.height;
                 }
@@ -667,187 +658,54 @@ static BOOL _isCardExpanded = NO;
     }
 }
 
-// For UIGestureRecognizerDelegate
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
-    // Allow drag tray gesture to work alongside webview scrolling
-    // but prevent the main pan gesture from conflicting with the drag tray
     if ([gestureRecognizer.view isEqual:self.dragTrayView] || [otherGestureRecognizer.view isEqual:self.dragTrayView]) {
-        // Drag tray gesture should work independently
         return NO;
     }
-    // Allow other gestures to work simultaneously
     return YES;
 }
 
 - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer {
-    // Only allow drag tray gesture to begin if it's actually on the drag tray
-    if ([gestureRecognizer.view isEqual:self.dragTrayView]) {
-        return YES;
-    }
     return YES;
 }
 
-- (void)fallbackToSafariVC:(NSURL *)url topController:(UIViewController *)topController {
-    SFSafariViewController* safariViewController = [[SFSafariViewController alloc] initWithURL:url];
+// Helper function to lock device rotation
+void LockRotation() {
+    // Store original state
+    _originalAutoRotateEnabled = [[UIDevice currentDevice] isGeneratingDeviceOrientationNotifications];
     
-    // Safety check: if _forceSafariViewController is true, this method should never be called
-    // But if it is called for some reason, use completely native behavior
-    if (_forceSafariViewController) {
-        safariViewController.delegate = self;
-        [topController presentViewController:safariViewController animated:YES completion:nil];
-        self.safariViewDismissedCallback = ^{
-            if (_safariViewDismissedCallback != NULL) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    _safariViewDismissedCallback();
-                });
-            }
-        };
-        return;
-    }
-    
-    // Use automatic style which works better with Safari View Controller
-    safariViewController.modalPresentationStyle = UIModalPresentationOverFullScreen;
-    
-    // Pre-configure the view before presentation to avoid slide animation
-    safariViewController.view.backgroundColor = [UIColor clearColor];
-    
-    // Apply an Apple Pay style frame to the view before presentation
-    CGRect screenBounds = [UIScreen mainScreen].bounds;
-    CGFloat width, height, x, finalY;
-    
-    // Handle iPad with iPhone-like aspect ratio and centering
-    if (isRunningOniPad()) {
-        CGSize cardSize = calculateiPadCardSize(screenBounds);
-        width = cardSize.width;
-        height = cardSize.height;
-        
-        // Center the card on iPad
-        x = (screenBounds.size.width - width) / 2;
-        finalY = (screenBounds.size.height - height) / 2;
-        
-
-    } else {
-        // iPhone/standard behavior
-        width = screenBounds.size.width * _cardWidthRatio;  // Configurable width
-        height = screenBounds.size.height * _cardHeightRatio; // Configurable height
-        x = (screenBounds.size.width - width) / 2; // Center horizontally
-        
-        // Calculate vertical position based on _cardVerticalPosition
-        // 0.0 = top of screen, 1.0 = bottom of screen, 0.5 = middle
-        finalY = screenBounds.size.height * _cardVerticalPosition - height;
-        // Ensure the card doesn't go above the top of the screen
-        if (finalY < 0) finalY = 0;
-        
-
-    }
-    
-    // Start position (off-screen)
-    CGFloat y = screenBounds.size.height; // Start off-screen at the bottom
-    
-    safariViewController.view.frame = CGRectMake(x, y, width, height);
-    
-    // Make the Safari view non-fullscreen by setting its frame before and after presentation
-    [topController presentViewController:safariViewController animated:NO completion:^{
-        // Immediately after presentation, animate to final position
-        
-        [UIView animateWithDuration:0.25 animations:^{
-            safariViewController.view.frame = CGRectMake(x, finalY, width, height);
-            safariViewController.view.superview.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.4];
-        } completion:^(BOOL finished) {
-            // Determine which corners to round based on position
-            UIRectCorner cornersToRound;
-            if (_cardVerticalPosition < 0.1) {
-                // Near top: round bottom corners
-                cornersToRound = UIRectCornerBottomLeft | UIRectCornerBottomRight;
-            } else if (_cardVerticalPosition > 0.9) {
-                // Near bottom: round top corners
-                cornersToRound = UIRectCornerTopLeft | UIRectCornerTopRight;
-            } else {
-                // In middle: round all corners
-                cornersToRound = UIRectCornerAllCorners;
-            }
-            
-            // For iPad, always round all corners for centered appearance
-            if (isRunningOniPad()) {
-                cornersToRound = UIRectCornerAllCorners;
-            }
-            
-            // Round the selected corners
-            UIBezierPath *maskPath = [UIBezierPath bezierPathWithRoundedRect:safariViewController.view.bounds
-                                                          byRoundingCorners:cornersToRound
-                                                                cornerRadii:CGSizeMake(12.0, 12.0)];
-            
-            CAShapeLayer *maskLayer = [[CAShapeLayer alloc] init];
-            maskLayer.frame = safariViewController.view.bounds;
-            maskLayer.path = maskPath.CGPath;
-            safariViewController.view.layer.mask = maskLayer;
-            
-            // Add a handle indicator based on position (skip for iPad as it's always centered)
-            if (!isRunningOniPad() && (_cardVerticalPosition <= 0.1 || _cardVerticalPosition >= 0.9)) {
-                // Add handle for top or bottom positions on iPhone
-                UIView *handleView = [[UIView alloc] init];
-                handleView.backgroundColor = [UIColor colorWithWhite:0.8 alpha:1.0];
-                handleView.layer.cornerRadius = 2.5;
-                
-                if (_cardVerticalPosition >= 0.9) {
-                    // Bottom position - handle at top
-                    handleView.frame = CGRectMake(width/2 - 20, 6, 40, 5);
-                } else {
-                    // Top position - handle at bottom
-                    handleView.frame = CGRectMake(width/2 - 20, height - 11, 40, 5);
-                }
-                
-                [safariViewController.view addSubview:handleView];
-            }
-            
-            // Add drag tray at the top of the Safari card for drag-to-dismiss functionality
-            UIView *dragTray = [[StashPayCardSafariDelegate sharedInstance] createDragTray:width];
-            [safariViewController.view addSubview:dragTray];
-            [StashPayCardSafariDelegate sharedInstance].dragTrayView = dragTray; // Store reference
-            
-            // Note: Expand button is now integrated into the drag tray, no separate creation needed
-        }];
-    }];
-    
-    // Set the delegate
-    safariViewController.delegate = [StashPayCardSafariDelegate sharedInstance];
-    
-    // Store reference for dismissal
-    [StashPayCardSafariDelegate sharedInstance].currentPresentedVC = safariViewController;
-    
-    // Add floating close button (always visible) - AFTER setting currentPresentedVC
-    [[StashPayCardSafariDelegate sharedInstance] showFloatingCloseButton];
-    
-    // Start observing keyboard notifications for auto-expand
-    [[StashPayCardSafariDelegate sharedInstance] startKeyboardObserving];
-    
-    // Set the callback to be triggered when Safari View is dismissed
-    [StashPayCardSafariDelegate sharedInstance].safariViewDismissedCallback = ^{
-        // Stop keyboard observing when dismissing
-        [[StashPayCardSafariDelegate sharedInstance] stopKeyboardObserving];
-        
-        if (_safariViewDismissedCallback != NULL) {
-            _safariViewDismissedCallback();
+    // Disable auto-rotation by posting notification
+    if (@available(iOS 16.0, *)) {
+        // iOS 16+: Use window scene geometry preferences
+        UIWindowScene *windowScene = (UIWindowScene *)[[UIApplication sharedApplication].connectedScenes anyObject];
+        if (windowScene) {
+            UIInterfaceOrientation currentOrientation = windowScene.interfaceOrientation;
+            [windowScene requestGeometryUpdateWithPreferences:[[UIWindowSceneGeometryPreferencesIOS alloc] initWithInterfaceOrientations:(1 << currentOrientation)] errorHandler:nil];
         }
-    };
-}
-
-// Helper function to determine if we should use full-screen Safari
-BOOL shouldUseFullScreenSafari() {
-    // Consider it full-screen if height is close to 1.0 and width is 1.0
-    BOOL isFullScreen = (_cardHeightRatio >= 0.95 && _cardWidthRatio >= 0.95);
-    return isFullScreen;
-}
-
-// Helper function to determine if we should use SFSafariViewController (respects explicit switch)
-BOOL shouldUseSafariViewController() {
-    // If explicitly forced to use Safari view controller, always use it
-    if (_forceSafariViewController) {
-        return YES;
+    } else {
+        // iOS 15 and below: Use setValue approach
+        [[UIDevice currentDevice] beginGeneratingDeviceOrientationNotifications];
+        UIInterfaceOrientation currentOrientation = [[UIApplication sharedApplication] statusBarOrientation];
+        [[UIDevice currentDevice] setValue:@(currentOrientation) forKey:@"orientation"];
+        [UIViewController attemptRotationToDeviceOrientation];
     }
-    
-    // Otherwise, fall back to the original logic (full-screen mode)
-    return shouldUseFullScreenSafari();
+}
+
+// Helper function to unlock device rotation
+void UnlockRotation() {
+    if (@available(iOS 16.0, *)) {
+        // iOS 16+: Reset geometry preferences to allow all orientations
+        UIWindowScene *windowScene = (UIWindowScene *)[[UIApplication sharedApplication].connectedScenes anyObject];
+        if (windowScene) {
+            [windowScene requestGeometryUpdateWithPreferences:[[UIWindowSceneGeometryPreferencesIOS alloc] initWithInterfaceOrientations:UIInterfaceOrientationMaskAll] errorHandler:nil];
+        }
+    } else {
+        // iOS 15 and below
+        if (_originalAutoRotateEnabled) {
+            [[UIDevice currentDevice] endGeneratingDeviceOrientationNotifications];
+        }
+        [UIViewController attemptRotationToDeviceOrientation];
+    }
 }
 
 // Helper function to detect if we're running on iPad
@@ -883,108 +741,43 @@ BOOL isRunningOniPad() {
     return isPad;
 }
 
-// Helper function to calculate iPhone-like card dimensions for iPad
+// Helper function to calculate card dimensions for iPad (more squared for better UX)
 CGSize calculateiPadCardSize(CGRect screenBounds) {
-    // Safety checks for valid screen bounds
     if (screenBounds.size.width <= 0 || screenBounds.size.height <= 0) {
-        return CGSizeMake(400, 600); // Fallback iPhone-like size
+        return CGSizeMake(600, 700);
     }
     
-    // Define iPhone-like aspect ratio (using iPhone 14 as reference: 390x844)
-    CGFloat iPhoneWidth = 390.0;
-    CGFloat iPhoneHeight = 844.0;
-    CGFloat iPhoneAspectRatio = iPhoneWidth / iPhoneHeight;
+    // Use a more squared aspect ratio for iPad (closer to 4:5 instead of iPhone's narrow 9:19.5)
+    CGFloat targetAspectRatio = 0.75; // 3:4 ratio (more squared)
     
-    // Safety check for aspect ratio
-    if (iPhoneAspectRatio <= 0) {
-        return CGSizeMake(400, 600);
-    }
+    // Scale to fit nicely on iPad (80% of screen width, 75% of height)
+    CGFloat maxCardWidth = screenBounds.size.width * 0.8;
+    CGFloat maxCardHeight = screenBounds.size.height * 0.75;
     
-    // Scale to fit nicely on iPad (about 70% of iPad screen width)
-    CGFloat maxCardWidth = screenBounds.size.width * 0.7;
-    CGFloat maxCardHeight = screenBounds.size.height * 0.8;
-    
-    // Additional safety checks
     if (maxCardWidth <= 0 || maxCardHeight <= 0) {
-        return CGSizeMake(400, 600);
+        return CGSizeMake(600, 700);
     }
     
     CGFloat cardWidth, cardHeight;
     
-    // Calculate dimensions maintaining iPhone aspect ratio
-    if (maxCardWidth / iPhoneAspectRatio <= maxCardHeight) {
+    // Calculate dimensions maintaining squared aspect ratio
+    if (maxCardWidth / targetAspectRatio <= maxCardHeight) {
         // Width-constrained
         cardWidth = maxCardWidth;
-        cardHeight = cardWidth / iPhoneAspectRatio;
+        cardHeight = cardWidth / targetAspectRatio;
     } else {
         // Height-constrained
         cardHeight = maxCardHeight;
-        cardWidth = cardHeight * iPhoneAspectRatio;
+        cardWidth = cardHeight * targetAspectRatio;
     }
     
-    // Final safety checks for reasonable sizes
-    if (cardWidth < 100 || cardHeight < 100 || cardWidth > screenBounds.size.width || cardHeight > screenBounds.size.height) {
-        return CGSizeMake(400, 600);
+    // Ensure reasonable sizes
+    if (cardWidth < 400 || cardHeight < 500 || cardWidth > screenBounds.size.width || cardHeight > screenBounds.size.height) {
+        return CGSizeMake(600, 700);
     }
     
     return CGSizeMake(cardWidth, cardHeight);
 }
-
-// Enhanced fallback method that handles both custom positioning and full-screen Safari
-- (void)presentSafariViewController:(NSURL *)url topController:(UIViewController *)topController {
-    SFSafariViewController* safariViewController = [[SFSafariViewController alloc] initWithURL:url];
-    
-    // Safety check: if _forceSafariViewController is true, this method should never be called
-    // But if it is called for some reason, use completely native behavior
-    if (_forceSafariViewController) {
-        safariViewController.delegate = self;
-        [topController presentViewController:safariViewController animated:YES completion:nil];
-        self.safariViewDismissedCallback = ^{
-            if (_safariViewDismissedCallback != NULL) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    _safariViewDismissedCallback();
-                });
-            }
-        };
-        return;
-    }
-    
-    if (shouldUseSafariViewController()) {
-        // NOTE: _forceSafariViewController is handled above and in the main function, this is only for full-screen mode
-        
-        // Full-screen native Safari experience (but with some modifications for full-screen)
-        safariViewController.modalPresentationStyle = UIModalPresentationFullScreen;
-        
-        // Set the delegate
-        safariViewController.delegate = [StashPayCardSafariDelegate sharedInstance];
-        
-        // Present with animation for full-screen experience
-        [topController presentViewController:safariViewController animated:YES completion:^{
-        }];
-        
-        // Store reference for dismissal
-        [StashPayCardSafariDelegate sharedInstance].currentPresentedVC = safariViewController;
-        
-        // Start observing keyboard notifications for auto-expand (even for full-screen)
-        [[StashPayCardSafariDelegate sharedInstance] startKeyboardObserving];
-        
-        // Set the callback
-        [StashPayCardSafariDelegate sharedInstance].safariViewDismissedCallback = ^{
-            // Stop keyboard observing when dismissing
-            [[StashPayCardSafariDelegate sharedInstance] stopKeyboardObserving];
-            
-            if (_safariViewDismissedCallback != NULL) {
-                _safariViewDismissedCallback();
-            }
-        };
-        
-        return;
-    }
-    
-    // Custom positioned Safari (existing logic)
-    [self fallbackToSafariVC:url topController:topController];
-}
-
 
 - (void)expandCardToFullScreen {
     if (!self.currentPresentedVC) return;
@@ -1080,11 +873,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
                 "document.head.appendChild(style);"
             "})();";
             
-            [webView evaluateJavaScript:preventOverscrollScript completionHandler:^(id result, NSError *error) {
-                if (error) {
-                    NSLog(@"Error injecting overscroll prevention: %@", error.localizedDescription);
-                }
-            }];
+            [webView evaluateJavaScript:preventOverscrollScript completionHandler:nil];
             
             break;
         }
@@ -1386,11 +1175,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
                 "document.head.appendChild(style);"
             "})();";
             
-            [webView evaluateJavaScript:preventOverscrollScript completionHandler:^(id result, NSError *error) {
-                if (error) {
-                    NSLog(@"Error injecting overscroll prevention: %@", error.localizedDescription);
-                }
-            }];
+            [webView evaluateJavaScript:preventOverscrollScript completionHandler:nil];
             
             break;
         }
@@ -1468,29 +1253,25 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
 
 
 - (UIView *)createDragTray:(CGFloat)cardWidth {
-    // Create a drag tray area at the top of the card for drag-to-expand/collapse/dismiss functionality
-    // This now overlays on top of the WebView instead of taking up space
     UIView *dragTrayView = [[UIView alloc] init];
-    dragTrayView.frame = CGRectMake(0, 0, cardWidth, 44); // 44pt tall touch area
-    dragTrayView.tag = 8888; // Tag to find it later
+    dragTrayView.frame = CGRectMake(0, 0, cardWidth, 44);
+    dragTrayView.tag = 8888;
     
     // Add black gradient fade for visual separation
     CAGradientLayer *gradientLayer = [CAGradientLayer layer];
     gradientLayer.frame = dragTrayView.bounds;
     
     if (isRunningOniPad()) {
-        // Subtle but visible gradient on iPad
         gradientLayer.colors = @[
-            (id)[UIColor colorWithWhite:0.0 alpha:0.25].CGColor,  // More visible shadow at top
-            (id)[UIColor colorWithWhite:0.0 alpha:0.15].CGColor,  // Gentle middle fade
-            (id)[UIColor colorWithWhite:0.0 alpha:0.0].CGColor    // Fully transparent bottom
+            (id)[UIColor colorWithWhite:0.0 alpha:0.25].CGColor,
+            (id)[UIColor colorWithWhite:0.0 alpha:0.15].CGColor,
+            (id)[UIColor colorWithWhite:0.0 alpha:0.0].CGColor
         ];
     } else {
-        // More prominent gradient on iPhone for better visual definition
         gradientLayer.colors = @[
-            (id)[UIColor colorWithWhite:0.0 alpha:0.35].CGColor,  // Stronger shadow at top
-            (id)[UIColor colorWithWhite:0.0 alpha:0.20].CGColor,  // Visible middle fade
-            (id)[UIColor colorWithWhite:0.0 alpha:0.0].CGColor    // Fully transparent bottom
+            (id)[UIColor colorWithWhite:0.0 alpha:0.35].CGColor,
+            (id)[UIColor colorWithWhite:0.0 alpha:0.20].CGColor,
+            (id)[UIColor colorWithWhite:0.0 alpha:0.0].CGColor
         ];
     }
     gradientLayer.locations = @[@0.0, @0.5, @1.0];
@@ -1498,34 +1279,26 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     
     dragTrayView.backgroundColor = [UIColor clearColor];
     
-    // Add visual handle indicator with enhanced visibility over web content
     UIView *handleView = [[UIView alloc] init];
-    // Make handle highly visible with strong shadow for overlay on any content
     handleView.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.95];
     handleView.layer.cornerRadius = 2.5;
     handleView.frame = CGRectMake(cardWidth/2 - 20, 12, 40, 5);
-    
-    // Add shadow to handle - reduced on iPad for cleaner appearance
     handleView.layer.shadowColor = [UIColor blackColor].CGColor;
     handleView.layer.shadowOffset = CGSizeMake(0, 2);
-    handleView.layer.shadowOpacity = isRunningOniPad() ? 0.3 : 0.8; // Reduced shadow on iPad
-    handleView.layer.shadowRadius = isRunningOniPad() ? 2.0 : 4.0; // Smaller shadow radius on iPad
-    
+    handleView.layer.shadowOpacity = isRunningOniPad() ? 0.3 : 0.8;
+    handleView.layer.shadowRadius = isRunningOniPad() ? 2.0 : 4.0;
     [dragTrayView addSubview:handleView];
     
-    // Add pan gesture recognizer to entire drag tray for easy dragging
     UIPanGestureRecognizer *dragTrayPanGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleDragTrayPanGesture:)];
     dragTrayPanGesture.delegate = self;
-    [dragTrayView addGestureRecognizer:dragTrayPanGesture]; // Add to entire tray for larger touch area
+    [dragTrayView addGestureRecognizer:dragTrayPanGesture];
     
     return dragTrayView;
 }
 
 - (UIView *)createFloatingBackButton {
-    // Create a floating back button for klarna/paypal/stripe pages
     UIButton *floatingBackButton = [UIButton buttonWithType:UIButtonTypeSystem];
     
-    // Get safe area insets for proper positioning
     CGFloat topSafeArea = 0;
     if (@available(iOS 11.0, *)) {
         UIView *currentView = self.currentPresentedVC.view;
@@ -1534,39 +1307,24 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
         }
     }
     
-    // Position in top-left corner, respecting safe area
-    CGFloat topOffset = MAX(16, topSafeArea + 8) + 6; // At least 16pt from top, or 8pt below safe area, shifted down 6px
-    floatingBackButton.frame = CGRectMake(16, topOffset, 40, 40); // 40x40pt button in top-left corner (slightly smaller)
-    floatingBackButton.tag = 9999; // Tag to find it later
+    CGFloat topOffset = MAX(16, topSafeArea + 8) + 6;
+    floatingBackButton.frame = CGRectMake(16, topOffset, 40, 40);
+    floatingBackButton.tag = 9999;
     
-    // Check if we're in dark mode to set appropriate colors
     BOOL isDarkMode = NO;
     if (@available(iOS 13.0, *)) {
-        UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
-        isDarkMode = (currentStyle == UIUserInterfaceStyleDark);
+        isDarkMode = ([UITraitCollection currentTraitCollection].userInterfaceStyle == UIUserInterfaceStyleDark);
     }
     
-    // Set back arrow icon
     [floatingBackButton setTitle:@"←" forState:UIControlStateNormal];
-    floatingBackButton.titleLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightSemibold]; // Slightly smaller font
-    
-    // Set colors with more transparency
-    if (isDarkMode) {
-        [floatingBackButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-        floatingBackButton.backgroundColor = [UIColor colorWithWhite:0.1 alpha:0.5]; // Very transparent
-    } else {
-        [floatingBackButton setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
-        floatingBackButton.backgroundColor = [UIColor colorWithWhite:0.95 alpha:0.5]; // Very transparent
-    }
-    
-    // Make it circular and add shadow - reduced on iPad
-    floatingBackButton.layer.cornerRadius = 20; // Half of 40 for perfect circle
+    floatingBackButton.titleLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightSemibold];
+    [floatingBackButton setTitleColor:isDarkMode ? [UIColor whiteColor] : [UIColor blackColor] forState:UIControlStateNormal];
+    floatingBackButton.backgroundColor = isDarkMode ? [UIColor colorWithWhite:0.1 alpha:0.5] : [UIColor colorWithWhite:0.95 alpha:0.5];
+    floatingBackButton.layer.cornerRadius = 20;
     floatingBackButton.layer.shadowColor = [UIColor blackColor].CGColor;
     floatingBackButton.layer.shadowOffset = CGSizeMake(0, isRunningOniPad() ? 1 : 2);
-    floatingBackButton.layer.shadowOpacity = isRunningOniPad() ? 0.1 : 0.2; // Reduced shadow on iPad
-    floatingBackButton.layer.shadowRadius = isRunningOniPad() ? 2 : 4; // Smaller shadow radius on iPad
-    
-    // Add subtle border
+    floatingBackButton.layer.shadowOpacity = isRunningOniPad() ? 0.1 : 0.2;
+    floatingBackButton.layer.shadowRadius = isRunningOniPad() ? 2 : 4;
     floatingBackButton.layer.borderWidth = 0.5;
     floatingBackButton.layer.borderColor = isDarkMode ? [UIColor colorWithWhite:0.3 alpha:0.5].CGColor : [UIColor colorWithWhite:0.7 alpha:0.5].CGColor;
     
@@ -1576,10 +1334,8 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
 }
 
 - (UIView *)createFloatingCloseButton {
-    // Create a floating close button that's always visible
     UIButton *floatingCloseButton = [UIButton buttonWithType:UIButtonTypeSystem];
     
-    // Get safe area insets for proper positioning
     CGFloat topSafeArea = 0;
     CGFloat cardWidth = 0;
     if (@available(iOS 11.0, *)) {
@@ -1590,51 +1346,30 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
         cardWidth = currentView.frame.size.width;
     }
     
-    // Fallback to screen width calculation if card width is not available yet
     if (cardWidth <= 0) {
         CGRect screenBounds = [UIScreen mainScreen].bounds;
-        if (isRunningOniPad()) {
-            CGSize cardSize = calculateiPadCardSize(screenBounds);
-            cardWidth = cardSize.width;
-        } else {
-            cardWidth = screenBounds.size.width * _cardWidthRatio;
-        }
+        cardWidth = isRunningOniPad() ? calculateiPadCardSize(screenBounds).width : screenBounds.size.width * _cardWidthRatio;
     }
     
-    // Position in top-right corner, respecting safe area
-    CGFloat topOffset = MAX(16, topSafeArea + 8) + 6; // At least 16pt from top, or 8pt below safe area, shifted down 6px
-    CGFloat rightOffset = cardWidth - 16 - 40; // 16pt margin from right edge (adjusted for smaller button)
-    floatingCloseButton.frame = CGRectMake(rightOffset, topOffset, 40, 40); // 40x40pt button in top-right corner (slightly smaller)
-    floatingCloseButton.tag = 8887; // Different tag from back button (9999)
+    CGFloat topOffset = MAX(16, topSafeArea + 8) + 6;
+    CGFloat rightOffset = cardWidth - 56;
+    floatingCloseButton.frame = CGRectMake(rightOffset, topOffset, 40, 40);
+    floatingCloseButton.tag = 8887;
     
-    // Check if we're in dark mode to set appropriate colors
     BOOL isDarkMode = NO;
     if (@available(iOS 13.0, *)) {
-        UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
-        isDarkMode = (currentStyle == UIUserInterfaceStyleDark);
+        isDarkMode = ([UITraitCollection currentTraitCollection].userInterfaceStyle == UIUserInterfaceStyleDark);
     }
     
-    // Set close icon (X)
     [floatingCloseButton setTitle:@"✕" forState:UIControlStateNormal];
-    floatingCloseButton.titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold]; // Slightly smaller font
-    
-    // Set colors with more transparency (same style as back button)
-    if (isDarkMode) {
-        [floatingCloseButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-        floatingCloseButton.backgroundColor = [UIColor colorWithWhite:0.1 alpha:0.5]; // Very transparent
-    } else {
-        [floatingCloseButton setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
-        floatingCloseButton.backgroundColor = [UIColor colorWithWhite:0.95 alpha:0.5]; // Very transparent
-    }
-    
-    // Make it circular and add shadow - reduced on iPad (same style as back button)
-    floatingCloseButton.layer.cornerRadius = 20; // Half of 40 for perfect circle
+    floatingCloseButton.titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
+    [floatingCloseButton setTitleColor:isDarkMode ? [UIColor whiteColor] : [UIColor blackColor] forState:UIControlStateNormal];
+    floatingCloseButton.backgroundColor = isDarkMode ? [UIColor colorWithWhite:0.1 alpha:0.5] : [UIColor colorWithWhite:0.95 alpha:0.5];
+    floatingCloseButton.layer.cornerRadius = 20;
     floatingCloseButton.layer.shadowColor = [UIColor blackColor].CGColor;
     floatingCloseButton.layer.shadowOffset = CGSizeMake(0, isRunningOniPad() ? 1 : 2);
-    floatingCloseButton.layer.shadowOpacity = isRunningOniPad() ? 0.1 : 0.2; // Reduced shadow on iPad
-    floatingCloseButton.layer.shadowRadius = isRunningOniPad() ? 2 : 4; // Smaller shadow radius on iPad
-    
-    // Add subtle border (same style as back button)
+    floatingCloseButton.layer.shadowOpacity = isRunningOniPad() ? 0.1 : 0.2;
+    floatingCloseButton.layer.shadowRadius = isRunningOniPad() ? 2 : 4;
     floatingCloseButton.layer.borderWidth = 0.5;
     floatingCloseButton.layer.borderColor = isDarkMode ? [UIColor colorWithWhite:0.3 alpha:0.5].CGColor : [UIColor colorWithWhite:0.7 alpha:0.5].CGColor;
     
@@ -1648,56 +1383,27 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     
     UIView *containerView = self.currentPresentedVC.view;
     
-    // Create floating close button if it doesn't exist
     if (!self.closeButtonView) {
         self.closeButtonView = [self createFloatingCloseButton];
-    } else {
-        // Update position in case view layout has changed
-        CGFloat topSafeArea = 0;
-        CGFloat cardWidth = containerView.frame.size.width;
-        if (@available(iOS 11.0, *)) {
-            if (containerView && [containerView respondsToSelector:@selector(safeAreaInsets)]) {
-                topSafeArea = containerView.safeAreaInsets.top;
-            }
-        }
-        
-        // Fallback to screen width calculation if card width is not available yet
-        if (cardWidth <= 0) {
-            CGRect screenBounds = [UIScreen mainScreen].bounds;
-            if (isRunningOniPad()) {
-                CGSize cardSize = calculateiPadCardSize(screenBounds);
-                cardWidth = cardSize.width;
-            } else {
-                cardWidth = screenBounds.size.width * _cardWidthRatio;
-            }
-        }
-        
-        CGFloat topOffset = MAX(16, topSafeArea + 8) + 6; // Shifted down 6px
-        CGFloat rightOffset = cardWidth - 16 - 40; // Adjusted for smaller button size
-        self.closeButtonView.frame = CGRectMake(rightOffset, topOffset, 40, 40);
     }
     
-    // Position floating button in top-right corner
     self.closeButtonView.alpha = 0.0;
-    self.closeButtonView.transform = CGAffineTransformMakeScale(0.8, 0.8); // Start slightly smaller
-    
-    // Add to container on top of everything
+    self.closeButtonView.transform = CGAffineTransformMakeScale(0.8, 0.8);
     [containerView addSubview:self.closeButtonView];
     [containerView bringSubviewToFront:self.closeButtonView];
     
     [UIView animateWithDuration:0.3 delay:0.1 usingSpringWithDamping:0.7 initialSpringVelocity:0.5 options:UIViewAnimationOptionCurveEaseOut animations:^{
         self.closeButtonView.alpha = 1.0;
-        self.closeButtonView.transform = CGAffineTransformIdentity; // Scale to normal size
+        self.closeButtonView.transform = CGAffineTransformIdentity;
     } completion:nil];
 }
 
 - (void)hideFloatingCloseButton {
     if (!self.closeButtonView) return;
     
-    // Animate the close button out of view with scale and fade
     [UIView animateWithDuration:0.25 delay:0 usingSpringWithDamping:0.8 initialSpringVelocity:0.3 options:UIViewAnimationOptionCurveEaseIn animations:^{
         self.closeButtonView.alpha = 0.0;
-        self.closeButtonView.transform = CGAffineTransformMakeScale(0.6, 0.6); // Scale down while fading
+        self.closeButtonView.transform = CGAffineTransformMakeScale(0.6, 0.6);
     } completion:^(BOOL finished) {
         [self.closeButtonView removeFromSuperview];
         self.closeButtonView = nil;
@@ -1706,11 +1412,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
 
 - (void)handleDragTrayPanGesture:(UIPanGestureRecognizer *)gesture {
     if (!self.currentPresentedVC) return;
-    
-    // Disable drag gesture if purchase is processing
-    if (self.isPurchaseProcessing) {
-        return;
-    }
+    if (self.isPurchaseProcessing) return;
     
     UIView *cardView = self.currentPresentedVC.view;
     CGFloat height = cardView.frame.size.height;
@@ -1966,72 +1668,51 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
 // WKScriptMessageHandler implementation for handling JavaScript calls
 - (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message {
     if ([message.name isEqualToString:@"stashPaymentSuccess"]) {
-        NSLog(@"Payment success received from JavaScript");
-        
-        // Re-enable dismissal since processing is complete
         self.isPurchaseProcessing = NO;
         
-        // Prevent multiple payment success handling
         if (_paymentSuccessHandled) {
-            NSLog(@"Payment success already handled, ignoring duplicate");
             return;
         }
         _paymentSuccessHandled = YES;
         
-        // Prevent multiple callback executions for this session
         if (_paymentSuccessCallbackCalled) {
-            NSLog(@"Payment success callback already called for this session, ignoring");
             return;
         }
         _paymentSuccessCallbackCalled = YES;
         
-        // Call the payment success callback if available
         if (_paymentSuccessCallback != NULL) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 _paymentSuccessCallback();
             });
-        } else {
-            NSLog(@"Payment success callback is NULL, cannot call Unity");
         }
         
         // Automatically close the Stash Pay Card without calling the regular dismissal callback
         if (self.currentPresentedVC) {
-            [self.currentPresentedVC dismissViewControllerAnimated:YES completion:^{
+            [self dismissWithAnimation:^{
                 [self cleanupCardInstance];
                 // Don't call callUnityCallbackOnce here since we already handled the success callback
             }];
         }
     }
     else if ([message.name isEqualToString:@"stashPaymentFailure"]) {
-        NSLog(@"Payment failure received from JavaScript");
-        
-        // Re-enable dismissal since processing is complete
         self.isPurchaseProcessing = NO;
         
-        // Call the payment failure callback if available
         if (_paymentFailureCallback != NULL) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 _paymentFailureCallback();
             });
-        } else {
-            NSLog(@"Payment failure callback is NULL, cannot call Unity");
         }
         
         // Automatically close the Stash Pay Card without calling the regular dismissal callback
         if (self.currentPresentedVC) {
-            [self.currentPresentedVC dismissViewControllerAnimated:YES completion:^{
+            [self dismissWithAnimation:^{
                 [self cleanupCardInstance];
                 // Don't call callUnityCallbackOnce here since we already handled the failure callback
             }];
         }
     }
     else if ([message.name isEqualToString:@"stashPurchaseProcessing"]) {
-        NSLog(@"Purchase processing started - disabling dismiss gesture and hiding close button");
-        
-        // Set processing state
         self.isPurchaseProcessing = YES;
-        
-        // Hide the close button during processing
         [self hideFloatingCloseButton];
     }
 }
@@ -2079,18 +1760,13 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
 
 
 - (void)backButtonTapped:(UIButton *)button {
-    // Find the WebView and return to initial URL
     if (!self.currentPresentedVC || !self.initialURL) return;
     
     for (UIView *subview in self.currentPresentedVC.view.subviews) {
         if ([subview isKindOfClass:NSClassFromString(@"WKWebView")]) {
             WKWebView *webView = (WKWebView *)subview;
-            
-            // Create request to initial URL and load it
             NSURLRequest *request = [NSURLRequest requestWithURL:self.initialURL];
             [webView loadRequest:request];
-            
-            NSLog(@"Back button: returning to initial URL: %@", self.initialURL.absoluteString);
             break;
         }
     }
@@ -2099,7 +1775,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
 - (void)closeButtonTapped:(UIButton *)button {
     // Dismiss the entire card
     if (self.currentPresentedVC) {
-        [self.currentPresentedVC dismissViewControllerAnimated:YES completion:^{
+        [self dismissWithAnimation:^{
             [self cleanupCardInstance];
             [self callUnityCallbackOnce];
         }];
@@ -2108,12 +1784,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
 
 @end
 
-// Hard-coded SVG content - white logo for dark mode, black for light mode
-static NSString* const kLogoSVGDark = @"<svg width=\"346\" height=\"55\" viewBox=\"0 0 346 55\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g clip-path=\"url(#clip0_290_729)\"><path d=\"M18 0C8.06 0 0 8.06 0 18C0 18.34 0 18.68 0.03 19.01C0.61 29.05 10.96 35.85 21.04 33.26L36.83 29.21C38.98 28.66 41.2 29.91 41.5 32.03C41.8 34.17 40.09 36 37.93 36H0V54H36C45.94 54 54 45.94 54 36C54 35.66 54 35.32 53.97 34.99C53.39 24.95 43.04 18.15 32.96 20.74L17.17 24.79C15.02 25.34 12.8 24.09 12.5 21.97C12.2 19.83 13.91 18 16.07 18H52.16L49.31 0H18Z\" fill=\"white\"/><path d=\"M327.99 0L328 22H316V0H298V54H316V26H328V54H346L345.99 0H327.99Z\" fill=\"white\"/><path d=\"M172.03 54.25C172.03 49.06 170.49 41.43 166 34.86C168.73 28.45 170.42 20.61 170.87 11.6C171.02 8.60004 169.92 5.63004 167.85 3.46004C165.78 1.29004 162.88 0.0400391 159.88 0.0400391H51.05C51.05 0.0400391 53.58 6.10004 55.39 11.25C56.28 13.79 56.98 16.09 57.51 18.02H82.77L75.41 54.03H98.01C98.01 54.03 98.01 48.99 97.47 43.5C96.62 34.88 93.64 24.85 91.33 18.03H152.09C151.8 19.76 151.42 21.64 150.91 23.51C148.38 22.68 145.57 22.1 142.46 21.85C133.49 21.12 126.37 22.93 121.86 27.08C118.75 29.95 117.03 33.84 117.03 38.03C117.03 43.38 119.87 48.07 124.82 50.91C128.68 53.12 133.66 54.2 140.06 54.2C145.02 54.2 149.53 52.91 153.46 50.48C153.89 52.2 154 53.55 154.03 54.03H172.03V54.24H172.04L172.03 54.25ZM149.17 39.13C148.4 41.19 143.76 41.35 138.8 39.5C133.84 37.64 130.45 34.47 131.22 32.41C131.99 30.35 136.63 30.19 141.59 32.04C146.55 33.9 149.94 37.07 149.17 39.13Z\" fill=\"white\"/><path d=\"M215.6 4.59C219.6 0.99 225.32 0.84 229.46 3.81C230.26 4.39 231.01 5.07 231.67 5.88C237.95 13.59 246.99 23.09 256.68 24.39C266.07 25.66 294 26 294 26V0H184.47C178.66 0 173.96 5.15 173.96 11.13V12.39C173.96 18.01 178.15 23.54 183.56 24.28C199.39 26.46 230.6 28.12 246.26 29.6C247.47 29.71 248.65 30.1 249.77 30.64C251.61 31.54 253.26 32.96 254.47 34.92C257.25 39.43 256.63 44.99 252.99 48.79C248.98 52.97 242.86 53.31 238.5 50.18C237.7 49.6 236.95 48.92 236.29 48.11C230.01 40.4 220.97 30.89 211.28 29.59C203.26 28.51 176.09 28.11 168.3 28.01C173.46 32.29 179.21 38.78 182.62 48.07C183.29 49.91 183.85 51.91 184.31 53.99H283.49C289.3 53.99 294 48.84 294 42.86V41.61C294 35.99 289.81 30.4 284.4 29.72C268.84 27.76 237.36 25.98 221.7 24.49C220.49 24.37 219.31 23.99 218.19 23.45C216.58 22.66 215.11 21.48 213.96 19.88C210.5 15.08 211.22 8.52 215.6 4.59Z\" fill=\"white\"/></g><defs><clipPath id=\"clip0_290_729\"><rect width=\"346\" height=\"54.25\" fill=\"white\"/></clipPath></defs></svg>";
-
-static NSString* const kLogoSVGLight = @"<svg width=\"346\" height=\"55\" viewBox=\"0 0 346 55\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><g clip-path=\"url(#clip0_290_729)\"><path d=\"M18 0C8.06 0 0 8.06 0 18C0 18.34 0 18.68 0.03 19.01C0.61 29.05 10.96 35.85 21.04 33.26L36.83 29.21C38.98 28.66 41.2 29.91 41.5 32.03C41.8 34.17 40.09 36 37.93 36H0V54H36C45.94 54 54 45.94 54 36C54 35.66 54 35.32 53.97 34.99C53.39 24.95 43.04 18.15 32.96 20.74L17.17 24.79C15.02 25.34 12.8 24.09 12.5 21.97C12.2 19.83 13.91 18 16.07 18H52.16L49.31 0H18Z\" fill=\"black\"/><path d=\"M327.99 0L328 22H316V0H298V54H316V26H328V54H346L345.99 0H327.99Z\" fill=\"black\"/><path d=\"M172.03 54.25C172.03 49.06 170.49 41.43 166 34.86C168.73 28.45 170.42 20.61 170.87 11.6C171.02 8.60004 169.92 5.63004 167.85 3.46004C165.78 1.29004 162.88 0.0400391 159.88 0.0400391H51.05C51.05 0.0400391 53.58 6.10004 55.39 11.25C56.28 13.79 56.98 16.09 57.51 18.02H82.77L75.41 54.03H98.01C98.01 54.03 98.01 48.99 97.47 43.5C96.62 34.88 93.64 24.85 91.33 18.03H152.09C151.8 19.76 151.42 21.64 150.91 23.51C148.38 22.68 145.57 22.1 142.46 21.85C133.49 21.12 126.37 22.93 121.86 27.08C118.75 29.95 117.03 33.84 117.03 38.03C117.03 43.38 119.87 48.07 124.82 50.91C128.68 53.12 133.66 54.2 140.06 54.2C145.02 54.2 149.53 52.91 153.46 50.48C153.89 52.2 154 53.55 154.03 54.03H172.03V54.24H172.04L172.03 54.25ZM149.17 39.13C148.4 41.19 143.76 41.35 138.8 39.5C133.84 37.64 130.45 34.47 131.22 32.41C131.99 30.35 136.63 30.19 141.59 32.04C146.55 33.9 149.94 37.07 149.17 39.13Z\" fill=\"black\"/><path d=\"M215.6 4.59C219.6 0.99 225.32 0.84 229.46 3.81C230.26 4.39 231.01 5.07 231.67 5.88C237.95 13.59 246.99 23.09 256.68 24.39C266.07 25.66 294 26 294 26V0H184.47C178.66 0 173.96 5.15 173.96 11.13V12.39C173.96 18.01 178.15 23.54 183.56 24.28C199.39 26.46 230.6 28.12 246.26 29.6C247.47 29.71 248.65 30.1 249.77 30.64C251.61 31.54 253.26 32.96 254.47 34.92C257.25 39.43 256.63 44.99 252.99 48.79C248.98 52.97 242.86 53.31 238.5 50.18C237.7 49.6 236.95 48.92 236.29 48.11C230.01 40.4 220.97 30.89 211.28 29.59C203.26 28.51 176.09 28.11 168.3 28.01C173.46 32.29 179.21 38.78 182.62 48.07C183.29 49.91 183.85 51.91 184.31 53.99H283.49C289.3 53.99 294 48.84 294 42.86V41.61C294 35.99 289.81 30.4 284.4 29.72C268.84 27.76 237.36 25.98 221.7 24.49C220.49 24.37 219.31 23.99 218.19 23.45C216.58 22.66 215.11 21.48 213.96 19.88C210.5 15.08 211.22 8.52 215.6 4.59Z\" fill=\"black\"/></g><defs><clipPath id=\"clip0_290_729\"><rect width=\"346\" height=\"54.25\" fill=\"white\"/></clipPath></defs></svg>";
-
-// Helper function to create loading view with logo using WKWebView
+// Helper function to create loading view with a simple spinner
 UIView* CreateLoadingView(CGRect frame) {
     // Create container view
     UIView* loadingView = [[UIView alloc] initWithFrame:frame];
@@ -2125,70 +1796,34 @@ UIView* CreateLoadingView(CGRect frame) {
         isDarkMode = (currentStyle == UIUserInterfaceStyleDark);
     }
     
-    // Set the background color based on mode - use pure black in dark mode
-    loadingView.backgroundColor = isDarkMode ? [UIColor blackColor] : [UIColor whiteColor];
+    // Set SOLID background color that matches webview - CRITICAL for preventing black flash
+    UIColor *backgroundColor = isDarkMode ? [UIColor blackColor] : [UIColor whiteColor];
+    loadingView.backgroundColor = backgroundColor;
+    loadingView.opaque = YES; // Ensure completely opaque
     
-    // Calculate the reduced size (70% of original) with padding for animation
-    float originalWidth = 295.0;
-    float originalHeight = 53.0;
-    float scaleFactor = 0.7; // 70% of original size (30% reduction)
-    float newWidth = originalWidth * scaleFactor;
-    float newHeight = originalHeight * scaleFactor;
+    // Create a native iOS activity indicator (spinner)
+    UIActivityIndicatorView *spinner;
+    if (@available(iOS 13.0, *)) {
+        spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
+        spinner.color = isDarkMode ? [UIColor whiteColor] : [UIColor darkGrayColor];
+    } else {
+        spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleWhiteLarge];
+        if (!isDarkMode) {
+            spinner.color = [UIColor darkGrayColor];
+        }
+    }
     
-    // Add padding to accommodate the 105% scale animation (5% extra on each side = 10% total)
-    float paddingFactor = 1.15; // 115% to safely accommodate 105% scale + some margin
-    float containerWidth = newWidth * paddingFactor;
-    float containerHeight = newHeight * paddingFactor;
+    spinner.translatesAutoresizingMaskIntoConstraints = NO;
+    spinner.hidesWhenStopped = NO; // Keep visible even when stopped for smoother transition
+    [spinner startAnimating]; // Start the spinner animation
     
-
+    // Add spinner to loading view
+    [loadingView addSubview:spinner];
     
-    // Create a container for the logo with expanded size to accommodate animation
-    UIView* logoContainer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, containerWidth, containerHeight)];
-    logoContainer.backgroundColor = loadingView.backgroundColor;
-    logoContainer.translatesAutoresizingMaskIntoConstraints = NO;
-    logoContainer.clipsToBounds = NO; // Allow content to extend beyond bounds for glow effects
-    
-    // Choose the appropriate SVG content based on dark/light mode
-    NSString* svgContent = isDarkMode ? kLogoSVGDark : kLogoSVGLight;
-    
-    // Create a WKWebView to render the SVG
-    WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
-    config.allowsInlineMediaPlayback = YES;
-    
-    WKWebView *webView = [[WKWebView alloc] initWithFrame:logoContainer.bounds configuration:config];
-    webView.backgroundColor = loadingView.backgroundColor;
-    webView.opaque = NO;
-    webView.scrollView.scrollEnabled = NO;
-    webView.scrollView.bounces = NO;
-    
-    // Enhanced HTML template with better overflow handling for animations
-    NSString *htmlTemplate = @"<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no'><style>body{margin:0;padding:0;background-color:%@;display:flex;justify-content:center;align-items:center;width:100%%;height:100%%;overflow:visible;}svg{width:85%%;height:auto;animation:logoAnimation 2s ease-in-out infinite;transform-origin:center center;}@keyframes logoAnimation{0%%{transform:scale(1);opacity:0.7;}50%%{transform:scale(1.05);opacity:1;}100%%{transform:scale(1);opacity:0.7;}}svg path{animation:pathGlow 3s ease-in-out infinite;filter:drop-shadow(0 0 8px rgba(255,255,255,0.3));}@keyframes pathGlow{0%%{filter:drop-shadow(0 0 8px rgba(255,255,255,0.2));}50%%{filter:drop-shadow(0 0 16px rgba(255,255,255,0.6));}100%%{filter:drop-shadow(0 0 8px rgba(255,255,255,0.2));}}@media (prefers-color-scheme: dark){svg path{filter:drop-shadow(0 0 8px rgba(255,255,255,0.4));}@keyframes pathGlow{0%%{filter:drop-shadow(0 0 8px rgba(255,255,255,0.3));}50%%{filter:drop-shadow(0 0 16px rgba(255,255,255,0.7));}100%%{filter:drop-shadow(0 0 8px rgba(255,255,255,0.3));}}}</style></head><body>%@</body></html>";
-    
-    NSString *backgroundColor = isDarkMode ? @"black" : @"white";
-    NSString *fullHTML = [NSString stringWithFormat:htmlTemplate, backgroundColor, svgContent];
-    
-    [webView loadHTMLString:fullHTML baseURL:nil];
-    
-    [logoContainer addSubview:webView];
-    
-    // Set constraints for the webview to fill the logo container
-    webView.translatesAutoresizingMaskIntoConstraints = NO;
+    // Center the spinner in the loading view
     [NSLayoutConstraint activateConstraints:@[
-        [webView.leadingAnchor constraintEqualToAnchor:logoContainer.leadingAnchor],
-        [webView.trailingAnchor constraintEqualToAnchor:logoContainer.trailingAnchor],
-        [webView.topAnchor constraintEqualToAnchor:logoContainer.topAnchor],
-        [webView.bottomAnchor constraintEqualToAnchor:logoContainer.bottomAnchor]
-    ]];
-    
-    // Add the logo container to the loading view
-    [loadingView addSubview:logoContainer];
-    
-    // Center the logo container in the loading view with updated dimensions
-    [NSLayoutConstraint activateConstraints:@[
-        [logoContainer.centerXAnchor constraintEqualToAnchor:loadingView.centerXAnchor],
-        [logoContainer.centerYAnchor constraintEqualToAnchor:loadingView.centerYAnchor],
-        [logoContainer.widthAnchor constraintEqualToConstant:containerWidth],
-        [logoContainer.heightAnchor constraintEqualToConstant:containerHeight]
+        [spinner.centerXAnchor constraintEqualToAnchor:loadingView.centerXAnchor],
+        [spinner.centerYAnchor constraintEqualToAnchor:loadingView.centerYAnchor]
     ]];
     
     return loadingView;
@@ -2214,39 +1849,23 @@ extern "C" {
         _paymentFailureCallback = callback;
     }
 
-    // Sets the card configuration - height ratio and vertical position
-    // NOTE: On iPad, these settings are overridden to maintain iPhone-like aspect ratio centered on screen
     void _StashPayCardSetCardConfiguration(float heightRatio, float verticalPosition) {
-        // Validate and clamp height ratio between 0.1 and 0.9
         _cardHeightRatio = heightRatio < 0.1 ? 0.1 : (heightRatio > 0.9 ? 0.9 : heightRatio);
-        
-        // Validate and clamp vertical position between 0.0 (top) and 1.0 (bottom)
         _cardVerticalPosition = verticalPosition < 0.0 ? 0.0 : (verticalPosition > 1.0 ? 1.0 : verticalPosition);
-        
-        // Store original values for expand/collapse functionality
-        _originalCardHeightRatio = _cardHeightRatio;
-        _originalCardVerticalPosition = _cardVerticalPosition;
-        _originalCardWidthRatio = _cardWidthRatio; // Keep current width ratio
-        _isCardExpanded = NO; // Reset expansion state
-    }
-
-    // Sets the card configuration with width support
-    // NOTE: On iPad, these settings are overridden to maintain iPhone-like aspect ratio centered on screen
-    void _StashPayCardSetCardConfigurationWithWidth(float heightRatio, float verticalPosition, float widthRatio) {
-        // Validate and clamp height ratio between 0.1 and 1.0 (allow fullscreen)
-        _cardHeightRatio = heightRatio < 0.1 ? 0.1 : (heightRatio > 1.0 ? 1.0 : heightRatio);
-        
-        // Validate and clamp vertical position between 0.0 (top) and 1.0 (bottom)
-        _cardVerticalPosition = verticalPosition < 0.0 ? 0.0 : (verticalPosition > 1.0 ? 1.0 : verticalPosition);
-        
-        // Validate and clamp width ratio between 0.1 and 1.0
-        _cardWidthRatio = widthRatio < 0.1 ? 0.1 : (widthRatio > 1.0 ? 1.0 : widthRatio);
-        
-        // Store original values for expand/collapse functionality
         _originalCardHeightRatio = _cardHeightRatio;
         _originalCardVerticalPosition = _cardVerticalPosition;
         _originalCardWidthRatio = _cardWidthRatio;
-        _isCardExpanded = NO; // Reset expansion state
+        _isCardExpanded = NO;
+    }
+
+    void _StashPayCardSetCardConfigurationWithWidth(float heightRatio, float verticalPosition, float widthRatio) {
+        _cardHeightRatio = heightRatio < 0.1 ? 0.1 : (heightRatio > 1.0 ? 1.0 : heightRatio);
+        _cardVerticalPosition = verticalPosition < 0.0 ? 0.0 : (verticalPosition > 1.0 ? 1.0 : verticalPosition);
+        _cardWidthRatio = widthRatio < 0.1 ? 0.1 : (widthRatio > 1.0 ? 1.0 : widthRatio);
+        _originalCardHeightRatio = _cardHeightRatio;
+        _originalCardVerticalPosition = _cardVerticalPosition;
+        _originalCardWidthRatio = _cardWidthRatio;
+        _isCardExpanded = NO;
     }
 
     // Opens a URL in Safari View Controller with delegation
@@ -2281,11 +1900,15 @@ extern "C" {
                 // Set delegate ONLY for basic dismissal callback - no other modifications
                 safariViewController.delegate = [StashPayCardSafariDelegate sharedInstance];
                 
+                // Lock rotation while Safari is presented
+                LockRotation();
+                
                 // Present with completely default system behavior - no custom presentation styles
                 [topController presentViewController:safariViewController animated:YES completion:nil];
                 
                 // Set a simple callback for when the native Safari is dismissed
                 [StashPayCardSafariDelegate sharedInstance].safariViewDismissedCallback = ^{
+                    UnlockRotation();
                     if (_safariViewDismissedCallback != NULL) {
                         _safariViewDismissedCallback();
                     }
@@ -2294,9 +1917,8 @@ extern "C" {
                 return;
             }
             
-            // Check if a card is already being presented (only for custom implementations)
+            // Check if a card is already being presented
             if (_isCardCurrentlyPresented) {
-                NSLog(@"Warning: Card is already being presented. Ignoring new request.");
                 return;
             }
             
@@ -2319,26 +1941,39 @@ extern "C" {
             // Store the initial URL for back button functionality
             [[StashPayCardSafariDelegate sharedInstance] setInitialURL:url];
             
-            // Check if we should use Safari view controller (for custom full-screen mode)
-            if (shouldUseSafariViewController()) {
-                [[StashPayCardSafariDelegate sharedInstance] presentSafariViewController:url topController:topController];
-                return;
-            }
-            
-            // For non-full-screen modes, try to create a custom view controller with WKWebView
-            UIViewController *containerVC = [[UIViewController alloc] init];
+            // Create a custom view controller with WKWebView
+            OrientationLockedViewController *containerVC = [[OrientationLockedViewController alloc] init];
             containerVC.modalPresentationStyle = UIModalPresentationOverFullScreen;
+            
+            // Lock to portrait for OpenURL on iPhone, allow all orientations for popup
+            containerVC.lockPortrait = !_usePopupPresentation;
+            
+            // Set container background immediately to prevent black flash
+            if (@available(iOS 13.0, *)) {
+                UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
+                containerVC.view.backgroundColor = (currentStyle == UIUserInterfaceStyleDark) ? [UIColor blackColor] : [UIColor systemBackgroundColor];
+            } else {
+                containerVC.view.backgroundColor = [UIColor whiteColor];
+            }
             
             // Try to create the web view
             Class webViewClass = NSClassFromString(@"WKWebView");
             Class configClass = NSClassFromString(@"WKWebViewConfiguration");
             
             if (webViewClass && configClass) {
-                // WebKit is available, use WKWebView with proper configuration
+                // WebKit is available, use WKWebView with optimized configuration
                 WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
                 config.allowsInlineMediaPlayback = YES;
                 config.allowsAirPlayForMediaPlayback = YES;
                 config.allowsPictureInPictureMediaPlayback = YES;
+                
+                // Enable performance optimizations
+                if (@available(iOS 14.0, *)) {
+                    config.limitsNavigationsToAppBoundDomains = NO; // Allow all domains for payment flows
+                }
+                
+                // Use optimized process pool for faster loading
+                config.processPool = [WKProcessPool new];
                 
                 // Enable autofill and form features for payment data
                 if (@available(iOS 11.0, *)) {
@@ -2484,13 +2119,35 @@ extern "C" {
                 
                 config.userContentController = userContentController;
                 
-                // Setup a web view controller with transparent background
+                // Setup web view with proper background color from the start
                 WKWebView *webView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:config];
-                webView.opaque = NO;
-                webView.backgroundColor = [UIColor clearColor];
-                webView.scrollView.backgroundColor = [UIColor clearColor];
-                webView.hidden = YES;
+                
+                // Set background to match system background immediately to prevent black flash
+                UIColor *systemBackgroundColor;
+                if (@available(iOS 13.0, *)) {
+                    UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
+                    systemBackgroundColor = (currentStyle == UIUserInterfaceStyleDark) ? [UIColor blackColor] : [UIColor systemBackgroundColor];
+                } else {
+                    systemBackgroundColor = [UIColor whiteColor];
+                }
+                
+                webView.opaque = YES;
+                webView.backgroundColor = systemBackgroundColor;
+                webView.scrollView.backgroundColor = systemBackgroundColor;
+                webView.scrollView.opaque = YES;
+                webView.hidden = NO; // Keep visible but at 0 alpha for immediate cross-fade
+                webView.alpha = 0.0; // Start at 0 opacity for seamless cross-fade
                 webView.translatesAutoresizingMaskIntoConstraints = NO;
+                
+                // Force all subviews to have solid background
+                for (UIView *subview in webView.subviews) {
+                    subview.backgroundColor = systemBackgroundColor;
+                    subview.opaque = YES;
+                }
+                for (UIView *subview in webView.scrollView.subviews) {
+                    subview.backgroundColor = systemBackgroundColor;
+                    subview.opaque = YES;
+                }
                 
                 // Disable scroll bounce and content insets
                 webView.scrollView.bounces = NO;
@@ -2526,29 +2183,22 @@ extern "C" {
                                                                       forMainFrameOnly:YES];
                 [config.userContentController addUserScript:noMarginsInjection];
                 
-                // Create loading view with logo
                 UIView* loadingView = CreateLoadingView(CGRectZero);
-                // Use the appropriate background color for the loading view
-                if (@available(iOS 13.0, *)) {
-                    UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
-                    loadingView.backgroundColor = (currentStyle == UIUserInterfaceStyleDark) ? [UIColor blackColor] : [UIColor systemBackgroundColor];
-                } else {
-                    loadingView.backgroundColor = [UIColor whiteColor];
-                }
+                loadingView.backgroundColor = systemBackgroundColor;
                 loadingView.translatesAutoresizingMaskIntoConstraints = NO;
+                loadingView.opaque = YES;
+                loadingView.alpha = 1.0;
                 
-                [containerVC.view addSubview:loadingView];
                 [containerVC.view addSubview:webView];
+                [containerVC.view addSubview:loadingView];
                 
-                // Set up constraints for the loading view (full container)
                 [NSLayoutConstraint activateConstraints:@[
                     [loadingView.leadingAnchor constraintEqualToAnchor:containerVC.view.leadingAnchor],
                     [loadingView.trailingAnchor constraintEqualToAnchor:containerVC.view.trailingAnchor],
                     [loadingView.topAnchor constraintEqualToAnchor:containerVC.view.topAnchor],
                     [loadingView.bottomAnchor constraintEqualToAnchor:containerVC.view.bottomAnchor]
                 ]];
-            
-                // Set up constraints for the web view (edge-to-edge filling the entire card)
+                
                 [NSLayoutConstraint activateConstraints:@[
                     [webView.leadingAnchor constraintEqualToAnchor:containerVC.view.leadingAnchor],
                     [webView.trailingAnchor constraintEqualToAnchor:containerVC.view.trailingAnchor],
@@ -2556,35 +2206,42 @@ extern "C" {
                     [webView.bottomAnchor constraintEqualToAnchor:containerVC.view.bottomAnchor]
                 ]];
                 
-                // Add navigation delegate to detect when loading finishes
                 WebViewLoadDelegate *delegate = [[WebViewLoadDelegate alloc] initWithWebView:webView loadingView:loadingView];
                 webView.navigationDelegate = delegate;
                 
-                // Add UI delegate to disable context menus and text selection
                 WebViewUIDelegate *uiDelegate = [[WebViewUIDelegate alloc] init];
                 webView.UIDelegate = uiDelegate;
                 
-                // Store the delegates with the view controller to prevent deallocation
                 objc_setAssociatedObject(containerVC, "webViewDelegate", delegate, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 objc_setAssociatedObject(containerVC, "webViewUIDelegate", uiDelegate, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 
-                // Create an explicit URL request with aggressive caching
                 NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url 
                                                                     cachePolicy:NSURLRequestReturnCacheDataElseLoad
-                                                                timeoutInterval:30.0];
-                
-                // Add standard headers
+                                                                timeoutInterval:15.0];
                 [request setValue:@"Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1" forHTTPHeaderField:@"User-Agent"];
+                [request setValue:@"gzip, deflate, br" forHTTPHeaderField:@"Accept-Encoding"];
                 
-                // Start loading the WebView immediately
                 [webView loadRequest:request];
                 
-                // Calculate card dimensions
                 CGRect screenBounds = [UIScreen mainScreen].bounds;
+                
+                // For portrait-locked OpenURL on iPhone, ensure we use portrait dimensions
+                // even if device is currently in landscape
+                if (!_usePopupPresentation && !isRunningOniPad()) {
+                    // Ensure portrait orientation for sizing (narrower dimension = width)
+                    if (screenBounds.size.width > screenBounds.size.height) {
+                        // Currently landscape, swap to get portrait dimensions
+                        CGFloat temp = screenBounds.size.width;
+                        screenBounds.size.width = screenBounds.size.height;
+                        screenBounds.size.height = temp;
+                    }
+                }
+                
                 CGFloat width, height, x, finalY;
                 
-                // Handle iPad with iPhone-like aspect ratio and centering
-                if (isRunningOniPad()) {
+                // For popup mode, always use the ratios set (don't override with iPad card size)
+                // For regular card mode on iPad, use calculateiPadCardSize for better layout
+                if (isRunningOniPad() && !_usePopupPresentation) {
                     CGSize cardSize = calculateiPadCardSize(screenBounds);
                     width = cardSize.width;
                     height = cardSize.height;
@@ -2598,115 +2255,91 @@ extern "C" {
                     if (finalY < 0) finalY = 0;
                 }
                 
-                // Start position (off-screen)
-                CGFloat y = screenBounds.size.height;
+                CGFloat y = _usePopupPresentation ? finalY : screenBounds.size.height;
                 
-                // Present without animation and animate to position after
                 [topController presentViewController:containerVC animated:NO completion:^{
-                    // Set initial position off-screen
+                    // Lock rotation while dialog is presented
+                    LockRotation();
+                    
                     containerVC.view.frame = CGRectMake(x, y, width, height);
                     
-                    // Set background overlay color immediately before animation - lighter on iPad
-                    CGFloat overlayOpacity = isRunningOniPad() ? 0.25 : 0.4; // Lighter overlay on iPad
-                    containerVC.view.superview.backgroundColor = [UIColor colorWithWhite:0.0 alpha:overlayOpacity];
+                    UIRectCorner cornersToRound;
+                    if (_cardVerticalPosition < 0.1) {
+                        cornersToRound = UIRectCornerBottomLeft | UIRectCornerBottomRight;
+                    } else if (_cardVerticalPosition > 0.9) {
+                        cornersToRound = UIRectCornerTopLeft | UIRectCornerTopRight;
+                    } else {
+                        cornersToRound = UIRectCornerAllCorners;
+                    }
                     
-                    // Animate into position with faster animation
-                    [UIView animateWithDuration:0.15 animations:^{
-                        containerVC.view.frame = CGRectMake(x, finalY, width, height);
-                        // Set the container view background color
-                        if (@available(iOS 13.0, *)) {
-                            UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
-                            containerVC.view.backgroundColor = (currentStyle == UIUserInterfaceStyleDark) ? [UIColor blackColor] : [UIColor systemBackgroundColor];
+                    if (isRunningOniPad()) {
+                        cornersToRound = UIRectCornerAllCorners;
+                    }
+                    
+                    UIBezierPath *maskPath = [UIBezierPath bezierPathWithRoundedRect:containerVC.view.bounds
+                                                                  byRoundingCorners:cornersToRound
+                                                                        cornerRadii:CGSizeMake(12.0, 12.0)];
+                    CAShapeLayer *maskLayer = [[CAShapeLayer alloc] init];
+                    maskLayer.frame = containerVC.view.bounds;
+                    maskLayer.path = maskPath.CGPath;
+                    containerVC.view.layer.mask = maskLayer;
+                    
+                    if (_usePopupPresentation) {
+                        containerVC.view.alpha = 0.0;
+                        containerVC.view.transform = CGAffineTransformMakeScale(0.9, 0.9);
+                    }
+                    
+                    CGFloat overlayOpacity = isRunningOniPad() ? 0.25 : 0.4;
+                    containerVC.view.superview.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.0];
+                    CGFloat animationDuration = _usePopupPresentation ? 0.2 : 0.15;
+                    
+                    [UIView animateWithDuration:animationDuration animations:^{
+                        if (_usePopupPresentation) {
+                            containerVC.view.alpha = 1.0;
+                            containerVC.view.transform = CGAffineTransformIdentity;
                         } else {
-                            containerVC.view.backgroundColor = [UIColor whiteColor];
+                            containerVC.view.frame = CGRectMake(x, finalY, width, height);
                         }
+                        containerVC.view.superview.backgroundColor = [UIColor colorWithWhite:0.0 alpha:overlayOpacity];
                     } completion:^(BOOL finished) {
-                        // Determine which corners to round based on position
-                        UIRectCorner cornersToRound;
-                        if (_cardVerticalPosition < 0.1) {
-                            // Near top: round bottom corners
-                            cornersToRound = UIRectCornerBottomLeft | UIRectCornerBottomRight;
-                        } else if (_cardVerticalPosition > 0.9) {
-                            // Near bottom: round top corners
-                            cornersToRound = UIRectCornerTopLeft | UIRectCornerTopRight;
-                        } else {
-                            // In middle: round all corners
-                            cornersToRound = UIRectCornerAllCorners;
+                        if (!_usePopupPresentation) {
+                            UIView *dragTray = [[StashPayCardSafariDelegate sharedInstance] createDragTray:width];
+                            [containerVC.view addSubview:dragTray];
+                            [StashPayCardSafariDelegate sharedInstance].dragTrayView = dragTray;
+                            
+                            // Main pan gesture only for iPhone - iPad uses drag tray only
+                            if (!isRunningOniPad()) {
+                                UIPanGestureRecognizer *panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:[StashPayCardSafariDelegate sharedInstance] action:@selector(handlePanGesture:)];
+                                panGesture.delegate = [StashPayCardSafariDelegate sharedInstance];
+                                [containerVC.view addGestureRecognizer:panGesture];
+                                [StashPayCardSafariDelegate sharedInstance].panGestureRecognizer = panGesture;
+                            }
                         }
                         
-                        // For iPad, always round all corners for centered appearance
-                        if (isRunningOniPad()) {
-                            cornersToRound = UIRectCornerAllCorners;
-                        }
-                        
-                        // Round the selected corners
-                        UIBezierPath *maskPath = [UIBezierPath bezierPathWithRoundedRect:containerVC.view.bounds
-                                                                      byRoundingCorners:cornersToRound
-                                                                            cornerRadii:CGSizeMake(12.0, 12.0)];
-                        
-                        CAShapeLayer *maskLayer = [[CAShapeLayer alloc] init];
-                        maskLayer.frame = containerVC.view.bounds;
-                        maskLayer.path = maskPath.CGPath;
-                        containerVC.view.layer.mask = maskLayer;
-                        
-                        // Add drag tray at the top of the Safari card for drag-to-dismiss functionality
-                        UIView *dragTray = [[StashPayCardSafariDelegate sharedInstance] createDragTray:width];
-                        [containerVC.view addSubview:dragTray];
-                        [StashPayCardSafariDelegate sharedInstance].dragTrayView = dragTray; // Store reference
-                        
-                        // Add pan gesture recognizer for swipe-to-dismiss
-                        UIPanGestureRecognizer *panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:[StashPayCardSafariDelegate sharedInstance] action:@selector(handlePanGesture:)];
-                        panGesture.delegate = [StashPayCardSafariDelegate sharedInstance];
-                        [containerVC.view addGestureRecognizer:panGesture];
-                        [StashPayCardSafariDelegate sharedInstance].panGestureRecognizer = panGesture; // Store reference
-                        
-                        // Add dismissal gesture recognizer to the background overlay
                         UIView *backgroundView = containerVC.view.superview;
                         
-                        // Remove existing gesture recognizers to avoid conflicts
-                        for (UIGestureRecognizer *recognizer in [backgroundView.gestureRecognizers copy]) {
-                            [backgroundView removeGestureRecognizer:recognizer];
+                        if (!_usePopupPresentation) {
+                            for (UIGestureRecognizer *recognizer in [backgroundView.gestureRecognizers copy]) {
+                                [backgroundView removeGestureRecognizer:recognizer];
+                            }
+                            
+                            UIButton *dismissButton = [UIButton buttonWithType:UIButtonTypeCustom];
+                            dismissButton.frame = backgroundView.bounds;
+                            dismissButton.backgroundColor = [UIColor clearColor];
+                            dismissButton.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+                            [backgroundView addSubview:dismissButton];
+                            [backgroundView sendSubviewToBack:dismissButton];
+                            [dismissButton addTarget:[StashPayCardSafariDelegate sharedInstance] 
+                                             action:@selector(dismissButtonTapped:) 
+                                   forControlEvents:UIControlEventTouchUpInside];
                         }
                         
-                        // Create a new transparent button to cover the background area
-                        // For middle-positioned cards, use a different tap behavior
-                        BOOL isMiddlePositioned = _cardVerticalPosition > 0.1 && _cardVerticalPosition < 0.9;
-                        
-                        UIButton *dismissButton = [UIButton buttonWithType:UIButtonTypeCustom];
-                        dismissButton.frame = backgroundView.bounds;
-                        dismissButton.backgroundColor = [UIColor clearColor];
-                        dismissButton.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-                        
-                        // If we're in the middle, make the background slightly darker for better visibility
-                        if (isMiddlePositioned) {
-                            backgroundView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.5];
-                        }
-                        
-                        // Add the button to the background view
-                        [backgroundView addSubview:dismissButton];
-                        // Make sure it's behind the container view
-                        [backgroundView sendSubviewToBack:dismissButton];
-                        
-                        // Add touch handler
-                        [dismissButton addTarget:[StashPayCardSafariDelegate sharedInstance] 
-                                         action:@selector(dismissButtonTapped:) 
-                               forControlEvents:UIControlEventTouchUpInside];
-                        
-                        // Store the view controller reference for later dismissal
                         [StashPayCardSafariDelegate sharedInstance].currentPresentedVC = containerVC;
-                        
-                        // Add floating close button (always visible) - AFTER setting currentPresentedVC
                         [[StashPayCardSafariDelegate sharedInstance] showFloatingCloseButton];
-                        
-                        // Start observing keyboard notifications for auto-expand
                         [[StashPayCardSafariDelegate sharedInstance] startKeyboardObserving];
                         
-                        // Set the callback to be triggered when Safari View is dismissed
-                        __weak UIViewController *weakContainerVC = containerVC; // Weak reference to avoid retain cycle
                         [StashPayCardSafariDelegate sharedInstance].safariViewDismissedCallback = ^{
-                            // Stop keyboard observing when dismissing
                             [[StashPayCardSafariDelegate sharedInstance] stopKeyboardObserving];
-                            
                             if (_safariViewDismissedCallback != NULL) {
                                 _safariViewDismissedCallback();
                             }
@@ -2714,16 +2347,6 @@ extern "C" {
                     }];
                 }];
                 return;
-            }
-            
-            // If we get here, WKWebView failed - fall back to SFSafariViewController
-            [[StashPayCardSafariDelegate sharedInstance] presentSafariViewController:url topController:topController];
-        } else {
-            // Fallback to opening in regular Safari for older iOS versions
-            if (@available(iOS 10.0, *)) {
-                [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
-            } else {
-                [[UIApplication sharedApplication] openURL:url];
             }
         }
     }
@@ -2753,6 +2376,32 @@ extern "C" {
     // Gets whether to force use of SFSafariViewController over WKWebView
     bool _StashPayCardGetForceSafariViewController() {
         return _forceSafariViewController;
+    }
+
+    void _StashPayCardOpenPopup(const char* urlString) {
+        CGRect screenBounds = [UIScreen mainScreen].bounds;
+        CGFloat smallerDimension = fmin(screenBounds.size.width, screenBounds.size.height);
+        
+        // iPad gets compact popup (50% smaller for modal dialogs)
+        CGFloat minSize = isRunningOniPad() ? 400.0 : 300.0;
+        CGFloat maxSize = isRunningOniPad() ? 500.0 : 500.0;
+        CGFloat percentage = isRunningOniPad() ? 0.5 : 0.75; // iPad uses 50%, iPhone uses 75%
+        CGFloat squareSize = fmax(minSize, fmin(maxSize, smallerDimension * percentage));
+        
+        CGFloat squareRatioWidth = squareSize / screenBounds.size.width;
+        CGFloat squareRatioHeight = squareSize / screenBounds.size.height;
+        CGFloat centerPosition = 0.5 + (squareRatioHeight / 2.0);
+        
+        _cardWidthRatio = squareRatioWidth;
+        _cardHeightRatio = squareRatioHeight;
+        _cardVerticalPosition = centerPosition;
+        _originalCardWidthRatio = squareRatioWidth;
+        _originalCardHeightRatio = squareRatioHeight;
+        _originalCardVerticalPosition = centerPosition;
+        _isCardExpanded = NO;
+        _usePopupPresentation = YES;
+        
+        _StashPayCardOpenURLInSafariVC(urlString);
     }
 }
 
