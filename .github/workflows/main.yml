@@ -437,6 +437,61 @@ jobs:
             lipo -info "$ARCHIVE_BINARY" 2>&1 | grep -i simulator && echo "⚠️  WARNING: Simulator architectures found!" || echo "✅ No simulator architectures found"
           fi
       
+      # iOS: Fix UnityFramework bundle identifier collision
+      - name: Fix UnityFramework bundle identifier
+        if: inputs.platform == 'iOS'
+        run: |
+          cd build/iOS/iOS/
+          
+          echo "Fixing UnityFramework.framework bundle identifier collision..."
+          
+          # Find the app bundle in the archive
+          APP_BUNDLE=$(find Unity-iPhone.xcarchive -name "*.app" -type d | head -1)
+          if [ -z "$APP_BUNDLE" ]; then
+            echo "ERROR: Could not find app bundle in archive"
+            exit 1
+          fi
+          
+          # Check if UnityFramework.framework exists
+          UNITY_FRAMEWORK_PLIST="$APP_BUNDLE/Frameworks/UnityFramework.framework/Info.plist"
+          if [ ! -f "$UNITY_FRAMEWORK_PLIST" ]; then
+            echo "UnityFramework.framework/Info.plist not found, skipping fix"
+            exit 0
+          fi
+          
+          # Get the bundle ID from UnityFramework
+          FRAMEWORK_BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw "$UNITY_FRAMEWORK_PLIST" 2>/dev/null || echo "")
+          MAIN_BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw "$APP_BUNDLE/Info.plist" 2>/dev/null || echo "")
+          
+          if [ "$FRAMEWORK_BUNDLE_ID" = "$MAIN_BUNDLE_ID" ]; then
+            echo "⚠️  Found collision: UnityFramework has same bundle ID as main app ($MAIN_BUNDLE_ID)"
+            echo "Removing CFBundleIdentifier from UnityFramework.framework/Info.plist..."
+            
+            # Remove CFBundleIdentifier using plutil
+            if plutil -remove CFBundleIdentifier "$UNITY_FRAMEWORK_PLIST" 2>/dev/null; then
+              echo "✅ Successfully removed CFBundleIdentifier from UnityFramework.framework"
+              
+              # Verify it's gone
+              VERIFY_ID=$(plutil -extract CFBundleIdentifier raw "$UNITY_FRAMEWORK_PLIST" 2>/dev/null || echo "")
+              if [ -z "$VERIFY_ID" ]; then
+                echo "✅ Verified: CFBundleIdentifier removed successfully"
+              else
+                echo "⚠️  WARNING: CFBundleIdentifier still present: $VERIFY_ID"
+              fi
+            else
+              echo "❌ Failed to remove CFBundleIdentifier using plutil"
+              echo "Trying alternative method using Python..."
+              
+              # Use Python one-liner to remove CFBundleIdentifier
+              python3 -c "import plistlib, sys; p=plistlib.load(open('$UNITY_FRAMEWORK_PLIST','rb')); p.pop('CFBundleIdentifier', None); plistlib.dump(p, open('$UNITY_FRAMEWORK_PLIST','wb')); print('✅ Removed CFBundleIdentifier using Python')" || {
+                echo "⚠️  Python method also failed. The bundle ID may be embedded in binary format."
+                echo "This might require modifying Unity build settings or post-processing the Xcode project."
+              }
+            fi
+          else
+            echo "ℹ️  No collision found. UnityFramework bundle ID: $FRAMEWORK_BUNDLE_ID, Main app: $MAIN_BUNDLE_ID"
+          fi
+      
       # iOS: Create export options
       - name: Create export options plist
         if: inputs.platform == 'iOS'
