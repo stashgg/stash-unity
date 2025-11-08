@@ -130,7 +130,7 @@ jobs:
       
       - name: Download iOS provisioning profiles
         if: inputs.platform == 'iOS'
-        uses: Apple-Actions/download-provisioning-profiles@v3
+        uses: Apple-Actions/download-provisioning-profiles@v4
         with:
           bundle-id: 'com.stash.sdkdemo'
           profile-type: 'IOS_APP_STORE'
@@ -142,38 +142,27 @@ jobs:
         if: inputs.platform == 'iOS'
         run: |
           echo "Checking provisioning profiles..."
-          EXPECTED_BUNDLE_ID="com.stash.sdkdemo"
-          
           for profile in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
             echo ""
             echo "Profile: $(basename "$profile")"
-            PROFILE_DATA=$(security cms -D -i "$profile" 2>/dev/null)
-            PROFILE_NAME=$(echo "$PROFILE_DATA" | plutil -extract Name raw - 2>/dev/null || echo "Unknown")
-            PROFILE_BUNDLE_ID=$(echo "$PROFILE_DATA" | plutil -extract Entitlements.application-identifier raw - 2>/dev/null | sed 's/.*\.//' || echo "")
-            PROFILE_UUID=$(echo "$PROFILE_DATA" | plutil -extract UUID raw - 2>/dev/null || echo "Unknown")
-            
-            echo "  Name: $PROFILE_NAME"
-            echo "  Bundle ID: $PROFILE_BUNDLE_ID"
-            echo "  UUID: $PROFILE_UUID"
-            
-            # Check for IAP entitlement
-            if echo "$PROFILE_DATA" | grep -q "com.apple.InAppPurchase"; then
-              echo "  ✅ Has In-App Purchase entitlement"
-            else
-              echo "  ⚠️  No explicit In-App Purchase entitlement in profile"
-              if [ "$PROFILE_BUNDLE_ID" = "$EXPECTED_BUNDLE_ID" ]; then
-                echo "     (But App ID has IAP enabled - Xcode will add entitlement during build)"
-              fi
-            fi
-            
-            # Show full entitlements if available
-            echo "$PROFILE_DATA" | plutil -extract Entitlements raw - 2>/dev/null | head -20 || true
+            security cms -D -i "$profile" | plutil -p - | grep -E '(Name|TeamIdentifier|UUID|Entitlements|com.apple.InAppPurchase)' || true
             echo "---"
           done
           
-          echo ""
-          echo "Note: App Store provisioning profiles may not explicitly list all entitlements."
-          echo "If the App ID has In-App Purchase enabled, Xcode will add the entitlement during the build."
+          # Check if any profile has In-App Purchase capability
+          HAS_IAP=false
+          for profile in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
+            if security cms -D -i "$profile" | grep -q "com.apple.InAppPurchase"; then
+              HAS_IAP=true
+              echo "✅ Found profile with In-App Purchase: $(basename "$profile")"
+              break
+            fi
+          done
+          
+          if [ "$HAS_IAP" = "false" ]; then
+            echo "⚠️  WARNING: No provisioning profile with In-App Purchase capability found"
+            echo "The app may require In-App Purchase capability. If the build fails, ensure your App ID has In-App Purchase enabled in App Store Connect."
+          fi
       
       - name: Verify iOS setup
         if: inputs.platform == 'iOS'
@@ -263,15 +252,26 @@ jobs:
           sed -i '' "s/DEVELOPMENT_TEAM = \"[^\"]*\"/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\"/g" Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' "s/DEVELOPMENT_TEAM = ;/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\";/g" Unity-iPhone.xcodeproj/project.pbxproj
           
-          # Configure code signing - use MANUAL signing for App Store distribution
-          # Manual signing gives us full control and prevents Xcode from creating development certificates via API
-          echo "Configuring code signing for App Store distribution (MANUAL signing)..."
+          # Configure code signing - use automatic signing for App Store distribution
+          echo "Configuring code signing for App Store distribution..."
+          # Use automatic signing which should handle In-App Purchase capability automatically
+          sed -i '' 's/CODE_SIGN_STYLE = Manual/CODE_SIGN_STYLE = Automatic/g' Unity-iPhone.xcodeproj/project.pbxproj
+          sed -i '' 's/CODE_SIGN_STYLE = ;/CODE_SIGN_STYLE = Automatic;/g' Unity-iPhone.xcodeproj/project.pbxproj
           
-          # Switch to manual signing for all targets
-          sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' Unity-iPhone.xcodeproj/project.pbxproj
-          sed -i '' 's/CODE_SIGN_STYLE = ;/CODE_SIGN_STYLE = Manual;/g' Unity-iPhone.xcodeproj/project.pbxproj
+          # Remove ALL manual CODE_SIGN_IDENTITY settings - let automatic signing choose based on provisioning profile
+          # With IOS_APP_STORE profiles, automatic signing will automatically use "Apple Distribution"
+          sed -i '' '/CODE_SIGN_IDENTITY/d' Unity-iPhone.xcodeproj/project.pbxproj
           
-          echo "Code signing style set to Manual"
+          # Remove any PROVISIONING_PROFILE_SPECIFIER settings - let automatic signing choose the profile
+          # Automatic signing will select the appropriate App Store profile automatically
+          sed -i '' '/PROVISIONING_PROFILE_SPECIFIER/d' Unity-iPhone.xcodeproj/project.pbxproj
+          
+          # Ensure automatic signing works correctly
+          # Xcode's automatic signing will select the App Store profile for the main app
+          # Library targets (like GameAssembly) should be signed as part of the main app
+          # or will use ad-hoc signing automatically if they don't need distribution profiles
+          
+          echo "Code signing configured: Automatic signing (Xcode will select profiles based on target type)"
           
           # Fix Unity framework issue: Set "Embedded Content Contains Swift Code" to NO
           # This prevents the "Invalid Bundle contains disallowed file 'Frameworks'" error
@@ -299,59 +299,26 @@ jobs:
           echo "Build configuration updated for device-only build"
           
           # Get the provisioning profile UUID for manual signing
-          # Look for a profile that matches our bundle ID
-          # Note: App Store profiles may not explicitly list IAP entitlement, but if the App ID has IAP enabled,
-          # Xcode will add the entitlement during the build process
+          # Prefer a profile with In-App Purchase capability
           PROFILE_PATH=""
           PROFILE_UUID=""
-          EXPECTED_BUNDLE_ID="com.stash.sdkdemo"
           
-          echo "Searching for provisioning profile matching bundle ID: $EXPECTED_BUNDLE_ID"
-          
-          # First, try to find a profile that matches our bundle ID and has IAP entitlement explicitly
+          # First, try to find a profile with In-App Purchase
           for profile in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
-            PROFILE_DATA=$(security cms -D -i "$profile" 2>/dev/null)
-            PROFILE_BUNDLE_ID=$(echo "$PROFILE_DATA" | plutil -extract Entitlements.application-identifier raw - 2>/dev/null | sed 's/.*\.//' || echo "")
-            
-            # Check if bundle ID matches
-            if [ "$PROFILE_BUNDLE_ID" = "$EXPECTED_BUNDLE_ID" ]; then
-              # Check if it has IAP entitlement explicitly listed
-              if echo "$PROFILE_DATA" | grep -q "com.apple.InAppPurchase"; then
-                PROFILE_PATH="$profile"
-                PROFILE_UUID=$(basename "$profile" .mobileprovision)
-                PROFILE_NAME=$(echo "$PROFILE_DATA" | plutil -extract Name raw - 2>/dev/null || echo "Unknown")
-                echo "✅ Found profile with IAP entitlement: $PROFILE_NAME ($PROFILE_UUID)"
-                break
-              fi
+            if security cms -D -i "$profile" | grep -q "com.apple.InAppPurchase"; then
+              PROFILE_PATH="$profile"
+              PROFILE_UUID=$(basename "$profile" .mobileprovision)
+              echo "✅ Found profile with In-App Purchase: $PROFILE_UUID"
+              break
             fi
           done
           
-          # If no profile with explicit IAP found, use any profile that matches our bundle ID
-          # The App ID has IAP enabled, so Xcode will add the entitlement during build
-          if [ -z "$PROFILE_PATH" ]; then
-            for profile in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
-              PROFILE_DATA=$(security cms -D -i "$profile" 2>/dev/null)
-              PROFILE_BUNDLE_ID=$(echo "$PROFILE_DATA" | plutil -extract Entitlements.application-identifier raw - 2>/dev/null | sed 's/.*\.//' || echo "")
-              
-              if [ "$PROFILE_BUNDLE_ID" = "$EXPECTED_BUNDLE_ID" ]; then
-                PROFILE_PATH="$profile"
-                PROFILE_UUID=$(basename "$profile" .mobileprovision)
-                PROFILE_NAME=$(echo "$PROFILE_DATA" | plutil -extract Name raw - 2>/dev/null || echo "Unknown")
-                echo "✅ Found profile matching bundle ID: $PROFILE_NAME ($PROFILE_UUID)"
-                echo "ℹ️  Note: IAP entitlement not explicitly listed in profile, but App ID has IAP enabled"
-                echo "   Xcode will automatically add the IAP entitlement during the build"
-                break
-              fi
-            done
-          fi
-          
-          # If still no profile found, use the first available App Store profile as fallback
+          # If no IAP profile found, use the first available profile
           if [ -z "$PROFILE_PATH" ]; then
           PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -1)
           PROFILE_UUID=$(basename "$PROFILE_PATH" .mobileprovision)
-            PROFILE_NAME=$(security cms -D -i "$PROFILE_PATH" 2>/dev/null | plutil -extract Name raw - 2>/dev/null || echo "Unknown")
-            echo "⚠️  Using first available profile: $PROFILE_NAME ($PROFILE_UUID)"
-            echo "⚠️  WARNING: Profile may not match bundle ID or may not have IAP capability"
+            echo "⚠️  Using profile without In-App Purchase: $PROFILE_UUID"
+            echo "⚠️  WARNING: This may cause build failures if the app requires In-App Purchase"
           fi
           
           echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
@@ -361,69 +328,7 @@ jobs:
           ACTUAL_UUID=$(security cms -D -i "$PROFILE_PATH" | plutil -extract UUID raw - 2>/dev/null || echo "$PROFILE_UUID")
           echo "ACTUAL_PROFILE_UUID=$ACTUAL_UUID" >> $GITHUB_ENV
           echo "Actual profile UUID: $ACTUAL_UUID"
-          
-          # Check if the selected profile has IAP entitlement
-          PROFILE_DATA=$(security cms -D -i "$PROFILE_PATH" 2>/dev/null)
-          if echo "$PROFILE_DATA" | grep -q "com.apple.InAppPurchase"; then
-            echo "✅ Selected profile has In-App Purchase entitlement"
-          else
-            echo "⚠️  WARNING: Selected profile does NOT have explicit In-App Purchase entitlement"
-            echo "   Profile: $PROFILE_NAME"
-            echo "   Bundle ID: $(echo "$PROFILE_DATA" | plutil -extract Entitlements.application-identifier raw - 2>/dev/null | sed 's/.*\.//' || echo "Unknown")"
-            echo ""
-            echo "   If the build fails with IAP errors:"
-            echo "   1. Verify the App ID 'com.stash.sdkdemo' has In-App Purchase enabled in Apple Developer Console"
-            echo "   2. Regenerate the provisioning profile in Apple Developer Console to include IAP"
-            echo "   3. The profile will be automatically updated when downloaded via API"
-            echo ""
-            echo "   Note: With manual signing, Xcode requires the profile to explicitly include all entitlements."
-            echo "   Even if the App ID has IAP enabled, the profile must include it for manual signing to work."
-          fi
-          
-          # Ensure App Store profiles are accessible to Xcode
-          # Xcode looks in both ~/Library/MobileDevice/Provisioning Profiles/ and
-          # ~/Library/Developer/Xcode/UserData/Provisioning Profiles/
-          # We'll ensure they're in both locations
-          if [ -n "$PROFILE_PATH" ] && [ -f "$PROFILE_PATH" ]; then
-            XCODE_PROFILE_DIR="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
-            mkdir -p "$XCODE_PROFILE_DIR"
-            cp "$PROFILE_PATH" "$XCODE_PROFILE_DIR/"
-            echo "✅ Copied App Store profile to Xcode user data directory: $XCODE_PROFILE_DIR"
-          fi
-          
-          # Configure manual signing with App Store profile and Distribution certificate
-          # This prevents Xcode from creating development profiles/certificates via API
-          if [ -n "$ACTUAL_UUID" ]; then
-            echo "Configuring manual signing with App Store profile: $ACTUAL_UUID"
-            
-            # Set PROVISIONING_PROFILE_SPECIFIER for app targets (Unity-iPhone, UnityFramework)
-            # Replace any existing value or add if missing
-            sed -i '' "s/PROVISIONING_PROFILE_SPECIFIER = \"[^\"]*\"/PROVISIONING_PROFILE_SPECIFIER = \"$ACTUAL_UUID\"/g" Unity-iPhone.xcodeproj/project.pbxproj
-            sed -i '' "s/PROVISIONING_PROFILE_SPECIFIER = ;/PROVISIONING_PROFILE_SPECIFIER = \"$ACTUAL_UUID\";/g" Unity-iPhone.xcodeproj/project.pbxproj
-            
-            # Set CODE_SIGN_IDENTITY to "Apple Distribution" for app targets
-            # Remove any existing CODE_SIGN_IDENTITY settings first
-            sed -i '' '/CODE_SIGN_IDENTITY\[sdk=iphoneos\*\]/d' Unity-iPhone.xcodeproj/project.pbxproj
-            
-            # For Release configuration, set CODE_SIGN_IDENTITY = "Apple Distribution"
-            # We'll add it after DEVELOPMENT_TEAM settings for Release builds
-            # This targets Unity-iPhone and UnityFramework targets (not GameAssembly)
-            sed -i '' 's/\(DEVELOPMENT_TEAM = "[^"]*";\)/\1\n\t\t\t\tCODE_SIGN_IDENTITY = "Apple Distribution";/g' Unity-iPhone.xcodeproj/project.pbxproj
-            
-            # For GameAssembly target, disable code signing via xcodebuild command-line
-            # GameAssembly is a static library and doesn't require code signing
-            # We'll handle this in the xcodebuild command by not applying CODE_SIGN_IDENTITY to it
-            # For now, we'll set it in the project file using a simpler approach
-            echo "Note: GameAssembly code signing will be handled during archive build"
-
-            echo "✅ Manual signing configured"
-            echo "App targets (Unity-iPhone, UnityFramework) use Apple Distribution certificate with App Store profile"
-            echo "GameAssembly uses ad-hoc signing (no certificate required)"
-          else
-            echo "❌ ERROR: Could not find App Store provisioning profile UUID"
-            exit 1
-          fi
-
+      
       # iOS: Verify build configuration
       - name: Verify build configuration
         if: inputs.platform == 'iOS'
@@ -553,9 +458,10 @@ jobs:
             
           # Build archive for device (not simulator)
           # Use generic iOS device destination to avoid simulator
-          # Note: We use MANUAL signing with the App Store profile we downloaded.
-          # We do NOT use -allowProvisioningUpdates as it allows Xcode to create development profiles via API.
-          # Manual signing prevents Xcode from creating development certificates.
+          # Note: With automatic signing, Xcode will automatically select the correct certificate
+          # based on the provisioning profile. We download IOS_APP_STORE profiles which require
+          # "Apple Distribution" certificates. Do NOT manually override CODE_SIGN_IDENTITY as it
+          # conflicts with automatic signing.
           xcodebuild archive \
             -project Unity-iPhone.xcodeproj \
               -scheme Unity-iPhone \
@@ -563,13 +469,15 @@ jobs:
               -sdk iphoneos \
             -destination 'generic/platform=iOS' \
               -archivePath Unity-iPhone.xcarchive \
+              -allowProvisioningUpdates \
+              -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8 \
+              -authenticationKeyID ${{ secrets.APPSTORE_KEY_ID }} \
+              -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }} \
               DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
               PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
               MARKETING_VERSION="$LATEST_TAG" \
               CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-              CODE_SIGN_STYLE="Manual" \
-              CODE_SIGN_IDENTITY="Apple Distribution" \
-              "PROVISIONING_PROFILE_SPECIFIER=$ACTUAL_UUID" \
+              CODE_SIGN_STYLE="Automatic" \
               CODE_SIGNING_ALLOWED="YES" \
               CODE_SIGNING_REQUIRED="YES" \
             ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=NO \
