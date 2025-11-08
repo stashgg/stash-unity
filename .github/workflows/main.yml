@@ -280,20 +280,11 @@ jobs:
           sed -i '' 's/EMBEDDED_CONTENT_CONTAINS_SWIFT = YES/EMBEDDED_CONTENT_CONTAINS_SWIFT = NO/g' Unity-iPhone.xcodeproj/project.pbxproj
           echo "Embedded Content Contains Swift Code configured to NO"
           
-          # Fix UnityFramework bundle identifier collision
-          # UnityFramework must have a unique bundle ID, not the same as the main app
-          echo "Setting unique bundle identifier for UnityFramework..."
-          MAIN_BUNDLE_ID="com.stash.sdkdemo"
-          UNITY_FRAMEWORK_BUNDLE_ID="${MAIN_BUNDLE_ID}.UnityFramework"
-          
-          # Write improved Python script that finds UnityFramework target build configurations
-          printf 'import re\nimport sys\nproject_file = sys.argv[1]\nmain_bundle_id = sys.argv[2]\nframework_bundle_id = sys.argv[3]\nwith open(project_file, "r") as f:\n    lines = f.readlines()\ncontent = "".join(lines)\n\n# Strategy: Find build configuration sections that belong to UnityFramework target\n# Xcode project structure: build configurations are associated with targets via PBXNativeTarget sections\n\n# Step 1: Find all PRODUCT_BUNDLE_IDENTIFIER entries\npattern = r\'PRODUCT_BUNDLE_IDENTIFIER = "\' + re.escape(main_bundle_id) + r\'";\'\nmatches = list(re.finditer(pattern, content))\nprint(f"Found {len(matches)} instances of bundle ID {main_bundle_id}")\n\n# Step 2: Find the UnityFramework target UUID\n# Look for PBXNativeTarget sections that mention UnityFramework\nunity_framework_target_uuids = set()\nfor i, line in enumerate(lines):\n    if "UnityFramework" in line and "PBXNativeTarget" in "".join(lines[max(0, i-5):i+5]):\n        # Extract UUID from the line (format: UUID /* UnityFramework */ = {)\n        uuid_match = re.search(r\'([A-F0-9]{24})\', line)\n        if uuid_match:\n            unity_framework_target_uuids.add(uuid_match.group(1))\n            print(f"Found UnityFramework target UUID: {uuid_match.group(1)}")\n\n# Step 3: Find build configuration list UUIDs for UnityFramework target\nunity_framework_build_config_list_uuids = set()\nfor uuid in unity_framework_target_uuids:\n    # Find the buildConfigurationList reference for this target\n    pattern = rf\'{re.escape(uuid)}.*buildConfigurationList = ([A-F0-9]{{24}}) .*/\* Build configuration list\'\n    match = re.search(pattern, content)\n    if match:\n        unity_framework_build_config_list_uuids.add(match.group(1))\n        print(f"Found UnityFramework build config list UUID: {match.group(1)}")\n\n# Step 4: Find all build configuration UUIDs in the UnityFramework build config list\nunity_framework_build_config_uuids = set()\nfor config_list_uuid in unity_framework_build_config_list_uuids:\n    # Find buildConfigurations array for this list\n    pattern = rf\'{re.escape(config_list_uuid)}.*buildConfigurations = \(\s*((?:[A-F0-9]{{24}}\s*/\*[^*]+\*/\s*=\s*[A-F0-9]{{24}}\s*;?\s*)+)\'\n    match = re.search(pattern, content, re.DOTALL)\n    if match:\n        # Extract all UUIDs from the buildConfigurations array\n        uuids = re.findall(r\'([A-F0-9]{{24}})\', match.group(1))\n        unity_framework_build_config_uuids.update(uuids)\n        print(f"Found {len(uuids)} build configuration UUIDs for UnityFramework")\n\n# Step 5: Find buildSettings sections for UnityFramework build configurations\nupdated = False\nfor config_uuid in unity_framework_build_config_uuids:\n    # Find the buildSettings section for this configuration\n    # Format: config_uuid /* Debug or Release */ = { isa = XCBuildConfiguration; buildSettings = { ... PRODUCT_BUNDLE_IDENTIFIER ... }; };\n    pattern = rf\'({re.escape(config_uuid)}[^{{]*{{[^}}]*buildSettings = {{[^}}]*)(PRODUCT_BUNDLE_IDENTIFIER = "{re.escape(main_bundle_id)}";)([^}}]*}};)\'\n    match = re.search(pattern, content, re.DOTALL)\n    if match:\n        replacement = match.group(1) + f\'PRODUCT_BUNDLE_IDENTIFIER = "{framework_bundle_id}";\' + match.group(3)\n        content = content[:match.start()] + replacement + content[match.end():]\n        updated = True\n        print(f"Updated build configuration {config_uuid}")\n\n# Fallback: If we could not find target UUIDs, use a simpler approach\n# Look for PRODUCT_BUNDLE_IDENTIFIER that appears in sections containing "UnityFramework"\nif not updated and matches:\n    print("Fallback: Using context-based approach...")\n    for match in reversed(matches):\n        start = match.start()\n        # Look back 2000 chars for context\n        context_start = max(0, start - 2000)\n        context = content[context_start:start]\n        \n        # Check if this appears to be in a UnityFramework-related section\n        # Look for "UnityFramework" or framework-related keywords nearby\n        if "UnityFramework" in context or "FMWK" in context:\n            # Make sure it is not in the main app target section\n            # Main app is usually "Unity-iPhone" or the scheme name\n            main_app_keywords = ["Unity-iPhone", "PRODUCT_NAME = Unity-iPhone", "PRODUCT_NAME = StashDemo"]\n            is_main_app = any(keyword in context for keyword in main_app_keywords)\n            \n            if not is_main_app:\n                content = content[:match.start()] + f\'PRODUCT_BUNDLE_IDENTIFIER = "{framework_bundle_id}";\' + content[match.end():]\n                updated = True\n                print(f"Updated bundle ID at position {start} (fallback method)")\n\nif updated:\n    with open(project_file, "w") as f:\n        f.write(content)\n    print(f"Successfully updated UnityFramework bundle ID to: {framework_bundle_id}")\nelse:\n    print("WARNING: Could not update UnityFramework bundle ID in project file")\n    print("This will be fixed post-archive if needed")\n' > /tmp/fix_unity_bundle_id.py
-          
-          # Run the Python script
-          python3 /tmp/fix_unity_bundle_id.py Unity-iPhone.xcodeproj/project.pbxproj "$MAIN_BUNDLE_ID" "$UNITY_FRAMEWORK_BUNDLE_ID"
-          rm -f /tmp/fix_unity_bundle_id.py
-          
-          echo "UnityFramework bundle ID configuration complete"
+          # Note: UnityFramework bundle identifier will be fixed post-archive
+          # This is more reliable than trying to modify the Xcode project file
+          # The post-archive fix step will update the Info.plist and remove signatures
+          # so the export process can re-sign with the correct bundle ID
+          echo "UnityFramework bundle ID will be fixed post-archive if needed"
           
           # Force device-only builds by excluding simulator architectures
           echo "Configuring for device-only build..."
@@ -319,8 +310,8 @@ jobs:
           
           # If no IAP profile found, use the first available profile
           if [ -z "$PROFILE_PATH" ]; then
-            PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -1)
-            PROFILE_UUID=$(basename "$PROFILE_PATH" .mobileprovision)
+          PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -1)
+          PROFILE_UUID=$(basename "$PROFILE_PATH" .mobileprovision)
             echo "⚠️  Using profile without In-App Purchase: $PROFILE_UUID"
             echo "⚠️  WARNING: This may cause build failures if the app requires In-App Purchase"
           fi
@@ -377,32 +368,32 @@ jobs:
           APP_STORE_CONNECT_API_KEY_IS_KEY_CONTENT_BASE64: false
         run: |
           cd build/iOS/iOS/
-          
-          # Ensure keychain is unlocked and in search path
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
-          security list-keychains -s "$KEYCHAIN_NAME" ~/Library/Keychains/login.keychain-db /Library/Keychains/System.keychain
-          
+            
+            # Ensure keychain is unlocked and in search path
+            security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
+            security list-keychains -s "$KEYCHAIN_NAME" ~/Library/Keychains/login.keychain-db /Library/Keychains/System.keychain
+            
           # Build archive for device (not simulator)
           # Use generic iOS device destination to avoid simulator
           xcodebuild archive \
             -project Unity-iPhone.xcodeproj \
-            -scheme Unity-iPhone \
-            -configuration Release \
-            -sdk iphoneos \
+              -scheme Unity-iPhone \
+              -configuration Release \
+              -sdk iphoneos \
             -destination 'generic/platform=iOS' \
-            -archivePath Unity-iPhone.xcarchive \
-            -allowProvisioningUpdates \
-            -allowProvisioningDeviceRegistration \
-            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8 \
-            -authenticationKeyID ${{ secrets.APPSTORE_KEY_ID }} \
-            -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }} \
-            DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
-            PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
-            CODE_SIGN_STYLE="Automatic" \
-            CODE_SIGNING_ALLOWED="YES" \
-            CODE_SIGNING_REQUIRED="YES" \
+              -archivePath Unity-iPhone.xcarchive \
+              -allowProvisioningUpdates \
+              -allowProvisioningDeviceRegistration \
+              -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8 \
+              -authenticationKeyID ${{ secrets.APPSTORE_KEY_ID }} \
+              -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }} \
+              DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
+              PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
+              CODE_SIGN_STYLE="Automatic" \
+              CODE_SIGNING_ALLOWED="YES" \
+              CODE_SIGNING_REQUIRED="YES" \
             ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=NO \
-            OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_NAME" \
+              OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_NAME" \
             ONLY_ACTIVE_ARCH=NO \
             EXCLUDED_ARCHS[sdk=iphonesimulator*]="arm64"
           
@@ -470,8 +461,8 @@ jobs:
           APP_BUNDLE=$(find Unity-iPhone.xcarchive -name "*.app" -type d | head -1)
           if [ -z "$APP_BUNDLE" ]; then
             echo "ERROR: Could not find app bundle in archive"
-            exit 1
-          fi
+                exit 1
+              fi
           
           MAIN_BUNDLE_ID="com.stash.sdkdemo"
           UNITY_FRAMEWORK_BUNDLE_ID="${MAIN_BUNDLE_ID}.UnityFramework"
@@ -579,7 +570,7 @@ jobs:
             -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8 \
             -authenticationKeyID ${{ secrets.APPSTORE_KEY_ID }} \
             -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }}
-          
+      
           echo "IPA export completed"
           ls -la export/
       
@@ -689,7 +680,7 @@ jobs:
           echo ""
           echo "Looking for IPA files:"
           find build/iOS/iOS -name "*.ipa" -type f
-          
+      
           # Verify IPA exists
           if [ ! -f "build/iOS/iOS/export/StashDemo.ipa" ]; then
             echo "ERROR: IPA file not found!"
