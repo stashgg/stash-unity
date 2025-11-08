@@ -494,6 +494,103 @@ jobs:
           echo "IPA export completed"
           ls -la export/
       
+      # iOS: Diagnose bundle identifier collisions
+      - name: Diagnose bundle identifier collisions
+        if: inputs.platform == 'iOS'
+        run: |
+          cd build/iOS/iOS/export/
+          IPA_PATH="StashDemo.ipa"
+          
+          if [ ! -f "$IPA_PATH" ]; then
+            echo "ERROR: IPA file not found!"
+            exit 1
+          fi
+          
+          echo "=========================================="
+          echo "DIAGNOSING BUNDLE IDENTIFIER COLLISIONS"
+          echo "=========================================="
+          echo ""
+          
+          # Extract IPA to temporary directory
+          TEMP_DIR=$(mktemp -d)
+          echo "Extracting IPA to: $TEMP_DIR"
+          unzip -q "$IPA_PATH" -d "$TEMP_DIR/extracted"
+          
+          # Find the app bundle
+          APP_BUNDLE=$(find "$TEMP_DIR/extracted" -name "*.app" -type d | head -1)
+          if [ -z "$APP_BUNDLE" ]; then
+            echo "ERROR: Could not find app bundle in IPA"
+            exit 1
+          fi
+          
+          echo "App bundle found: $APP_BUNDLE"
+          echo ""
+          
+          # Get main app bundle ID
+          MAIN_BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw "$APP_BUNDLE/Info.plist" 2>/dev/null || echo "")
+          echo "📱 Main App Bundle ID: $MAIN_BUNDLE_ID"
+          echo ""
+          
+          # Find all Info.plist files in the app bundle
+          echo "Searching for all Info.plist files..."
+          echo "----------------------------------------"
+          COLLISIONS_FOUND=0
+          
+          find "$APP_BUNDLE" -name "Info.plist" -type f | while read plist; do
+            RELATIVE_PATH="${plist#$APP_BUNDLE/}"
+            BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw "$plist" 2>/dev/null || echo "")
+            
+            if [ -n "$BUNDLE_ID" ]; then
+              echo ""
+              echo "📍 Location: $RELATIVE_PATH"
+              echo "   Bundle ID: $BUNDLE_ID"
+              
+              if [ "$BUNDLE_ID" = "$MAIN_BUNDLE_ID" ]; then
+                echo "   ⚠️  COLLISION DETECTED - Same as main app!"
+                COLLISIONS_FOUND=1
+                
+                # Show more details about this file
+                echo "   Details:"
+                plutil -p "$plist" | grep -E "(CFBundleName|CFBundleExecutable|CFBundlePackageType)" | head -3 | sed 's/^/      /'
+              else
+                echo "   ✓ Unique bundle ID"
+              fi
+            else
+              echo ""
+              echo "📍 Location: $RELATIVE_PATH"
+              echo "   (No CFBundleIdentifier found)"
+            fi
+          done
+          
+          echo ""
+          echo "----------------------------------------"
+          echo "Summary of bundle structure:"
+          echo ""
+          echo "Frameworks:"
+          find "$APP_BUNDLE/Frameworks" -name "*.framework" -type d 2>/dev/null | while read fw; do
+            echo "  - $(basename "$fw")"
+          done
+          
+          echo ""
+          echo "Extensions:"
+          find "$APP_BUNDLE" -name "*.appex" -type d 2>/dev/null | while read ext; do
+            echo "  - $(basename "$ext")"
+          done
+          
+          echo ""
+          echo "PlugIns:"
+          find "$APP_BUNDLE/PlugIns" -name "*.appex" -type d 2>/dev/null | while read plugin; do
+            echo "  - $(basename "$plugin")"
+          done
+          
+          echo ""
+          echo "=========================================="
+          echo "Diagnostic complete. Check output above for collisions."
+          echo "=========================================="
+          
+          # Cleanup
+          rm -rf "$TEMP_DIR"
+      
       # iOS: Verify IPA
       - name: Verify IPA
         if: inputs.platform == 'iOS'
