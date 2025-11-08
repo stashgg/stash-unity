@@ -286,8 +286,8 @@ jobs:
           MAIN_BUNDLE_ID="com.stash.sdkdemo"
           UNITY_FRAMEWORK_BUNDLE_ID="${MAIN_BUNDLE_ID}.UnityFramework"
           
-          # Write Python script using printf to avoid YAML issues
-          printf 'import re\nimport sys\nproject_file = sys.argv[1]\nmain_bundle_id = sys.argv[2]\nframework_bundle_id = sys.argv[3]\nwith open(project_file, "r") as f:\n    content = f.read()\npattern = r"PRODUCT_BUNDLE_IDENTIFIER = \\"" + re.escape(main_bundle_id) + r"\\";"\nreplacement = "PRODUCT_BUNDLE_IDENTIFIER = \\"" + framework_bundle_id + "\\";"\nmatches = list(re.finditer(pattern, content))\nupdated = False\nfor match in reversed(matches):\n    start = match.start()\n    context_start = max(0, start - 1000)\n    context = content[context_start:start]\n    unity_iphone_pos = context.rfind("Unity-iPhone")\n    unity_framework_pos = context.rfind("UnityFramework")\n    game_assembly_pos = context.rfind("GameAssembly")\n    if unity_framework_pos != -1:\n        positions = [(unity_iphone_pos, "Unity-iPhone"), (unity_framework_pos, "UnityFramework"), (game_assembly_pos, "GameAssembly")]\n        valid_positions = [(pos, name) for pos, name in positions if pos != -1]\n        if valid_positions:\n            closest_pos, closest_name = max(valid_positions, key=lambda x: x[0])\n            if closest_name == "UnityFramework":\n                content = content[:match.start()] + replacement + content[match.end():]\n                updated = True\n                print("Updated UnityFramework bundle ID at position", start)\nif updated:\n    with open(project_file, "w") as f:\n        f.write(content)\n    print("Successfully updated UnityFramework bundle ID to:", framework_bundle_id)\nelse:\n    print("No UnityFramework bundle ID collisions found")\n    if framework_bundle_id in content:\n        print("Framework bundle ID is already unique:", framework_bundle_id)\n' > /tmp/fix_unity_bundle_id.py
+          # Write improved Python script that finds UnityFramework target build configurations
+          printf 'import re\nimport sys\nproject_file = sys.argv[1]\nmain_bundle_id = sys.argv[2]\nframework_bundle_id = sys.argv[3]\nwith open(project_file, "r") as f:\n    lines = f.readlines()\ncontent = "".join(lines)\n\n# Strategy: Find build configuration sections that belong to UnityFramework target\n# Xcode project structure: build configurations are associated with targets via PBXNativeTarget sections\n\n# Step 1: Find all PRODUCT_BUNDLE_IDENTIFIER entries\npattern = r\'PRODUCT_BUNDLE_IDENTIFIER = "\' + re.escape(main_bundle_id) + r\'";\'\nmatches = list(re.finditer(pattern, content))\nprint(f"Found {len(matches)} instances of bundle ID {main_bundle_id}")\n\n# Step 2: Find the UnityFramework target UUID\n# Look for PBXNativeTarget sections that mention UnityFramework\nunity_framework_target_uuids = set()\nfor i, line in enumerate(lines):\n    if "UnityFramework" in line and "PBXNativeTarget" in "".join(lines[max(0, i-5):i+5]):\n        # Extract UUID from the line (format: UUID /* UnityFramework */ = {)\n        uuid_match = re.search(r\'([A-F0-9]{24})\', line)\n        if uuid_match:\n            unity_framework_target_uuids.add(uuid_match.group(1))\n            print(f"Found UnityFramework target UUID: {uuid_match.group(1)}")\n\n# Step 3: Find build configuration list UUIDs for UnityFramework target\nunity_framework_build_config_list_uuids = set()\nfor uuid in unity_framework_target_uuids:\n    # Find the buildConfigurationList reference for this target\n    pattern = rf\'{re.escape(uuid)}.*buildConfigurationList = ([A-F0-9]{{24}}) .*/\* Build configuration list\'\n    match = re.search(pattern, content)\n    if match:\n        unity_framework_build_config_list_uuids.add(match.group(1))\n        print(f"Found UnityFramework build config list UUID: {match.group(1)}")\n\n# Step 4: Find all build configuration UUIDs in the UnityFramework build config list\nunity_framework_build_config_uuids = set()\nfor config_list_uuid in unity_framework_build_config_list_uuids:\n    # Find buildConfigurations array for this list\n    pattern = rf\'{re.escape(config_list_uuid)}.*buildConfigurations = \(\s*((?:[A-F0-9]{{24}}\s*/\*[^*]+\*/\s*=\s*[A-F0-9]{{24}}\s*;?\s*)+)\'\n    match = re.search(pattern, content, re.DOTALL)\n    if match:\n        # Extract all UUIDs from the buildConfigurations array\n        uuids = re.findall(r\'([A-F0-9]{{24}})\', match.group(1))\n        unity_framework_build_config_uuids.update(uuids)\n        print(f"Found {len(uuids)} build configuration UUIDs for UnityFramework")\n\n# Step 5: Find buildSettings sections for UnityFramework build configurations\nupdated = False\nfor config_uuid in unity_framework_build_config_uuids:\n    # Find the buildSettings section for this configuration\n    # Format: config_uuid /* Debug or Release */ = { isa = XCBuildConfiguration; buildSettings = { ... PRODUCT_BUNDLE_IDENTIFIER ... }; };\n    pattern = rf\'({re.escape(config_uuid)}[^{{]*{{[^}}]*buildSettings = {{[^}}]*)(PRODUCT_BUNDLE_IDENTIFIER = "{re.escape(main_bundle_id)}";)([^}}]*}};)\'\n    match = re.search(pattern, content, re.DOTALL)\n    if match:\n        replacement = match.group(1) + f\'PRODUCT_BUNDLE_IDENTIFIER = "{framework_bundle_id}";\' + match.group(3)\n        content = content[:match.start()] + replacement + content[match.end():]\n        updated = True\n        print(f"Updated build configuration {config_uuid}")\n\n# Fallback: If we could not find target UUIDs, use a simpler approach\n# Look for PRODUCT_BUNDLE_IDENTIFIER that appears in sections containing "UnityFramework"\nif not updated and matches:\n    print("Fallback: Using context-based approach...")\n    for match in reversed(matches):\n        start = match.start()\n        # Look back 2000 chars for context\n        context_start = max(0, start - 2000)\n        context = content[context_start:start]\n        \n        # Check if this appears to be in a UnityFramework-related section\n        # Look for "UnityFramework" or framework-related keywords nearby\n        if "UnityFramework" in context or "FMWK" in context:\n            # Make sure it is not in the main app target section\n            # Main app is usually "Unity-iPhone" or the scheme name\n            main_app_keywords = ["Unity-iPhone", "PRODUCT_NAME = Unity-iPhone", "PRODUCT_NAME = StashDemo"]\n            is_main_app = any(keyword in context for keyword in main_app_keywords)\n            \n            if not is_main_app:\n                content = content[:match.start()] + f\'PRODUCT_BUNDLE_IDENTIFIER = "{framework_bundle_id}";\' + content[match.end():]\n                updated = True\n                print(f"Updated bundle ID at position {start} (fallback method)")\n\nif updated:\n    with open(project_file, "w") as f:\n        f.write(content)\n    print(f"Successfully updated UnityFramework bundle ID to: {framework_bundle_id}")\nelse:\n    print("WARNING: Could not update UnityFramework bundle ID in project file")\n    print("This will be fixed post-archive if needed")\n' > /tmp/fix_unity_bundle_id.py
           
           # Run the Python script
           python3 /tmp/fix_unity_bundle_id.py Unity-iPhone.xcodeproj/project.pbxproj "$MAIN_BUNDLE_ID" "$UNITY_FRAMEWORK_BUNDLE_ID"
@@ -456,6 +456,74 @@ jobs:
             echo ""
             echo "Checking for simulator architectures (should be empty):"
             lipo -info "$ARCHIVE_BINARY" 2>&1 | grep -i simulator && echo "⚠️  WARNING: Simulator architectures found!" || echo "✅ No simulator architectures found"
+          fi
+      
+      # iOS: Fix UnityFramework bundle identifier in archive (post-archive fix)
+      - name: Fix UnityFramework bundle identifier in archive
+        if: inputs.platform == 'iOS'
+        run: |
+          cd build/iOS/iOS/
+          
+          echo "Fixing UnityFramework bundle identifier in archive..."
+          
+          # Find the app bundle in the archive
+          APP_BUNDLE=$(find Unity-iPhone.xcarchive -name "*.app" -type d | head -1)
+          if [ -z "$APP_BUNDLE" ]; then
+            echo "ERROR: Could not find app bundle in archive"
+            exit 1
+          fi
+          
+          MAIN_BUNDLE_ID="com.stash.sdkdemo"
+          UNITY_FRAMEWORK_BUNDLE_ID="${MAIN_BUNDLE_ID}.UnityFramework"
+          UNITY_FRAMEWORK_PLIST="$APP_BUNDLE/Frameworks/UnityFramework.framework/Info.plist"
+          
+          if [ ! -f "$UNITY_FRAMEWORK_PLIST" ]; then
+            echo "UnityFramework.framework/Info.plist not found, skipping fix"
+            exit 0
+          fi
+          
+          # Check current bundle ID
+          CURRENT_BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw "$UNITY_FRAMEWORK_PLIST" 2>/dev/null || echo "")
+          echo "UnityFramework current bundle ID: $CURRENT_BUNDLE_ID"
+          echo "Target bundle ID: $UNITY_FRAMEWORK_BUNDLE_ID"
+          
+          if [ "$CURRENT_BUNDLE_ID" = "$MAIN_BUNDLE_ID" ]; then
+            echo "⚠️  UnityFramework still has main app bundle ID. Fixing in archive..."
+            
+            # Update the bundle ID in Info.plist
+            plutil -replace CFBundleIdentifier -string "$UNITY_FRAMEWORK_BUNDLE_ID" "$UNITY_FRAMEWORK_PLIST"
+            echo "✅ Updated Info.plist bundle ID"
+            
+            # Remove code signatures so export will re-sign with correct bundle IDs
+            # Modifying Info.plist invalidates signatures, so we need to remove them
+            echo "Removing code signatures (export will re-sign automatically)..."
+            
+            # Remove _CodeSignature folders to invalidate signatures
+            # The export process will detect unsigned frameworks and re-sign them
+            if [ -d "$APP_BUNDLE/Frameworks/UnityFramework.framework/_CodeSignature" ]; then
+              rm -rf "$APP_BUNDLE/Frameworks/UnityFramework.framework/_CodeSignature"
+              echo "✅ Removed UnityFramework.framework code signature"
+            fi
+            
+            if [ -d "$APP_BUNDLE/_CodeSignature" ]; then
+              rm -rf "$APP_BUNDLE/_CodeSignature"
+              echo "✅ Removed main app code signature"
+            fi
+            
+            echo "✅ Signatures removed - export process will re-sign with correct bundle IDs"
+            
+            # Verify the bundle ID was updated
+            VERIFY_BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw "$UNITY_FRAMEWORK_PLIST" 2>/dev/null || echo "")
+            if [ "$VERIFY_BUNDLE_ID" = "$UNITY_FRAMEWORK_BUNDLE_ID" ]; then
+              echo "✅ Verified: UnityFramework bundle ID is now: $VERIFY_BUNDLE_ID"
+              echo "ℹ️  Code signatures removed - export process will re-sign with correct bundle IDs"
+            else
+              echo "⚠️  WARNING: Bundle ID update may have failed. Current: $VERIFY_BUNDLE_ID"
+            fi
+          elif [ "$CURRENT_BUNDLE_ID" = "$UNITY_FRAMEWORK_BUNDLE_ID" ]; then
+            echo "✅ UnityFramework already has correct bundle ID: $UNITY_FRAMEWORK_BUNDLE_ID"
+          else
+            echo "ℹ️  UnityFramework bundle ID is: $CURRENT_BUNDLE_ID (different from expected)"
           fi
       
       # iOS: Create export options
