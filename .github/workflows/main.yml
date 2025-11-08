@@ -263,38 +263,6 @@ jobs:
           sed -i '' 's/ONLY_ACTIVE_ARCH = YES/ONLY_ACTIVE_ARCH = NO/g' Unity-iPhone.xcodeproj/project.pbxproj
           
           echo "Build configuration updated for device-only build"
-          
-          # First, try to find a profile with In-App Purchase
-          for profile in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
-            if security cms -D -i "$profile" | grep -q "com.apple.InAppPurchase"; then
-              PROFILE_PATH="$profile"
-              PROFILE_UUID=$(basename "$profile" .mobileprovision)
-              echo "✅ Found profile with In-App Purchase: $PROFILE_UUID"
-              break
-            fi
-          done
-          
-          # If no IAP profile found, use the first available profile
-          if [ -z "$PROFILE_PATH" ]; then
-          PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -1)
-          PROFILE_UUID=$(basename "$PROFILE_PATH" .mobileprovision)
-            echo "⚠️  Using profile without In-App Purchase: $PROFILE_UUID"
-            echo "⚠️  WARNING: This may cause build failures if the app requires In-App Purchase"
-          fi
-          
-          echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
-          echo "Using provisioning profile: $PROFILE_UUID from $PROFILE_PATH"
-          
-          # Extract the actual UUID from the profile (not just filename)
-          ACTUAL_UUID=$(security cms -D -i "$PROFILE_PATH" | plutil -extract UUID raw - 2>/dev/null || echo "$PROFILE_UUID")
-          echo "ACTUAL_PROFILE_UUID=$ACTUAL_UUID" >> $GITHUB_ENV
-          echo "Actual profile UUID: $ACTUAL_UUID"
-          
-          # Manual signing will be configured via xcodebuild build settings
-          echo "Manual signing will be configured via xcodebuild parameters:"
-          echo "  CODE_SIGN_STYLE: Manual"
-          echo "  CODE_SIGN_IDENTITY: Apple Distribution"
-          echo "  PROVISIONING_PROFILE_SPECIFIER: $ACTUAL_UUID"
       
       # iOS: Verify build configuration
       - name: Verify build configuration
@@ -440,7 +408,6 @@ jobs:
               CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
               CODE_SIGN_STYLE="Manual" \
               CODE_SIGN_IDENTITY="Apple Distribution" \
-              PROVISIONING_PROFILE_SPECIFIER="$ACTUAL_PROFILE_UUID" \
               CODE_SIGNING_ALLOWED="YES" \
               CODE_SIGNING_REQUIRED="YES" \
             ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=NO \
@@ -656,7 +623,7 @@ jobs:
               <key>provisioningProfiles</key>
               <dict>
                   <key>com.stash.sdkdemo</key>
-                  <string>$ACTUAL_PROFILE_UUID</string>
+                  <string>${{ secrets.IOS_PROFILE_UUID }}</string>
               </dict>
               <key>uploadBitcode</key>
               <false/>
