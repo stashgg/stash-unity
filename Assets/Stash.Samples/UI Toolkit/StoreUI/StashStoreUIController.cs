@@ -43,8 +43,13 @@ namespace Stash.Samples
     // Settings popup elements
     private VisualElement settingsPopup;
     private Toggle safariWebViewToggle;
+    private Toggle orientationLockToggle;
+    private Label deviceIdLabel;
     private Button settingsButton;
     private Button settingsPopupCloseButton;
+    
+    // Orientation lock state (default: locked to portrait)
+    private bool isOrientationLocked = true;
     
     // Delegate for purchase callbacks
     public delegate void PurchaseCompletedDelegate(string itemId, bool success);
@@ -58,6 +63,12 @@ namespace Stash.Samples
     {
         // Get the root of the UI document
         root = storeUIDocument.rootVisualElement;
+        
+        // Load orientation lock preference (default: true - locked to portrait)
+        isOrientationLocked = PlayerPrefs.GetInt("OrientationLocked", 1) == 1;
+        
+        // Apply orientation setting
+        ApplyOrientationSetting();
         
         // Initialize IAP Manager for Apple Pay functionality
         InitializeIAP();
@@ -92,6 +103,8 @@ namespace Stash.Samples
         // Get settings popup elements
         settingsPopup = root.Q<VisualElement>("settings-popup");
         safariWebViewToggle = root.Q<Toggle>("safari-webview-toggle");
+        orientationLockToggle = root.Q<Toggle>("orientation-lock-toggle");
+        deviceIdLabel = root.Q<Label>("device-id-label");
         settingsPopupCloseButton = root.Q<Button>("settings-popup-close-button");
         
         if (settingsPopup != null)
@@ -107,6 +120,27 @@ namespace Stash.Samples
         else
         {
             Debug.LogWarning("[StoreUI] Could not find safari-webview-toggle");
+        }
+        
+        if (orientationLockToggle != null)
+        {
+            orientationLockToggle.value = isOrientationLocked; // Set initial value from PlayerPrefs
+            orientationLockToggle.RegisterValueChangedCallback(OnOrientationToggleChanged);
+        }
+        else
+        {
+            Debug.LogWarning("[StoreUI] Could not find orientation-lock-toggle");
+        }
+        
+        if (deviceIdLabel != null)
+        {
+            // Set device ID
+            string deviceId = SystemInfo.deviceUniqueIdentifier;
+            deviceIdLabel.text = deviceId;
+        }
+        else
+        {
+            Debug.LogWarning("[StoreUI] Could not find device-id-label");
         }
         
         if (settingsPopupCloseButton != null)
@@ -148,6 +182,42 @@ namespace Stash.Samples
     {
         useSafariWebView = evt.newValue;
         Debug.Log($"[StoreUI] Safari WebView mode changed to: {useSafariWebView}");
+    }
+    
+    private void OnOrientationToggleChanged(ChangeEvent<bool> evt)
+    {
+        isOrientationLocked = evt.newValue;
+        
+        // Save preference to PlayerPrefs
+        PlayerPrefs.SetInt("OrientationLocked", isOrientationLocked ? 1 : 0);
+        PlayerPrefs.Save();
+        
+        // Apply the orientation setting
+        ApplyOrientationSetting();
+        
+        Debug.Log($"[StoreUI] Orientation lock changed to: {(isOrientationLocked ? "Locked (Portrait)" : "Unlocked (All Orientations)")}");
+    }
+    
+    private void ApplyOrientationSetting()
+    {
+        if (isOrientationLocked)
+        {
+            // Lock to portrait only
+            Screen.orientation = ScreenOrientation.Portrait;
+            Screen.autorotateToPortrait = true;
+            Screen.autorotateToPortraitUpsideDown = false;
+            Screen.autorotateToLandscapeLeft = false;
+            Screen.autorotateToLandscapeRight = false;
+        }
+        else
+        {
+            // Allow all orientations
+            Screen.orientation = ScreenOrientation.AutoRotation;
+            Screen.autorotateToPortrait = true;
+            Screen.autorotateToPortraitUpsideDown = true;
+            Screen.autorotateToLandscapeLeft = true;
+            Screen.autorotateToLandscapeRight = true;
+        }
     }
     
     private void InitializeIAP()
@@ -283,7 +353,7 @@ namespace Stash.Samples
     {
         // Setup channel selection button
         Button channelSelectionButton = root.Q<Button>("open-channel-selection-button");
-        
+
         if (channelSelectionButton != null)
         {
             channelSelectionButton.clicked += OpenPaymentChannelSelection;
@@ -294,24 +364,45 @@ namespace Stash.Samples
             Debug.LogWarning("[StoreUI] Could not find open-channel-selection-button in UI");
         }
     }
-
+    
     /// <summary>
     /// Opens the payment channel selection popup.
     /// This displays a centered popup for users to choose their preferred payment method.
     /// </summary>
     public void OpenPaymentChannelSelection()
-    {
-        // Payment channel selection popup opening
-        
+                {
         try
         {
+            // Register opt-in response callback
+            StashPayCard.Instance.OnOptinResponse += OnChannelSelectionOptinResponse;
+            
             // Open the payment channel selection URL in a centered popup
-            StashPayCard.Instance.OpenPopup("https://store.howlingwoods.shop/pay/channel-selection");
-            Debug.Log("[StoreUI] Payment channel selection popup opened");
+            StashPayCard.Instance.OpenPopup("https://store.howlingwoods.shop/pay/channel-selection",
+                dismissCallback: () => {
+                    // Unregister callback when popup closes
+                    StashPayCard.Instance.OnOptinResponse -= OnChannelSelectionOptinResponse;
+                });
         }
         catch (System.Exception ex)
         {
             Debug.LogError($"[StoreUI] Exception opening payment channel selection: {ex.Message}\nStackTrace: {ex.StackTrace}");
+        }
+    }
+
+    private void OnChannelSelectionOptinResponse(string optinType)
+        {
+        Debug.Log($"[StoreUI] User selected payment method: {optinType}");
+        
+        // Handle the opt-in response
+        if (optinType == "STASH_PAY")
+            {
+            Debug.Log("[StoreUI] User chose Stash Pay");
+            // Handle Stash Pay selection
+        }
+        else if (optinType == "NATIVE_IAP")
+        {
+            Debug.Log("[StoreUI] User chose Native IAP");
+            // Handle Native IAP selection
         }
     }
 
@@ -497,12 +588,9 @@ namespace Stash.Samples
             currentItemIndex = itemIndex;
             
             // Open the checkout URL in the StashPayCard
-            // Only override ForceWebBasedCheckout if user has explicitly enabled it
+            // Apply user's preference for Web View mode
             // This respects remote Flagsmith configuration while allowing local override
-            if (useSafariWebView)
-            {
-                StashPayCard.Instance.ForceWebBasedCheckout = true;
-            }
+            StashPayCard.Instance.ForceWebBasedCheckout = useSafariWebView;
             
             StashPayCard.Instance.OpenURL(url, () => OnBrowserClosed(), () => OnPaymentSuccessDetected(), () => OnPaymentFailureDetected());
         }
@@ -904,17 +992,8 @@ namespace Stash.Samples
             // Get the current item details
             StoreItem currentItem = storeItems[currentItemIndex];
             
-            // Show enhanced success popup with confetti
-            ShowSuccessPopup(
-                currentItem.name,
-                currency,
-                currentItem.pricePerItem,
-                "0", // No tax info available at this point
-                DateTimeOffset.Now.ToUnixTimeMilliseconds().ToString()
-            );
-            
-            // Also show confetti effect
-            ShowSuccessPopupWithConfetti("Payment successful!", "Your purchase has been completed successfully!");
+            // Show success popup with confetti
+            ShowSuccessPopupWithConfetti("Payment Successful!", $"You successfully purchased {currentItem.name}!");
             
             // Re-enable UI after successful payment
             if (buyButtons != null && currentItemIndex >= 0 && currentItemIndex < buyButtons.Count)
@@ -1002,7 +1081,7 @@ namespace Stash.Samples
     {
         try
         {
-            // Create a simple success popup without confetti to avoid particle system issues
+            // Create success popup
             var successPopup = new GameObject("SuccessPopup");
             var popupScript = successPopup.AddComponent<SuccessPopup>();
             
@@ -1014,7 +1093,10 @@ namespace Stash.Samples
             
             popupScript.Show(title, message);
             
-            Debug.Log($"[Stash] Success popup shown: {title} - {message}");
+            // Create confetti effect
+            CreateConfettiEffect();
+            
+            Debug.Log($"[Stash] Success popup shown with confetti: {title} - {message}");
         }
         catch (Exception ex)
         {
@@ -1022,9 +1104,60 @@ namespace Stash.Samples
         }
     }
     
-
+    /// <summary>
+    /// Creates a simple confetti effect using UI Toolkit VisualElements
+    /// </summary>
+    private void CreateConfettiEffect()
+    {
+        try
+        {
+            // Find the root visual element from UI Document
+            VisualElement rootElement = null;
+            if (storeUIDocument != null && storeUIDocument.rootVisualElement != null)
+            {
+                rootElement = storeUIDocument.rootVisualElement;
+            }
+            else
+            {
+                var uiDoc = FindObjectOfType<UIDocument>();
+                if (uiDoc != null && uiDoc.rootVisualElement != null)
+                {
+                    rootElement = uiDoc.rootVisualElement;
+                }
+            }
+            
+            if (rootElement == null)
+            {
+                Debug.LogError("[Stash] Could not find root visual element for confetti");
+                return;
+            }
+            
+            // Create confetti container that covers the entire screen
+            VisualElement confettiContainer = new VisualElement();
+            confettiContainer.name = "ConfettiContainer";
+            confettiContainer.style.position = Position.Absolute;
+            confettiContainer.style.top = 0;
+            confettiContainer.style.left = 0;
+            confettiContainer.style.width = Length.Percent(100);
+            confettiContainer.style.height = Length.Percent(100);
+            confettiContainer.pickingMode = PickingMode.Ignore;
+            rootElement.Add(confettiContainer);
+            
+            // Create a simple confetti animator component
+            GameObject confettiAnimatorGO = new GameObject("ConfettiAnimator");
+            ConfettiAnimator animator = confettiAnimatorGO.AddComponent<ConfettiAnimator>();
+            animator.Initialize(confettiContainer, rootElement);
+            
+            // Auto-destroy after animation completes (account for delays)
+            Destroy(confettiAnimatorGO, 6f);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[Stash] Error creating confetti effect: {ex.Message}");
+        }
+    }
     
-    private void OnDestroy()
+        private void OnDestroy()
     {
         Debug.Log($"[StoreUI] OnDestroy called for StashStoreUIController instance: {GetInstanceID()}");
         // Unsubscribe from payment success events
@@ -1301,6 +1434,168 @@ public class EnhancedSuccessPopup : SuccessPopup
         if (confettiSystem != null)
         {
             Destroy(confettiSystem.gameObject);
+        }
+    }
+}
+
+/// <summary>
+/// Simple confetti animator that draws confetti directly on UI Toolkit
+/// </summary>
+public class ConfettiAnimator : MonoBehaviour
+{
+    private VisualElement container;
+    private VisualElement rootElement;
+    private List<ConfettiPiece> pieces = new List<ConfettiPiece>();
+    private float elapsed = 0f;
+    
+    private class ConfettiPiece
+    {
+        public VisualElement element;
+        public float startX;
+        public float startY;
+        public float driftX;
+        public float rotationSpeed;
+        public float duration;
+        public float elapsed;
+        public float startDelay;
+    }
+    
+    public void Initialize(VisualElement confettiContainer, VisualElement root)
+    {
+        container = confettiContainer;
+        rootElement = root;
+        
+        // Create confetti pieces
+        Color[] colors = new Color[] 
+        { 
+            Color.red, Color.blue, Color.green, Color.yellow, 
+            Color.magenta, Color.cyan, new Color(1f, 0.5f, 0f) // Orange
+        };
+        
+        int confettiCount = 250;
+        for (int i = 0; i < confettiCount; i++)
+        {
+            VisualElement piece = new VisualElement();
+            float size = UnityEngine.Random.Range(4f, 10f);
+            piece.style.width = size;
+            piece.style.height = size;
+            piece.style.backgroundColor = colors[UnityEngine.Random.Range(0, colors.Length)];
+            piece.style.position = Position.Absolute;
+            
+            float startX = UnityEngine.Random.Range(0f, 100f);
+            piece.style.left = Length.Percent(startX);
+            piece.style.top = 0f;
+            
+            float rotation = UnityEngine.Random.Range(0f, 360f);
+            piece.style.rotate = new Rotate(rotation);
+            
+            // Initially hide the piece until it starts falling
+            piece.style.opacity = 0f;
+            
+            container.Add(piece);
+            
+            ConfettiPiece confettiPiece = new ConfettiPiece
+            {
+                element = piece,
+                startX = startX,
+                startY = 0f,
+                driftX = UnityEngine.Random.Range(-120f, 120f),
+                rotationSpeed = UnityEngine.Random.Range(180f, 540f),
+                duration = UnityEngine.Random.Range(2.5f, 4f),
+                elapsed = 0f,
+                startDelay = UnityEngine.Random.Range(0f, 1.5f) // Random delay up to 1.5 seconds
+            };
+            
+            pieces.Add(confettiPiece);
+        }
+    }
+    
+    private void Update()
+    {
+        if (container == null || container.parent == null)
+        {
+            Destroy(gameObject);
+            return;
+        }
+        
+        elapsed += Time.deltaTime;
+        
+        // Update all confetti pieces
+        for (int i = pieces.Count - 1; i >= 0; i--)
+        {
+            ConfettiPiece piece = pieces[i];
+            
+            if (piece.element == null || piece.element.parent == null)
+            {
+                pieces.RemoveAt(i);
+                continue;
+            }
+            
+            // Check if this piece should start falling yet
+            if (elapsed < piece.startDelay)
+            {
+                // Still waiting to start, keep it hidden
+                continue;
+            }
+            
+            // Show the piece when it starts
+            if (piece.elapsed == 0f)
+            {
+                piece.element.style.opacity = 1f;
+            }
+            
+            // Calculate elapsed time since the piece started (not since creation)
+            float animationTime = elapsed - piece.startDelay;
+            piece.elapsed = animationTime;
+            float t = piece.elapsed / piece.duration;
+            
+            if (t >= 1f)
+            {
+                // Remove finished pieces
+                if (piece.element.parent != null)
+                {
+                    piece.element.RemoveFromHierarchy();
+                }
+                pieces.RemoveAt(i);
+                continue;
+            }
+            
+            // Calculate position
+            float easedT = 1f - Mathf.Pow(1f - t, 2f); // Ease out
+            float currentX = piece.startX + (piece.driftX * easedT);
+            float currentY = easedT * 100f; // Fall from top to bottom
+            
+            piece.element.style.left = Length.Percent(currentX);
+            piece.element.style.top = Length.Percent(currentY);
+            
+            // Update rotation
+            float currentRotation = piece.elapsed * piece.rotationSpeed;
+            piece.element.style.rotate = new Rotate(currentRotation);
+            
+            // Fade out near the end
+            if (t > 0.7f)
+            {
+                float fadeT = (t - 0.7f) / 0.3f;
+                piece.element.style.opacity = 1f - fadeT;
+            }
+        }
+        
+        // Clean up if all pieces are done (account for max delay + duration)
+        if (pieces.Count == 0 && elapsed > 6f)
+        {
+            if (container != null && container.parent != null)
+            {
+                container.RemoveFromHierarchy();
+            }
+            Destroy(gameObject);
+        }
+    }
+    
+    private void OnDestroy()
+    {
+        if (container != null && container.parent != null)
+        {
+            container.RemoveFromHierarchy();
         }
     }
 }

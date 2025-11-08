@@ -1348,13 +1348,28 @@
     padding: 12px 16px;
     background-color: rgba(0, 0, 0, 0.2);
     border-radius: 8px;
+    min-width: 0; /* Allow row to shrink below content size */
 }
 
 .settings-option-label {
     color: rgb(255, 255, 255);
     font-size: 14px;
     font-weight: 600;
-    flex-grow: 1;
+    flex-shrink: 0; /* Don't shrink the label */
+    margin-right: 12px; /* Add spacing between label and value */
+}
+
+.settings-option-value {
+    color: rgb(200, 200, 200);
+    font-size: 12px;
+    font-weight: 400;
+    flex-shrink: 1; /* Allow to shrink */
+    flex-grow: 0; /* Don't grow */
+    min-width: 0; /* Allow to shrink below content size */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: right; /* Right-align for better appearance */
 }
 
 .settings-option-toggle {

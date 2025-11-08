@@ -51,6 +51,7 @@ namespace StashPopup
         public event Action OnSafariViewDismissed;
         public event Action OnPaymentSuccess;
         public event Action OnPaymentFailure;
+        public event Action<string> OnOptinResponse;
         #endregion
 
         #region Private Fields
@@ -101,11 +102,18 @@ namespace StashPopup
         {
             OnSafariViewDismissed?.Invoke();
         }
+        
+        // Android callback: opt-in response
+        public void OnAndroidOptinResponse(string optinType)
+        {
+            OnOptinResponse?.Invoke(optinType);
+        }
 
 #elif UNITY_IOS && !UNITY_EDITOR
         private delegate void SafariViewDismissedCallback();
         private delegate void PaymentSuccessCallback();
         private delegate void PaymentFailureCallback();
+        private delegate void OptinResponseCallback(string optinType);
         
         [DllImport("__Internal")]
         private static extern void _StashPayCardOpenURLInSafariVC(string url);
@@ -121,6 +129,9 @@ namespace StashPopup
         
         [DllImport("__Internal")]
         private static extern void _StashPayCardSetPaymentFailureCallback(PaymentFailureCallback callback);
+        
+        [DllImport("__Internal")]
+        private static extern void _StashPayCardSetOptinResponseCallback(OptinResponseCallback callback);
         
         [DllImport("__Internal")]
         private static extern void _StashPayCardSetCardConfiguration(float heightRatio, float verticalPosition);
@@ -189,7 +200,7 @@ namespace StashPopup
             {
                 originalForceSafari = ForceWebBasedCheckout;
                 if (originalForceSafari)
-                {
+            {
                     ForceWebBasedCheckout = false;
                 }
             }
@@ -226,11 +237,12 @@ namespace StashPopup
 #elif UNITY_IOS && !UNITY_EDITOR
             if (!isPopup)
             {
-                ApplyCardConfiguration();
+            ApplyCardConfiguration();
             }
             _StashPayCardSetSafariViewDismissedCallback(OnIOSSafariViewDismissed);
             _StashPayCardSetPaymentSuccessCallback(OnIOSPaymentSuccess);
             _StashPayCardSetPaymentFailureCallback(OnIOSPaymentFailure);
+            _StashPayCardSetOptinResponseCallback(OnIOSOptinResponse);
             
             if (isPopup)
             {
@@ -238,7 +250,7 @@ namespace StashPopup
             }
             else
             {
-                _StashPayCardOpenURLInSafariVC(url);
+            _StashPayCardOpenURLInSafariVC(url);
             }
 #else
             Application.OpenURL(url);
@@ -428,13 +440,20 @@ namespace StashPopup
         private static void OnIOSPaymentSuccess()
         {
             Instance?.OnPaymentSuccess?.Invoke();
-        }
+            }
 
         // iOS callback: payment failed
         [MonoPInvokeCallback(typeof(PaymentFailureCallback))]
         private static void OnIOSPaymentFailure()
         {
             Instance?.OnPaymentFailure?.Invoke();
+            }
+        
+        // iOS callback: opt-in response
+        [MonoPInvokeCallback(typeof(OptinResponseCallback))]
+        private static void OnIOSOptinResponse(string optinType)
+        {
+            Instance?.OnOptinResponse?.Invoke(optinType);
         }
 #endif
 

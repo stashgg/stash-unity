@@ -78,7 +78,7 @@
                             </ui:VisualElement>
                         </ui:VisualElement>
                     </ui:VisualElement>
-                    <ui:Button name="open-channel-selection-button" text="Open Channel Selection" class="channel-selection-button" style="color: rgb(255, 255, 255); background-color: rgba(255, 255, 255, 0.15); border-left-color: rgba(219, 219, 219, 0.4); border-right-color: rgba(219, 219, 219, 0.4); border-top-color: rgba(219, 219, 219, 0.4); border-bottom-color: rgba(219, 219, 219, 0.4);" />
+                    <ui:Button name="open-channel-selection-button" text="Open Purchase Channel Selection" class="channel-selection-button" style="color: rgb(255, 255, 255); background-color: rgba(255, 255, 255, 0.15); border-left-color: rgba(219, 219, 219, 0.4); border-right-color: rgba(219, 219, 219, 0.4); border-top-color: rgba(219, 219, 219, 0.4); border-bottom-color: rgba(219, 219, 219, 0.4);" />
                     <ui:VisualElement name="items-container" class="items-container" />
                 </ui:ScrollView>
             </ui:VisualElement>
@@ -112,6 +112,14 @@
                     <ui:VisualElement class="settings-option-row">
                         <ui:Label text="Use Web View" class="settings-option-label" />
                         <ui:Toggle name="safari-webview-toggle" class="settings-option-toggle" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="settings-option-row">
+                        <ui:Label text="Lock Portrait Orientation" class="settings-option-label" />
+                        <ui:Toggle name="orientation-lock-toggle" class="settings-option-toggle" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="settings-option-row">
+                        <ui:Label text="Device ID" class="settings-option-label" />
+                        <ui:Label name="device-id-label" text="Loading..." class="settings-option-value" />
                     </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>

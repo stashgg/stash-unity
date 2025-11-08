@@ -61,7 +61,7 @@ namespace Stash.Samples
         private readonly Dictionary<string, string> tabDescriptions = new()
         {
             { "user", "Stash works with any authentication provider out of the box. Login or create account here to try webshop account linking and Stash Pay seamless identification during purchase." },
-            { "store", "Try Stash Pay with native system dialog, our seamless D2C alternative to in-app purchases. Check out anonymously, or log in in the Account tab to use your game account." },
+            { "store", "Try Stash Pay with native system dialog, our seamless D2C alternative to in-app purchases with purchase channel selection. Check out anonymously, or log in in the Account tab to use your game account." },
             { "webshop", "Open pre-authenticated Stash Webshop with a press of a button right from the game client. Log in in the Account tab to use your custom account."}
         };
         
