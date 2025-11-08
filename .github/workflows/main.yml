@@ -23,6 +23,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
           lfs: true
       
       # Cache Unity Library folder
@@ -373,6 +374,42 @@ jobs:
             security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
             security list-keychains -s "$KEYCHAIN_NAME" ~/Library/Keychains/login.keychain-db /Library/Keychains/System.keychain
             
+          # Get version information from git
+          echo "Getting version information from git..."
+          cd ${{ github.workspace }}
+          
+          # Fetch all tags to ensure we have the latest
+          git fetch --tags --force 2>/dev/null || echo "Note: Could not fetch tags (may not have remote access)"
+          
+          # Get current commit hash (short form)
+          COMMIT_HASH=$(git rev-parse --short HEAD)
+          echo "Current commit hash: $COMMIT_HASH"
+          
+          # Get latest tag (version)
+          # Try to get the most recent tag, sorted by version
+          LATEST_TAG=$(git tag --sort=-version:refname 2>/dev/null | head -1 || echo "")
+          
+          if [ -z "$LATEST_TAG" ]; then
+            # Fallback: try git describe which might work even if tags aren't sorted
+            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          fi
+          
+          if [ -z "$LATEST_TAG" ]; then
+            echo "⚠️  WARNING: No git tags found, using default version 1.0.0"
+            LATEST_TAG="1.0.0"
+          else
+            # Remove 'v' prefix if present (e.g., "v1.0.0" -> "1.0.0")
+            LATEST_TAG=$(echo "$LATEST_TAG" | sed 's/^v//')
+            echo "Latest tag (version): $LATEST_TAG"
+          fi
+          
+          # Return to iOS build directory
+          cd build/iOS/iOS/
+          
+          echo "Setting iOS app version:"
+          echo "  MARKETING_VERSION (version): $LATEST_TAG"
+          echo "  CURRENT_PROJECT_VERSION (build): $COMMIT_HASH"
+            
           # Build archive for device (not simulator)
           # Use generic iOS device destination to avoid simulator
           xcodebuild archive \
@@ -389,6 +426,8 @@ jobs:
               -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }} \
               DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
               PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
+              MARKETING_VERSION="$LATEST_TAG" \
+              CURRENT_PROJECT_VERSION="$COMMIT_HASH" \
               CODE_SIGN_STYLE="Automatic" \
               CODE_SIGNING_ALLOWED="YES" \
               CODE_SIGNING_REQUIRED="YES" \
