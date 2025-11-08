@@ -268,6 +268,24 @@ jobs:
           
           echo "Code signing configured for automatic signing"
           
+          # Fix Unity framework issue: Set "Embedded Content Contains Swift Code" to NO
+          # This prevents the "Invalid Bundle contains disallowed file 'Frameworks'" error
+          # See: https://stackoverflow.com/questions/25880134/invalid-bundle-contains-disallowed-file-frameworks
+          echo "Configuring Embedded Content Contains Swift Code to NO (Unity fix)..."
+          # Set ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES to NO for all targets
+          sed -i '' 's/ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES/ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO/g' Unity-iPhone.xcodeproj/project.pbxproj
+          sed -i '' 's/ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = "$(inherited)"/ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO/g' Unity-iPhone.xcodeproj/project.pbxproj
+          # Also set EMBEDDED_CONTENT_CONTAINS_SWIFT to NO if present
+          sed -i '' 's/EMBEDDED_CONTENT_CONTAINS_SWIFT = YES/EMBEDDED_CONTENT_CONTAINS_SWIFT = NO/g' Unity-iPhone.xcodeproj/project.pbxproj
+          # Ensure it's set to NO if not already set
+          if ! grep -q "ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES" Unity-iPhone.xcodeproj/project.pbxproj; then
+            # Add it to build settings sections
+            sed -i '' '/buildSettings = {/a\
+\				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
+' Unity-iPhone.xcodeproj/project.pbxproj
+          fi
+          echo "Embedded Content Contains Swift Code configured to NO"
+          
           # Force device-only builds by excluding simulator architectures
           echo "Configuring for device-only build..."
           # Set ONLY_ACTIVE_ARCH to NO for Release builds
@@ -374,12 +392,43 @@ jobs:
             CODE_SIGN_STYLE="Automatic" \
             CODE_SIGNING_ALLOWED="YES" \
             CODE_SIGNING_REQUIRED="YES" \
+            ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=NO \
             OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_NAME" \
             ONLY_ACTIVE_ARCH=NO \
             EXCLUDED_ARCHS[sdk=iphonesimulator*]="arm64"
           
           echo "Archive created successfully"
           ls -la Unity-iPhone.xcarchive/
+          
+          # Check for bundle identifier collisions
+          echo ""
+          echo "Checking for bundle identifier collisions..."
+          APP_BUNDLE=$(find Unity-iPhone.xcarchive -name "*.app" -type d | head -1)
+          if [ -n "$APP_BUNDLE" ]; then
+            echo "Checking bundle identifiers in: $APP_BUNDLE"
+            # Check main app bundle identifier
+            MAIN_BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw "$APP_BUNDLE/Info.plist" 2>/dev/null || echo "")
+            echo "Main app bundle ID: $MAIN_BUNDLE_ID"
+            
+            # Check for duplicate bundle IDs in embedded frameworks/extensions
+            echo "Checking embedded frameworks and extensions..."
+            find "$APP_BUNDLE" -name "*.framework" -o -name "*.appex" | while read item; do
+              if [ -f "$item/Info.plist" ]; then
+                BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw "$item/Info.plist" 2>/dev/null || echo "")
+                if [ -n "$BUNDLE_ID" ]; then
+                  echo "  Found: $BUNDLE_ID in $(basename "$item")"
+                fi
+              fi
+            done
+            
+            # Check for nested Frameworks folder (the Unity issue)
+            if [ -d "$APP_BUNDLE/Frameworks/UnityFramework.framework/Frameworks" ]; then
+              echo "⚠️  WARNING: Found nested Frameworks folder in UnityFramework.framework"
+              echo "   This should be fixed by ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=NO"
+            else
+              echo "✅ No nested Frameworks folder found"
+            fi
+          fi
           
           # Verify archive is built for device, not simulator
           echo ""
