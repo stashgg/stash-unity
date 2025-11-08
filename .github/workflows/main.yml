@@ -252,22 +252,22 @@ jobs:
           sed -i '' "s/DEVELOPMENT_TEAM = \"[^\"]*\"/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\"/g" Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' "s/DEVELOPMENT_TEAM = ;/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\";/g" Unity-iPhone.xcodeproj/project.pbxproj
           
-          # Configure code signing - use automatic signing (handles capabilities better)
-          echo "Configuring code signing..."
+          # Configure code signing - use automatic signing but force distribution certificates
+          echo "Configuring code signing for App Store distribution..."
           # Use automatic signing which should handle In-App Purchase capability automatically
-          # With automatic signing, Xcode will automatically select the correct certificate
           sed -i '' 's/CODE_SIGN_STYLE = Manual/CODE_SIGN_STYLE = Automatic/g' Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' 's/CODE_SIGN_STYLE = ;/CODE_SIGN_STYLE = Automatic;/g' Unity-iPhone.xcodeproj/project.pbxproj
           
-          # Remove any manual CODE_SIGN_IDENTITY settings - let automatic signing choose
-          # For App Store profiles, it will automatically use "Apple Distribution"
-          # Remove the entire CODE_SIGN_IDENTITY line for automatic signing
-          sed -i '' '/CODE_SIGN_IDENTITY = "Apple Distribution"/d' Unity-iPhone.xcodeproj/project.pbxproj
+          # For App Store builds, we must use "Apple Distribution" certificates (not development)
+          # Remove any development certificate references to prevent Xcode from trying to create them
           sed -i '' '/CODE_SIGN_IDENTITY = "Apple Development"/d' Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' '/CODE_SIGN_IDENTITY = "iPhone Developer"/d' Unity-iPhone.xcodeproj/project.pbxproj
-          sed -i '' '/CODE_SIGN_IDENTITY = "iPhone Distribution"/d' Unity-iPhone.xcodeproj/project.pbxproj
           
-          echo "Code signing configured for automatic signing"
+          # Note: We'll force "Apple Distribution" via xcodebuild command-line arguments
+          # This ensures all targets (including GameAssembly) use distribution certificates
+          # and prevents Xcode from trying to create development certificates
+          
+          echo "Code signing configured: Automatic signing (will use Apple Distribution via build settings)"
           
           # Fix Unity framework issue: Set "Embedded Content Contains Swift Code" to NO
           # This prevents the "Invalid Bundle contains disallowed file 'Frameworks'" error
@@ -410,9 +410,21 @@ jobs:
           echo "Setting iOS app version:"
           echo "  MARKETING_VERSION (version): $LATEST_TAG"
           echo "  CURRENT_PROJECT_VERSION (build): $BUILD_NUMBER"
+          
+          # Verify distribution certificates are available
+          echo ""
+          echo "Verifying available signing certificates:"
+          security find-identity -v -p codesigning "$KEYCHAIN_NAME" | grep -i "distribution\|apple distribution" || {
+            echo "⚠️  WARNING: No distribution certificate found in keychain"
+            echo "Available certificates:"
+            security find-identity -v -p codesigning "$KEYCHAIN_NAME"
+          }
             
           # Build archive for device (not simulator)
           # Use generic iOS device destination to avoid simulator
+          # Note: Removed -allowProvisioningDeviceRegistration to prevent creation of development certificates
+          # For App Store builds, we only need distribution certificates (already in keychain)
+          # IMPORTANT: Do NOT use -allowProvisioningDeviceRegistration as it tries to create development certs
           xcodebuild archive \
             -project Unity-iPhone.xcodeproj \
               -scheme Unity-iPhone \
@@ -421,7 +433,6 @@ jobs:
             -destination 'generic/platform=iOS' \
               -archivePath Unity-iPhone.xcarchive \
               -allowProvisioningUpdates \
-              -allowProvisioningDeviceRegistration \
               -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8 \
               -authenticationKeyID ${{ secrets.APPSTORE_KEY_ID }} \
               -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }} \
@@ -432,6 +443,9 @@ jobs:
               CODE_SIGN_STYLE="Automatic" \
               CODE_SIGNING_ALLOWED="YES" \
               CODE_SIGNING_REQUIRED="YES" \
+              "CODE_SIGN_IDENTITY[sdk=iphoneos*]=Apple Distribution" \
+              "CODE_SIGN_IDENTITY=Apple Distribution" \
+              "DEVELOPMENT_TEAM[sdk=iphoneos*]=${{ secrets.IOS_TEAM_ID }}" \
             ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=NO \
               OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_NAME" \
             ONLY_ACTIVE_ARCH=NO \
