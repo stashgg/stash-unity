@@ -203,8 +203,83 @@ jobs:
           androidKeyaliasName: ${{ inputs.platform == 'Android' && secrets.ANDROID_KEYALIAS_NAME || '' }}
           androidKeyaliasPass: ${{ inputs.platform == 'Android' && secrets.ANDROID_KEYALIAS_PASS || '' }}
       
-      # iOS: Build Xcode project and create IPA
-      - name: Build iOS Xcode project
+      # iOS: Prepare Xcode project
+      - name: Prepare Xcode project
+        if: inputs.platform == 'iOS'
+        run: |
+          cd build/iOS/iOS/
+          
+          # Create App Store Connect API key directory
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "${{ secrets.APPSTORE_PRIVATE_KEY }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8
+          chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8
+          
+          # Ensure our keychain is active and unlocked
+          security default-keychain -s "$KEYCHAIN_NAME"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
+          
+          # Update project.pbxproj to set team ID for all targets
+          echo "Setting development team ID..."
+          sed -i '' "s/DevelopmentTeam = \"[^\"]*\"/DevelopmentTeam = \"${{ secrets.IOS_TEAM_ID }}\"/g" Unity-iPhone.xcodeproj/project.pbxproj
+          sed -i '' "s/DevelopmentTeam = ;/DevelopmentTeam = \"${{ secrets.IOS_TEAM_ID }}\";/g" Unity-iPhone.xcodeproj/project.pbxproj
+          sed -i '' "s/DEVELOPMENT_TEAM = \"[^\"]*\"/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\"/g" Unity-iPhone.xcodeproj/project.pbxproj
+          sed -i '' "s/DEVELOPMENT_TEAM = ;/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\";/g" Unity-iPhone.xcodeproj/project.pbxproj
+          
+          # Configure for manual signing with Distribution certificate
+          echo "Configuring code signing..."
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' Unity-iPhone.xcodeproj/project.pbxproj
+          sed -i '' 's/CODE_SIGN_IDENTITY = "[^"]*"/CODE_SIGN_IDENTITY = "Apple Distribution"/g' Unity-iPhone.xcodeproj/project.pbxproj
+          sed -i '' 's/CODE_SIGN_IDENTITY = ;/CODE_SIGN_IDENTITY = "Apple Distribution";/g' Unity-iPhone.xcodeproj/project.pbxproj
+          
+          # Force device-only builds by excluding simulator architectures
+          echo "Configuring for device-only build..."
+          # Set ONLY_ACTIVE_ARCH to NO for Release builds
+          sed -i '' 's/ONLY_ACTIVE_ARCH = YES/ONLY_ACTIVE_ARCH = NO/g' Unity-iPhone.xcodeproj/project.pbxproj
+          
+          echo "Build configuration updated for device-only build"
+          
+          # Get the provisioning profile UUID for manual signing
+          PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -1)
+          PROFILE_UUID=$(basename "$PROFILE_PATH" .mobileprovision)
+          echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
+          echo "Using provisioning profile: $PROFILE_UUID from $PROFILE_PATH"
+      
+      # iOS: Verify build configuration
+      - name: Verify build configuration
+        if: inputs.platform == 'iOS'
+        run: |
+          cd build/iOS/iOS/
+          
+          echo "Available SDKs:"
+          xcodebuild -showsdks | grep -i ios
+          
+          echo ""
+          echo "Available destinations:"
+          xcodebuild -project Unity-iPhone.xcodeproj -scheme Unity-iPhone -showdestinations | grep -i ios
+          
+          echo ""
+          echo "Verifying we're building for device (iphoneos), not simulator..."
+          SDK_VERSION=$(xcodebuild -version -sdk iphoneos Path 2>/dev/null | head -1)
+          if [ -z "$SDK_VERSION" ]; then
+            echo "ERROR: iphoneos SDK not found!"
+            exit 1
+          fi
+          echo "✅ Using device SDK: $SDK_VERSION"
+      
+      # iOS: Clean Xcode project
+      - name: Clean Xcode project
+        if: inputs.platform == 'iOS'
+        run: |
+          cd build/iOS/iOS/
+          xcodebuild clean \
+            -project Unity-iPhone.xcodeproj \
+            -scheme Unity-iPhone \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS'
+      
+      # iOS: Build archive for device
+      - name: Build iOS archive
         if: inputs.platform == 'iOS'
         env:
           APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
@@ -214,97 +289,56 @@ jobs:
         run: |
           cd build/iOS/iOS/
           
-          # Clean any existing build artifacts
-          xcodebuild clean -project Unity-iPhone.xcodeproj -scheme Unity-iPhone
-          
-          # Create App Store Connect API key for Xcode
-          mkdir -p ~/.appstoreconnect/private_keys
-          echo "${{ secrets.APPSTORE_PRIVATE_KEY }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8
-          
-          # Ensure our keychain is active and unlocked
-          security default-keychain -s "$KEYCHAIN_NAME"
+          # Ensure keychain is unlocked and in search path
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
+          security list-keychains -s "$KEYCHAIN_NAME" ~/Library/Keychains/login.keychain-db /Library/Keychains/System.keychain
           
-          # Update project.pbxproj to set team ID for all targets
-          sed -i '' "s/DevelopmentTeam = \"[^\"]*\"/DevelopmentTeam = \"${{ secrets.IOS_TEAM_ID }}\"/g" Unity-iPhone.xcodeproj/project.pbxproj
-          sed -i '' "s/DevelopmentTeam = ;/DevelopmentTeam = \"${{ secrets.IOS_TEAM_ID }}\";/g" Unity-iPhone.xcodeproj/project.pbxproj
-          sed -i '' "s/DEVELOPMENT_TEAM = \"[^\"]*\"/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\"/g" Unity-iPhone.xcodeproj/project.pbxproj
-          sed -i '' "s/DEVELOPMENT_TEAM = ;/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\";/g" Unity-iPhone.xcodeproj/project.pbxproj
+          # Build archive for device (not simulator)
+          # Use generic iOS device destination to avoid simulator
+          xcodebuild archive \
+            -project Unity-iPhone.xcodeproj \
+            -scheme Unity-iPhone \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath Unity-iPhone.xcarchive \
+            -allowProvisioningUpdates \
+            -allowProvisioningDeviceRegistration \
+            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8 \
+            -authenticationKeyID ${{ secrets.APPSTORE_KEY_ID }} \
+            -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }} \
+            DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
+            PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
+            CODE_SIGN_STYLE="Manual" \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            CODE_SIGNING_ALLOWED="YES" \
+            CODE_SIGNING_REQUIRED="YES" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_NAME" \
+            ONLY_ACTIVE_ARCH=NO \
+            EXCLUDED_ARCHS[sdk=iphonesimulator*]="arm64"
           
-          # Configure for manual signing with Distribution certificate
-          sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' Unity-iPhone.xcodeproj/project.pbxproj
-          sed -i '' 's/CODE_SIGN_IDENTITY = "[^"]*"/CODE_SIGN_IDENTITY = "Apple Distribution"/g' Unity-iPhone.xcodeproj/project.pbxproj
-          sed -i '' 's/CODE_SIGN_IDENTITY = ;/CODE_SIGN_IDENTITY = "Apple Distribution";/g' Unity-iPhone.xcodeproj/project.pbxproj
+          echo "Archive created successfully"
+          ls -la Unity-iPhone.xcarchive/
           
-          # Get the provisioning profile UUID for manual signing
-          PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -1)
-          PROFILE_UUID=$(basename "$PROFILE_PATH" .mobileprovision)
-          echo "Using provisioning profile: $PROFILE_UUID from $PROFILE_PATH"
+          # Verify archive is built for device, not simulator
+          echo ""
+          echo "Verifying archive architecture..."
+          ARCHIVE_BINARY=$(find Unity-iPhone.xcarchive -name "UnityFramework" -type f | head -1)
+          if [ -n "$ARCHIVE_BINARY" ]; then
+            echo "Checking binary architectures:"
+            file "$ARCHIVE_BINARY"
+            lipo -info "$ARCHIVE_BINARY" || echo "lipo info:"
+            echo ""
+            echo "Checking for simulator architectures (should be empty):"
+            lipo -info "$ARCHIVE_BINARY" 2>&1 | grep -i simulator && echo "⚠️  WARNING: Simulator architectures found!" || echo "✅ No simulator architectures found"
+          fi
+      
+      # iOS: Create export options
+      - name: Create export options plist
+        if: inputs.platform == 'iOS'
+        run: |
+          cd build/iOS/iOS/
           
-          # Build with retry logic
-          for attempt in 1 2 3; do
-            echo "Build attempt $attempt..."
-            
-            # Ensure keychain is unlocked and in search path
-            security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
-            security list-keychains -s "$KEYCHAIN_NAME" ~/Library/Keychains/login.keychain-db /Library/Keychains/System.keychain
-            
-            if xcodebuild -project Unity-iPhone.xcodeproj \
-              -scheme Unity-iPhone \
-              -configuration Release \
-              -sdk iphoneos \
-              -archivePath Unity-iPhone.xcarchive \
-              -allowProvisioningUpdates \
-              -allowProvisioningDeviceRegistration \
-              -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8 \
-              -authenticationKeyID ${{ secrets.APPSTORE_KEY_ID }} \
-              -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }} \
-              DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
-              PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
-              CODE_SIGN_STYLE="Automatic" \
-              CODE_SIGN_IDENTITY="Apple Distribution" \
-              CODE_SIGNING_ALLOWED="YES" \
-              CODE_SIGNING_REQUIRED="YES" \
-              OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_NAME" \
-              archive; then
-              echo "Build succeeded on attempt $attempt"
-              break
-            else
-              if [ $attempt -eq 3 ]; then
-                echo "Build failed after 3 attempts"
-                echo "Final diagnostic information:"
-                echo "Available certificates in build keychain:"
-                security find-identity -v -p codesigning "$KEYCHAIN_NAME"
-                echo "Available certificates in all keychains:"
-                security find-identity -v -p codesigning
-                echo "Keychain search list:"
-                security list-keychains
-                echo "Provisioning profiles:"
-                ls -la ~/Library/MobileDevice/Provisioning\ Profiles/
-                exit 1
-              fi
-              echo "Build failed on attempt $attempt, retrying..."
-              
-              # On retry, clean up any certificate conflicts more aggressively
-              if [ $attempt -eq 1 ]; then
-                echo "Cleaning Xcode derived data..."
-                rm -rf ~/Library/Developer/Xcode/DerivedData/* 2>/dev/null || true
-              elif [ $attempt -eq 2 ]; then
-                echo "Attempting to resolve certificate conflicts..."
-                # Force Xcode to revoke and recreate certificates by clearing more state
-                rm -rf ~/Library/Developer/Xcode/DerivedData/* 2>/dev/null || true
-                rm -rf ~/Library/Caches/com.apple.dt.Xcode* 2>/dev/null || true
-                
-                # Re-unlock and re-add keychain
-                security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
-                security list-keychains -s "$KEYCHAIN_NAME" ~/Library/Keychains/login.keychain-db /Library/Keychains/System.keychain
-              fi
-              
-              sleep 15
-            fi
-          done
-          
-          # Create export options plist for manual signing
           cat > exportOptions.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -321,7 +355,7 @@ jobs:
               <key>provisioningProfiles</key>
               <dict>
                   <key>com.stash.sdkdemo</key>
-                  <string>$PROFILE_UUID</string>
+                  <string>${{ env.PROFILE_UUID }}</string>
               </dict>
               <key>uploadBitcode</key>
               <false/>
@@ -333,6 +367,23 @@ jobs:
           </plist>
           EOF
           
+          echo "Export options created:"
+          cat exportOptions.plist
+      
+      # iOS: Export IPA
+      - name: Export IPA
+        if: inputs.platform == 'iOS'
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APPSTORE_PRIVATE_KEY }}
+          APP_STORE_CONNECT_API_KEY_IS_KEY_CONTENT_BASE64: false
+        run: |
+          cd build/iOS/iOS/
+          
+          # Ensure keychain is unlocked
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
+          
           # Export IPA
           xcodebuild -exportArchive \
             -archivePath Unity-iPhone.xcarchive \
@@ -342,9 +393,12 @@ jobs:
             -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8 \
             -authenticationKeyID ${{ secrets.APPSTORE_KEY_ID }} \
             -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }}
+          
+          echo "IPA export completed"
+          ls -la export/
       
-      # iOS: List export contents for debugging
-      - name: List iOS export contents
+      # iOS: Verify IPA
+      - name: Verify IPA
         if: inputs.platform == 'iOS'
         run: |
           echo "Contents of build/iOS/iOS/export:"
@@ -352,8 +406,17 @@ jobs:
           echo ""
           echo "Looking for IPA files:"
           find build/iOS/iOS -name "*.ipa" -type f
+          
+          # Verify IPA exists
+          if [ ! -f "build/iOS/iOS/export/StashDemo.ipa" ]; then
+            echo "ERROR: IPA file not found!"
+            exit 1
+          fi
+          
+          echo "✅ IPA file found: build/iOS/iOS/export/StashDemo.ipa"
+          du -h build/iOS/iOS/export/StashDemo.ipa
       
-      # iOS: Upload to TestFlight
+      # iOS: Upload to TestFlight using Apple's recommended action
       - name: Upload to TestFlight
         if: inputs.platform == 'iOS'
         uses: apple-actions/upload-testflight-build@v1
