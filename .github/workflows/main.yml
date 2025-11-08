@@ -381,9 +381,10 @@ jobs:
           # Fetch all tags to ensure we have the latest
           git fetch --tags --force 2>/dev/null || echo "Note: Could not fetch tags (may not have remote access)"
           
-          # Get current commit hash (short form)
-          COMMIT_HASH=$(git rev-parse --short HEAD)
-          echo "Current commit hash: $COMMIT_HASH"
+          # Generate build number from timestamp (YYYYMMDDHHMM format)
+          # Using UTC to avoid timezone issues
+          BUILD_NUMBER=$(date -u +"%Y%m%d%H%M")
+          echo "Build number (timestamp UTC): $BUILD_NUMBER"
           
           # Get latest tag (version)
           # Try to get the most recent tag, sorted by version
@@ -408,7 +409,7 @@ jobs:
           
           echo "Setting iOS app version:"
           echo "  MARKETING_VERSION (version): $LATEST_TAG"
-          echo "  CURRENT_PROJECT_VERSION (build): $COMMIT_HASH"
+          echo "  CURRENT_PROJECT_VERSION (build): $BUILD_NUMBER"
             
           # Build archive for device (not simulator)
           # Use generic iOS device destination to avoid simulator
@@ -427,7 +428,7 @@ jobs:
               DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
               PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
               MARKETING_VERSION="$LATEST_TAG" \
-              CURRENT_PROJECT_VERSION="$COMMIT_HASH" \
+              CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
               CODE_SIGN_STYLE="Automatic" \
               CODE_SIGNING_ALLOWED="YES" \
               CODE_SIGNING_REQUIRED="YES" \
