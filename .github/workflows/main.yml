@@ -279,10 +279,8 @@ jobs:
           sed -i '' 's/EMBEDDED_CONTENT_CONTAINS_SWIFT = YES/EMBEDDED_CONTENT_CONTAINS_SWIFT = NO/g' Unity-iPhone.xcodeproj/project.pbxproj
           # Ensure it's set to NO if not already set
           if ! grep -q "ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES" Unity-iPhone.xcodeproj/project.pbxproj; then
-            # Add it to build settings sections
-            sed -i '' '/buildSettings = {/a\
-\				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
-' Unity-iPhone.xcodeproj/project.pbxproj
+            # Add it to build settings sections using printf to avoid YAML parsing issues
+            sed -i '' "s/buildSettings = {/buildSettings = {$(printf '\n\t\t\t')ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;/g" Unity-iPhone.xcodeproj/project.pbxproj
           fi
           echo "Embedded Content Contains Swift Code configured to NO"
           
