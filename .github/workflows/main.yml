@@ -298,32 +298,14 @@ jobs:
             -sdk iphoneos \
             -destination 'generic/platform=iOS'
       
-      # iOS: Build archive for device
-      - name: Build iOS archive
+      # iOS: Get version from git tag
+      - name: Get version from git tag
         if: inputs.platform == 'iOS'
-        env:
-          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
-          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
-          APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APPSTORE_PRIVATE_KEY }}
-          APP_STORE_CONNECT_API_KEY_IS_KEY_CONTENT_BASE64: false
         run: |
-          cd build/iOS/iOS/
-            
-            # Ensure keychain is unlocked and in search path
-            security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
-            security list-keychains -s "$KEYCHAIN_NAME" ~/Library/Keychains/login.keychain-db /Library/Keychains/System.keychain
-            
-          # Get version information from git
           echo "Getting version information from git..."
-          cd ${{ github.workspace }}
           
           # Fetch all tags to ensure we have the latest
           git fetch --tags --force 2>/dev/null || echo "Note: Could not fetch tags (may not have remote access)"
-          
-          # Generate build number from timestamp (YYYYMMDDHHMM format)
-          # Using UTC to avoid timezone issues
-          BUILD_NUMBER=$(date -u +"%Y%m%d%H%M")
-          echo "Build number (timestamp UTC): $BUILD_NUMBER"
           
           # Get latest tag (version)
           # Try to get the most recent tag, sorted by version
@@ -343,54 +325,60 @@ jobs:
             echo "Latest tag (version): $LATEST_TAG"
           fi
           
-          # Return to iOS build directory
+          # Store as environment variable for later steps
+          echo "MARKETING_VERSION=$LATEST_TAG" >> $GITHUB_ENV
+          echo "✅ MARKETING_VERSION set to: $LATEST_TAG"
+      
+      # iOS: Generate build number
+      - name: Generate build number
+        if: inputs.platform == 'iOS'
+        run: |
+          # Generate build number from timestamp (YYYYMMDDHHMM format)
+          # Using UTC to avoid timezone issues
+          BUILD_NUMBER=$(date -u +"%Y%m%d%H%M")
+          echo "Build number (timestamp UTC): $BUILD_NUMBER"
+          
+          # Store as environment variable for later steps
+          echo "CURRENT_PROJECT_VERSION=$BUILD_NUMBER" >> $GITHUB_ENV
+          echo "✅ CURRENT_PROJECT_VERSION set to: $BUILD_NUMBER"
+      
+      # iOS: Set version in Xcode project
+      - name: Set version in Xcode project
+        if: inputs.platform == 'iOS'
+        run: |
           cd build/iOS/iOS/
           
+          echo "Setting version in Xcode project:"
+          echo "  MARKETING_VERSION: $MARKETING_VERSION"
+          echo "  CURRENT_PROJECT_VERSION: $CURRENT_PROJECT_VERSION"
+          
+          # Update MARKETING_VERSION (handles both quoted and unquoted values)
+          sed -i '' "s/MARKETING_VERSION = [^;]*;/MARKETING_VERSION = \"$MARKETING_VERSION\";/g" Unity-iPhone.xcodeproj/project.pbxproj
+          
+          # Update CURRENT_PROJECT_VERSION (handles both quoted and unquoted values)
+          sed -i '' "s/CURRENT_PROJECT_VERSION = [^;]*;/CURRENT_PROJECT_VERSION = \"$CURRENT_PROJECT_VERSION\";/g" Unity-iPhone.xcodeproj/project.pbxproj
+          
+          echo "✅ Version set in Xcode project"
+      
+      # iOS: Build archive for device
+      - name: Build & verify iOS archive
+        if: inputs.platform == 'iOS'
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APPSTORE_PRIVATE_KEY }}
+          APP_STORE_CONNECT_API_KEY_IS_KEY_CONTENT_BASE64: false
+        run: |
+          cd build/iOS/iOS/
+          
+          # Ensure keychain is unlocked and in search path
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
+          security list-keychains -s "$KEYCHAIN_NAME" ~/Library/Keychains/login.keychain-db /Library/Keychains/System.keychain
+          
           echo "Setting iOS app version:"
-          echo "  MARKETING_VERSION (version): $LATEST_TAG"
-          echo "  CURRENT_PROJECT_VERSION (build): $BUILD_NUMBER"
+          echo "  MARKETING_VERSION (version): $MARKETING_VERSION"
+          echo "  CURRENT_PROJECT_VERSION (build): $CURRENT_PROJECT_VERSION"
           
-          # Verify distribution certificates are available
-          echo ""
-          echo "Verifying available signing certificates:"
-          security find-identity -v -p codesigning "$KEYCHAIN_NAME" | grep -i "distribution\|apple distribution" || {
-            echo "⚠️  WARNING: No distribution certificate found in keychain"
-            echo "Available certificates:"
-            security find-identity -v -p codesigning "$KEYCHAIN_NAME"
-          }
-          
-          # Verify App Store provisioning profiles are available and match our bundle ID
-          echo ""
-          echo "Verifying App Store provisioning profiles:"
-          EXPECTED_BUNDLE_ID="com.stash.sdkdemo"
-          APP_STORE_PROFILES_FOUND=0
-          
-          for profile in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
-            PROFILE_DEVICES=$(security cms -D -i "$profile" 2>/dev/null | plutil -extract ProvisionedDevices raw - 2>/dev/null || echo "")
-            PROFILE_BUNDLE_ID=$(security cms -D -i "$profile" 2>/dev/null | plutil -extract Entitlements.application-identifier raw - 2>/dev/null | sed 's/.*\.//' || echo "")
-            PROFILE_NAME=$(security cms -D -i "$profile" 2>/dev/null | plutil -extract Name raw - 2>/dev/null || echo "")
-            
-            if [ -z "$PROFILE_DEVICES" ]; then
-              # No ProvisionedDevices means it's an App Store profile
-              if [ "$PROFILE_BUNDLE_ID" = "$EXPECTED_BUNDLE_ID" ]; then
-                echo "✅ Found matching App Store profile: $PROFILE_NAME ($(basename "$profile"))"
-                APP_STORE_PROFILES_FOUND=$((APP_STORE_PROFILES_FOUND + 1))
-              else
-                echo "ℹ️  Found App Store profile (different bundle ID): $PROFILE_NAME (bundle: $PROFILE_BUNDLE_ID)"
-              fi
-            fi
-          done
-          
-          if [ "$APP_STORE_PROFILES_FOUND" -eq 0 ]; then
-            echo "⚠️  WARNING: No App Store provisioning profile found for bundle ID: $EXPECTED_BUNDLE_ID"
-            echo "Xcode may try to use development signing instead"
-          fi
-          
-          # List all provisioning profiles for debugging
-          echo ""
-          echo "All provisioning profiles:"
-          ls -la ~/Library/MobileDevice/Provisioning\ Profiles/ 2>/dev/null || echo "No profiles directory found"
-            
           # Build archive for device (not simulator) using manual signing
           # Use generic iOS device destination to avoid simulator
           # Manual signing requires explicit CODE_SIGN_IDENTITY and PROVISIONING_PROFILE_SPECIFIER
@@ -404,8 +392,8 @@ jobs:
               -archivePath Unity-iPhone.xcarchive \
               DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
               PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
-              MARKETING_VERSION="$LATEST_TAG" \
-              CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+              MARKETING_VERSION="$MARKETING_VERSION" \
+              CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION" \
               CODE_SIGN_STYLE="Manual" \
               CODE_SIGN_IDENTITY="Apple Distribution" \
               CODE_SIGNING_ALLOWED="YES" \
