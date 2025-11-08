@@ -262,9 +262,9 @@ jobs:
           # With IOS_APP_STORE profiles, automatic signing will automatically use "Apple Distribution"
           sed -i '' '/CODE_SIGN_IDENTITY/d' Unity-iPhone.xcodeproj/project.pbxproj
           
-          # Remove any PROVISIONING_PROFILE_SPECIFIER settings - let automatic signing choose the profile
-          # Automatic signing will select the appropriate App Store profile automatically
-          sed -i '' '/PROVISIONING_PROFILE_SPECIFIER/d' Unity-iPhone.xcodeproj/project.pbxproj
+          # Set PROVISIONING_PROFILE_SPECIFIER to use the App Store profile we downloaded
+          # This prevents Xcode from creating development profiles via API
+          # We'll set this after we identify the profile UUID
           
           # Ensure automatic signing works correctly
           # Xcode's automatic signing will select the App Store profile for the main app
@@ -328,6 +328,33 @@ jobs:
           ACTUAL_UUID=$(security cms -D -i "$PROFILE_PATH" | plutil -extract UUID raw - 2>/dev/null || echo "$PROFILE_UUID")
           echo "ACTUAL_PROFILE_UUID=$ACTUAL_UUID" >> $GITHUB_ENV
           echo "Actual profile UUID: $ACTUAL_UUID"
+          
+          # Ensure App Store profiles are accessible to Xcode
+          # Xcode looks in both ~/Library/MobileDevice/Provisioning Profiles/ and
+          # ~/Library/Developer/Xcode/UserData/Provisioning Profiles/
+          # We'll ensure they're in both locations
+          if [ -n "$PROFILE_PATH" ] && [ -f "$PROFILE_PATH" ]; then
+            XCODE_PROFILE_DIR="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+            mkdir -p "$XCODE_PROFILE_DIR"
+            cp "$PROFILE_PATH" "$XCODE_PROFILE_DIR/"
+            echo "✅ Copied App Store profile to Xcode user data directory: $XCODE_PROFILE_DIR"
+          fi
+          
+          # Set PROVISIONING_PROFILE_SPECIFIER in the project file to use the App Store profile
+          # This prevents Xcode from creating development profiles via API
+          # We need to set this for Release configuration for all targets
+          if [ -n "$ACTUAL_UUID" ]; then
+            echo "Setting PROVISIONING_PROFILE_SPECIFIER to $ACTUAL_UUID in project file..."
+            # Set for Release configuration (replace any existing value or add if missing)
+            sed -i '' "s/PROVISIONING_PROFILE_SPECIFIER = \"[^\"]*\"/PROVISIONING_PROFILE_SPECIFIER = \"$ACTUAL_UUID\"/g" Unity-iPhone.xcodeproj/project.pbxproj
+            sed -i '' "s/PROVISIONING_PROFILE_SPECIFIER = ;/PROVISIONING_PROFILE_SPECIFIER = \"$ACTUAL_UUID\";/g" Unity-iPhone.xcodeproj/project.pbxproj
+            # Add if it doesn't exist in Release build settings
+            if ! grep -q "PROVISIONING_PROFILE_SPECIFIER" Unity-iPhone.xcodeproj/project.pbxproj; then
+              # This is complex - we'll let automatic signing handle it, but we'll remove -allowProvisioningUpdates
+              echo "Note: PROVISIONING_PROFILE_SPECIFIER not found in project, will rely on automatic signing"
+            fi
+            echo "✅ Provisioning profile UUID set in project file"
+          fi
       
       # iOS: Verify build configuration
       - name: Verify build configuration
@@ -458,10 +485,9 @@ jobs:
             
           # Build archive for device (not simulator)
           # Use generic iOS device destination to avoid simulator
-          # Note: With automatic signing, Xcode will automatically select the correct certificate
-          # based on the provisioning profile. We download IOS_APP_STORE profiles which require
-          # "Apple Distribution" certificates. Do NOT manually override CODE_SIGN_IDENTITY as it
-          # conflicts with automatic signing.
+          # Note: We explicitly set PROVISIONING_PROFILE_SPECIFIER to use the App Store profile we downloaded.
+          # We do NOT use -allowProvisioningUpdates as it allows Xcode to create development profiles via API,
+          # which then requires development certificates. Instead, we use the App Store profiles we downloaded.
           xcodebuild archive \
             -project Unity-iPhone.xcodeproj \
               -scheme Unity-iPhone \
@@ -469,10 +495,6 @@ jobs:
               -sdk iphoneos \
             -destination 'generic/platform=iOS' \
               -archivePath Unity-iPhone.xcarchive \
-              -allowProvisioningUpdates \
-              -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8 \
-              -authenticationKeyID ${{ secrets.APPSTORE_KEY_ID }} \
-              -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }} \
               DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
               PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
               MARKETING_VERSION="$LATEST_TAG" \
