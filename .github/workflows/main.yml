@@ -252,26 +252,14 @@ jobs:
           sed -i '' "s/DEVELOPMENT_TEAM = \"[^\"]*\"/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\"/g" Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' "s/DEVELOPMENT_TEAM = ;/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\";/g" Unity-iPhone.xcodeproj/project.pbxproj
           
-          # Configure code signing - use automatic signing for App Store distribution
-          echo "Configuring code signing for App Store distribution..."
-          # Use automatic signing which should handle In-App Purchase capability automatically
-          sed -i '' 's/CODE_SIGN_STYLE = Manual/CODE_SIGN_STYLE = Automatic/g' Unity-iPhone.xcodeproj/project.pbxproj
-          sed -i '' 's/CODE_SIGN_STYLE = ;/CODE_SIGN_STYLE = Automatic;/g' Unity-iPhone.xcodeproj/project.pbxproj
+          # Configure code signing - use manual signing for App Store distribution
+          echo "Configuring code signing for App Store distribution (manual signing)..."
           
-          # Remove ALL manual CODE_SIGN_IDENTITY settings - let automatic signing choose based on provisioning profile
-          # With IOS_APP_STORE profiles, automatic signing will automatically use "Apple Distribution"
-          sed -i '' '/CODE_SIGN_IDENTITY/d' Unity-iPhone.xcodeproj/project.pbxproj
+          # Ensure manual signing is set for all targets
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' Unity-iPhone.xcodeproj/project.pbxproj
+          sed -i '' 's/CODE_SIGN_STYLE = ;/CODE_SIGN_STYLE = Manual;/g' Unity-iPhone.xcodeproj/project.pbxproj
           
-          # Remove any PROVISIONING_PROFILE_SPECIFIER settings - let automatic signing choose the profile
-          # Automatic signing will select the appropriate App Store profile automatically
-          sed -i '' '/PROVISIONING_PROFILE_SPECIFIER/d' Unity-iPhone.xcodeproj/project.pbxproj
-          
-          # Ensure automatic signing works correctly
-          # Xcode's automatic signing will select the App Store profile for the main app
-          # Library targets (like GameAssembly) should be signed as part of the main app
-          # or will use ad-hoc signing automatically if they don't need distribution profiles
-          
-          echo "Code signing configured: Automatic signing (Xcode will select profiles based on target type)"
+          echo "Code signing configured: Manual signing"
           
           # Fix Unity framework issue: Set "Embedded Content Contains Swift Code" to NO
           # This prevents the "Invalid Bundle contains disallowed file 'Frameworks'" error
@@ -328,6 +316,12 @@ jobs:
           ACTUAL_UUID=$(security cms -D -i "$PROFILE_PATH" | plutil -extract UUID raw - 2>/dev/null || echo "$PROFILE_UUID")
           echo "ACTUAL_PROFILE_UUID=$ACTUAL_UUID" >> $GITHUB_ENV
           echo "Actual profile UUID: $ACTUAL_UUID"
+          
+          # Manual signing will be configured via xcodebuild build settings
+          echo "Manual signing will be configured via xcodebuild parameters:"
+          echo "  CODE_SIGN_STYLE: Manual"
+          echo "  CODE_SIGN_IDENTITY: Apple Distribution"
+          echo "  PROVISIONING_PROFILE_SPECIFIER: $ACTUAL_UUID"
       
       # iOS: Verify build configuration
       - name: Verify build configuration
@@ -456,12 +450,10 @@ jobs:
           echo "All provisioning profiles:"
           ls -la ~/Library/MobileDevice/Provisioning\ Profiles/ 2>/dev/null || echo "No profiles directory found"
             
-          # Build archive for device (not simulator)
+          # Build archive for device (not simulator) using manual signing
           # Use generic iOS device destination to avoid simulator
-          # Note: With automatic signing, Xcode will automatically select the correct certificate
-          # based on the provisioning profile. We download IOS_APP_STORE profiles which require
-          # "Apple Distribution" certificates. Do NOT manually override CODE_SIGN_IDENTITY as it
-          # conflicts with automatic signing.
+          # Manual signing requires explicit CODE_SIGN_IDENTITY and PROVISIONING_PROFILE_SPECIFIER
+          # We use Apple Distribution certificate with App Store provisioning profile
           xcodebuild archive \
             -project Unity-iPhone.xcodeproj \
               -scheme Unity-iPhone \
@@ -469,14 +461,13 @@ jobs:
               -sdk iphoneos \
             -destination 'generic/platform=iOS' \
               -archivePath Unity-iPhone.xcarchive \
-              -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8 \
-              -authenticationKeyID ${{ secrets.APPSTORE_KEY_ID }} \
-              -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }} \
               DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
               PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
               MARKETING_VERSION="$LATEST_TAG" \
               CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-              CODE_SIGN_STYLE="Automatic" \
+              CODE_SIGN_STYLE="Manual" \
+              CODE_SIGN_IDENTITY="Apple Distribution" \
+              PROVISIONING_PROFILE_SPECIFIER="$ACTUAL_PROFILE_UUID" \
               CODE_SIGNING_ALLOWED="YES" \
               CODE_SIGNING_REQUIRED="YES" \
             ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=NO \
@@ -574,24 +565,26 @@ jobs:
             echo "✅ Updated Info.plist bundle ID to: $UNITY_FRAMEWORK_BUNDLE_ID"
             
             # Get the codesign identity from the app's existing signature or keychain
-            echo "Finding codesign identity..."
+            # For App Store builds, we must use "Apple Distribution"
+            echo "Finding codesign identity for App Store build..."
             CODESIGN_IDENTITY=$(codesign -dvv "$APP_BUNDLE" 2>&1 | grep "Authority" | head -1 | sed -E 's/.*Authority=([^ ]+).*/\1/' || echo "")
             
-            # If not found, try to get from security find-identity
+            # If not found in signature, try to get Apple Distribution from keychain
+            if [ -z "$CODESIGN_IDENTITY" ]; then
+              CODESIGN_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_NAME" | grep "Apple Distribution" | head -1 | sed -E 's/.*"([^"]+)".*/\1/' || echo "")
+            fi
+            
+            # If still not found, try system keychain
             if [ -z "$CODESIGN_IDENTITY" ]; then
               CODESIGN_IDENTITY=$(security find-identity -v -p codesigning | grep "Apple Distribution" | head -1 | sed -E 's/.*"([^"]+)".*/\1/' || echo "")
             fi
             
-            # If still not found, try Apple Development
-            if [ -z "$CODESIGN_IDENTITY" ]; then
-              CODESIGN_IDENTITY=$(security find-identity -v -p codesigning | grep "Apple Development" | head -1 | sed -E 's/.*"([^"]+)".*/\1/' || echo "")
-            fi
-            
-            if [ -z "$CODESIGN_IDENTITY" ]; then
-              echo "⚠️  WARNING: Could not determine codesign identity"
+            # For App Store builds, we must use Apple Distribution (not Apple Development)
+            if [ -z "$CODESIGN_IDENTITY" ] || [[ ! "$CODESIGN_IDENTITY" =~ "Distribution" ]]; then
+              echo "⚠️  WARNING: Could not find Apple Distribution identity"
               echo "Available identities:"
-              security find-identity -v -p codesigning || true
-              echo "Will attempt to use automatic signing identity..."
+              security find-identity -v -p codesigning "$KEYCHAIN_NAME" || true
+              echo "Using Apple Distribution as fallback for manual signing..."
               CODESIGN_IDENTITY="Apple Distribution"
             else
               echo "Using codesign identity: $CODESIGN_IDENTITY"
@@ -684,7 +677,14 @@ jobs:
               <key>teamID</key>
               <string>${{ secrets.IOS_TEAM_ID }}</string>
               <key>signingStyle</key>
-              <string>automatic</string>
+              <string>manual</string>
+              <key>signingCertificate</key>
+              <string>Apple Distribution</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>com.stash.sdkdemo</key>
+                  <string>$ACTUAL_PROFILE_UUID</string>
+              </dict>
               <key>uploadBitcode</key>
               <false/>
               <key>uploadSymbols</key>
@@ -712,15 +712,11 @@ jobs:
           # Ensure keychain is unlocked
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
           
-          # Export IPA
+          # Export IPA using manual signing (provisioning profile specified in exportOptions.plist)
           xcodebuild -exportArchive \
             -archivePath Unity-iPhone.xcarchive \
             -exportOptionsPlist exportOptions.plist \
-            -exportPath export \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8 \
-            -authenticationKeyID ${{ secrets.APPSTORE_KEY_ID }} \
-            -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }}
+            -exportPath export
       
           echo "IPA export completed"
           ls -la export/
