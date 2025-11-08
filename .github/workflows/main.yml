@@ -252,22 +252,26 @@ jobs:
           sed -i '' "s/DEVELOPMENT_TEAM = \"[^\"]*\"/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\"/g" Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' "s/DEVELOPMENT_TEAM = ;/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\";/g" Unity-iPhone.xcodeproj/project.pbxproj
           
-          # Configure code signing - use automatic signing but force distribution certificates
+          # Configure code signing - use automatic signing for App Store distribution
           echo "Configuring code signing for App Store distribution..."
           # Use automatic signing which should handle In-App Purchase capability automatically
           sed -i '' 's/CODE_SIGN_STYLE = Manual/CODE_SIGN_STYLE = Automatic/g' Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' 's/CODE_SIGN_STYLE = ;/CODE_SIGN_STYLE = Automatic;/g' Unity-iPhone.xcodeproj/project.pbxproj
           
-          # For App Store builds, we must use "Apple Distribution" certificates (not development)
-          # Remove any development certificate references to prevent Xcode from trying to create them
-          sed -i '' '/CODE_SIGN_IDENTITY = "Apple Development"/d' Unity-iPhone.xcodeproj/project.pbxproj
-          sed -i '' '/CODE_SIGN_IDENTITY = "iPhone Developer"/d' Unity-iPhone.xcodeproj/project.pbxproj
+          # Remove ALL manual CODE_SIGN_IDENTITY settings - let automatic signing choose based on provisioning profile
+          # With IOS_APP_STORE profiles, automatic signing will automatically use "Apple Distribution"
+          sed -i '' '/CODE_SIGN_IDENTITY/d' Unity-iPhone.xcodeproj/project.pbxproj
           
-          # Note: We'll force "Apple Distribution" via xcodebuild command-line arguments
-          # This ensures all targets (including GameAssembly) use distribution certificates
-          # and prevents Xcode from trying to create development certificates
+          # Remove any PROVISIONING_PROFILE_SPECIFIER settings - let automatic signing choose the profile
+          # Automatic signing will select the appropriate App Store profile automatically
+          sed -i '' '/PROVISIONING_PROFILE_SPECIFIER/d' Unity-iPhone.xcodeproj/project.pbxproj
           
-          echo "Code signing configured: Automatic signing (will use Apple Distribution via build settings)"
+          # Ensure automatic signing works correctly
+          # Xcode's automatic signing will select the App Store profile for the main app
+          # Library targets (like GameAssembly) should be signed as part of the main app
+          # or will use ad-hoc signing automatically if they don't need distribution profiles
+          
+          echo "Code signing configured: Automatic signing (Xcode will select profiles based on target type)"
           
           # Fix Unity framework issue: Set "Embedded Content Contains Swift Code" to NO
           # This prevents the "Invalid Bundle contains disallowed file 'Frameworks'" error
@@ -419,12 +423,45 @@ jobs:
             echo "Available certificates:"
             security find-identity -v -p codesigning "$KEYCHAIN_NAME"
           }
+          
+          # Verify App Store provisioning profiles are available and match our bundle ID
+          echo ""
+          echo "Verifying App Store provisioning profiles:"
+          EXPECTED_BUNDLE_ID="com.stash.sdkdemo"
+          APP_STORE_PROFILES_FOUND=0
+          
+          for profile in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
+            PROFILE_DEVICES=$(security cms -D -i "$profile" 2>/dev/null | plutil -extract ProvisionedDevices raw - 2>/dev/null || echo "")
+            PROFILE_BUNDLE_ID=$(security cms -D -i "$profile" 2>/dev/null | plutil -extract Entitlements.application-identifier raw - 2>/dev/null | sed 's/.*\.//' || echo "")
+            PROFILE_NAME=$(security cms -D -i "$profile" 2>/dev/null | plutil -extract Name raw - 2>/dev/null || echo "")
+            
+            if [ -z "$PROFILE_DEVICES" ]; then
+              # No ProvisionedDevices means it's an App Store profile
+              if [ "$PROFILE_BUNDLE_ID" = "$EXPECTED_BUNDLE_ID" ]; then
+                echo "✅ Found matching App Store profile: $PROFILE_NAME ($(basename "$profile"))"
+                APP_STORE_PROFILES_FOUND=$((APP_STORE_PROFILES_FOUND + 1))
+              else
+                echo "ℹ️  Found App Store profile (different bundle ID): $PROFILE_NAME (bundle: $PROFILE_BUNDLE_ID)"
+              fi
+            fi
+          done
+          
+          if [ "$APP_STORE_PROFILES_FOUND" -eq 0 ]; then
+            echo "⚠️  WARNING: No App Store provisioning profile found for bundle ID: $EXPECTED_BUNDLE_ID"
+            echo "Xcode may try to use development signing instead"
+          fi
+          
+          # List all provisioning profiles for debugging
+          echo ""
+          echo "All provisioning profiles:"
+          ls -la ~/Library/MobileDevice/Provisioning\ Profiles/ 2>/dev/null || echo "No profiles directory found"
             
           # Build archive for device (not simulator)
           # Use generic iOS device destination to avoid simulator
-          # Note: Removed -allowProvisioningDeviceRegistration to prevent creation of development certificates
-          # For App Store builds, we only need distribution certificates (already in keychain)
-          # IMPORTANT: Do NOT use -allowProvisioningDeviceRegistration as it tries to create development certs
+          # Note: With automatic signing, Xcode will automatically select the correct certificate
+          # based on the provisioning profile. We download IOS_APP_STORE profiles which require
+          # "Apple Distribution" certificates. Do NOT manually override CODE_SIGN_IDENTITY as it
+          # conflicts with automatic signing.
           xcodebuild archive \
             -project Unity-iPhone.xcodeproj \
               -scheme Unity-iPhone \
@@ -443,9 +480,6 @@ jobs:
               CODE_SIGN_STYLE="Automatic" \
               CODE_SIGNING_ALLOWED="YES" \
               CODE_SIGNING_REQUIRED="YES" \
-              "CODE_SIGN_IDENTITY[sdk=iphoneos*]=Apple Distribution" \
-              "CODE_SIGN_IDENTITY=Apple Distribution" \
-              "DEVELOPMENT_TEAM[sdk=iphoneos*]=${{ secrets.IOS_TEAM_ID }}" \
             ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=NO \
               OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_NAME" \
             ONLY_ACTIVE_ARCH=NO \
