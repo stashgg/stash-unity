@@ -280,6 +280,21 @@ jobs:
           sed -i '' 's/EMBEDDED_CONTENT_CONTAINS_SWIFT = YES/EMBEDDED_CONTENT_CONTAINS_SWIFT = NO/g' Unity-iPhone.xcodeproj/project.pbxproj
           echo "Embedded Content Contains Swift Code configured to NO"
           
+          # Fix UnityFramework bundle identifier collision
+          # UnityFramework must have a unique bundle ID, not the same as the main app
+          echo "Setting unique bundle identifier for UnityFramework..."
+          MAIN_BUNDLE_ID="com.stash.sdkdemo"
+          UNITY_FRAMEWORK_BUNDLE_ID="${MAIN_BUNDLE_ID}.UnityFramework"
+          
+          # Write Python script using printf to avoid YAML issues
+          printf 'import re\nimport sys\nproject_file = sys.argv[1]\nmain_bundle_id = sys.argv[2]\nframework_bundle_id = sys.argv[3]\nwith open(project_file, "r") as f:\n    content = f.read()\npattern = r"PRODUCT_BUNDLE_IDENTIFIER = \\"" + re.escape(main_bundle_id) + r"\\";"\nreplacement = "PRODUCT_BUNDLE_IDENTIFIER = \\"" + framework_bundle_id + "\\";"\nmatches = list(re.finditer(pattern, content))\nupdated = False\nfor match in reversed(matches):\n    start = match.start()\n    context_start = max(0, start - 1000)\n    context = content[context_start:start]\n    unity_iphone_pos = context.rfind("Unity-iPhone")\n    unity_framework_pos = context.rfind("UnityFramework")\n    game_assembly_pos = context.rfind("GameAssembly")\n    if unity_framework_pos != -1:\n        positions = [(unity_iphone_pos, "Unity-iPhone"), (unity_framework_pos, "UnityFramework"), (game_assembly_pos, "GameAssembly")]\n        valid_positions = [(pos, name) for pos, name in positions if pos != -1]\n        if valid_positions:\n            closest_pos, closest_name = max(valid_positions, key=lambda x: x[0])\n            if closest_name == "UnityFramework":\n                content = content[:match.start()] + replacement + content[match.end():]\n                updated = True\n                print("Updated UnityFramework bundle ID at position", start)\nif updated:\n    with open(project_file, "w") as f:\n        f.write(content)\n    print("Successfully updated UnityFramework bundle ID to:", framework_bundle_id)\nelse:\n    print("No UnityFramework bundle ID collisions found")\n    if framework_bundle_id in content:\n        print("Framework bundle ID is already unique:", framework_bundle_id)\n' > /tmp/fix_unity_bundle_id.py
+          
+          # Run the Python script
+          python3 /tmp/fix_unity_bundle_id.py Unity-iPhone.xcodeproj/project.pbxproj "$MAIN_BUNDLE_ID" "$UNITY_FRAMEWORK_BUNDLE_ID"
+          rm -f /tmp/fix_unity_bundle_id.py
+          
+          echo "UnityFramework bundle ID configuration complete"
+          
           # Force device-only builds by excluding simulator architectures
           echo "Configuring for device-only build..."
           # Set ONLY_ACTIVE_ARCH to NO for Release builds
@@ -394,26 +409,32 @@ jobs:
           echo "Archive created successfully"
           ls -la Unity-iPhone.xcarchive/
           
-          # Check for bundle identifier collisions
+          # Verify bundle identifiers are correct
           echo ""
-          echo "Checking for bundle identifier collisions..."
+          echo "Verifying bundle identifiers..."
           APP_BUNDLE=$(find Unity-iPhone.xcarchive -name "*.app" -type d | head -1)
           if [ -n "$APP_BUNDLE" ]; then
-            echo "Checking bundle identifiers in: $APP_BUNDLE"
             # Check main app bundle identifier
             MAIN_BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw "$APP_BUNDLE/Info.plist" 2>/dev/null || echo "")
             echo "Main app bundle ID: $MAIN_BUNDLE_ID"
             
-            # Check for duplicate bundle IDs in embedded frameworks/extensions
-            echo "Checking embedded frameworks and extensions..."
-            find "$APP_BUNDLE" -name "*.framework" -o -name "*.appex" | while read item; do
-              if [ -f "$item/Info.plist" ]; then
-                BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw "$item/Info.plist" 2>/dev/null || echo "")
-                if [ -n "$BUNDLE_ID" ]; then
-                  echo "  Found: $BUNDLE_ID in $(basename "$item")"
+            # Check UnityFramework bundle identifier
+            UNITY_FRAMEWORK_PLIST="$APP_BUNDLE/Frameworks/UnityFramework.framework/Info.plist"
+            if [ -f "$UNITY_FRAMEWORK_PLIST" ]; then
+              UNITY_FRAMEWORK_BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw "$UNITY_FRAMEWORK_PLIST" 2>/dev/null || echo "")
+              if [ -n "$UNITY_FRAMEWORK_BUNDLE_ID" ]; then
+                echo "UnityFramework bundle ID: $UNITY_FRAMEWORK_BUNDLE_ID"
+                if [ "$UNITY_FRAMEWORK_BUNDLE_ID" = "$MAIN_BUNDLE_ID" ]; then
+                  echo "⚠️  WARNING: UnityFramework has same bundle ID as main app!"
+                elif [ "$UNITY_FRAMEWORK_BUNDLE_ID" = "${MAIN_BUNDLE_ID}.UnityFramework" ]; then
+                  echo "✅ UnityFramework has unique bundle ID"
+                else
+                  echo "ℹ️  UnityFramework bundle ID is different: $UNITY_FRAMEWORK_BUNDLE_ID"
                 fi
+              else
+                echo "⚠️  WARNING: UnityFramework has no bundle ID (this will cause validation errors)"
               fi
-            done
+            fi
             
             # Check for nested Frameworks folder (the Unity issue)
             if [ -d "$APP_BUNDLE/Frameworks/UnityFramework.framework/Frameworks" ]; then
@@ -435,61 +456,6 @@ jobs:
             echo ""
             echo "Checking for simulator architectures (should be empty):"
             lipo -info "$ARCHIVE_BINARY" 2>&1 | grep -i simulator && echo "⚠️  WARNING: Simulator architectures found!" || echo "✅ No simulator architectures found"
-          fi
-      
-      # iOS: Fix UnityFramework bundle identifier collision
-      - name: Fix UnityFramework bundle identifier
-        if: inputs.platform == 'iOS'
-        run: |
-          cd build/iOS/iOS/
-          
-          echo "Fixing UnityFramework.framework bundle identifier collision..."
-          
-          # Find the app bundle in the archive
-          APP_BUNDLE=$(find Unity-iPhone.xcarchive -name "*.app" -type d | head -1)
-          if [ -z "$APP_BUNDLE" ]; then
-            echo "ERROR: Could not find app bundle in archive"
-            exit 1
-          fi
-          
-          # Check if UnityFramework.framework exists
-          UNITY_FRAMEWORK_PLIST="$APP_BUNDLE/Frameworks/UnityFramework.framework/Info.plist"
-          if [ ! -f "$UNITY_FRAMEWORK_PLIST" ]; then
-            echo "UnityFramework.framework/Info.plist not found, skipping fix"
-            exit 0
-          fi
-          
-          # Get the bundle ID from UnityFramework
-          FRAMEWORK_BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw "$UNITY_FRAMEWORK_PLIST" 2>/dev/null || echo "")
-          MAIN_BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw "$APP_BUNDLE/Info.plist" 2>/dev/null || echo "")
-          
-          if [ "$FRAMEWORK_BUNDLE_ID" = "$MAIN_BUNDLE_ID" ]; then
-            echo "⚠️  Found collision: UnityFramework has same bundle ID as main app ($MAIN_BUNDLE_ID)"
-            echo "Removing CFBundleIdentifier from UnityFramework.framework/Info.plist..."
-            
-            # Remove CFBundleIdentifier using plutil
-            if plutil -remove CFBundleIdentifier "$UNITY_FRAMEWORK_PLIST" 2>/dev/null; then
-              echo "✅ Successfully removed CFBundleIdentifier from UnityFramework.framework"
-              
-              # Verify it's gone
-              VERIFY_ID=$(plutil -extract CFBundleIdentifier raw "$UNITY_FRAMEWORK_PLIST" 2>/dev/null || echo "")
-              if [ -z "$VERIFY_ID" ]; then
-                echo "✅ Verified: CFBundleIdentifier removed successfully"
-              else
-                echo "⚠️  WARNING: CFBundleIdentifier still present: $VERIFY_ID"
-              fi
-            else
-              echo "❌ Failed to remove CFBundleIdentifier using plutil"
-              echo "Trying alternative method using Python..."
-              
-              # Use Python one-liner to remove CFBundleIdentifier
-              python3 -c "import plistlib, sys; p=plistlib.load(open('$UNITY_FRAMEWORK_PLIST','rb')); p.pop('CFBundleIdentifier', None); plistlib.dump(p, open('$UNITY_FRAMEWORK_PLIST','wb')); print('✅ Removed CFBundleIdentifier using Python')" || {
-                echo "⚠️  Python method also failed. The bundle ID may be embedded in binary format."
-                echo "This might require modifying Unity build settings or post-processing the Xcode project."
-              }
-            fi
-          else
-            echo "ℹ️  No collision found. UnityFramework bundle ID: $FRAMEWORK_BUNDLE_ID, Main app: $MAIN_BUNDLE_ID"
           fi
       
       # iOS: Create export options
