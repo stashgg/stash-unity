@@ -137,6 +137,32 @@ jobs:
           api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
       
+      - name: Verify provisioning profile capabilities
+        if: inputs.platform == 'iOS'
+        run: |
+          echo "Checking provisioning profiles..."
+          for profile in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
+            echo ""
+            echo "Profile: $(basename "$profile")"
+            security cms -D -i "$profile" | plutil -p - | grep -E '(Name|TeamIdentifier|UUID|Entitlements|com.apple.InAppPurchase)' || true
+            echo "---"
+          done
+          
+          # Check if any profile has In-App Purchase capability
+          HAS_IAP=false
+          for profile in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
+            if security cms -D -i "$profile" | grep -q "com.apple.InAppPurchase"; then
+              HAS_IAP=true
+              echo "✅ Found profile with In-App Purchase: $(basename "$profile")"
+              break
+            fi
+          done
+          
+          if [ "$HAS_IAP" = "false" ]; then
+            echo "⚠️  WARNING: No provisioning profile with In-App Purchase capability found"
+            echo "The app may require In-App Purchase capability. If the build fails, ensure your App ID has In-App Purchase enabled in App Store Connect."
+          fi
+      
       - name: Verify iOS setup
         if: inputs.platform == 'iOS'
         run: |
@@ -225,9 +251,11 @@ jobs:
           sed -i '' "s/DEVELOPMENT_TEAM = \"[^\"]*\"/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\"/g" Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' "s/DEVELOPMENT_TEAM = ;/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\";/g" Unity-iPhone.xcodeproj/project.pbxproj
           
-          # Configure for manual signing with Distribution certificate
+          # Configure code signing - try automatic first (handles capabilities better)
           echo "Configuring code signing..."
-          sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' Unity-iPhone.xcodeproj/project.pbxproj
+          # Use automatic signing which should handle In-App Purchase capability automatically
+          sed -i '' 's/CODE_SIGN_STYLE = Manual/CODE_SIGN_STYLE = Automatic/g' Unity-iPhone.xcodeproj/project.pbxproj
+          # But ensure we use the Distribution certificate
           sed -i '' 's/CODE_SIGN_IDENTITY = "[^"]*"/CODE_SIGN_IDENTITY = "Apple Distribution"/g' Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' 's/CODE_SIGN_IDENTITY = ;/CODE_SIGN_IDENTITY = "Apple Distribution";/g' Unity-iPhone.xcodeproj/project.pbxproj
           
@@ -239,10 +267,35 @@ jobs:
           echo "Build configuration updated for device-only build"
           
           # Get the provisioning profile UUID for manual signing
-          PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -1)
-          PROFILE_UUID=$(basename "$PROFILE_PATH" .mobileprovision)
+          # Prefer a profile with In-App Purchase capability
+          PROFILE_PATH=""
+          PROFILE_UUID=""
+          
+          # First, try to find a profile with In-App Purchase
+          for profile in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
+            if security cms -D -i "$profile" | grep -q "com.apple.InAppPurchase"; then
+              PROFILE_PATH="$profile"
+              PROFILE_UUID=$(basename "$profile" .mobileprovision)
+              echo "✅ Found profile with In-App Purchase: $PROFILE_UUID"
+              break
+            fi
+          done
+          
+          # If no IAP profile found, use the first available profile
+          if [ -z "$PROFILE_PATH" ]; then
+            PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -1)
+            PROFILE_UUID=$(basename "$PROFILE_PATH" .mobileprovision)
+            echo "⚠️  Using profile without In-App Purchase: $PROFILE_UUID"
+            echo "⚠️  WARNING: This may cause build failures if the app requires In-App Purchase"
+          fi
+          
           echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
           echo "Using provisioning profile: $PROFILE_UUID from $PROFILE_PATH"
+          
+          # Extract the actual UUID from the profile (not just filename)
+          ACTUAL_UUID=$(security cms -D -i "$PROFILE_PATH" | plutil -extract UUID raw - 2>/dev/null || echo "$PROFILE_UUID")
+          echo "ACTUAL_PROFILE_UUID=$ACTUAL_UUID" >> $GITHUB_ENV
+          echo "Actual profile UUID: $ACTUAL_UUID"
       
       # iOS: Verify build configuration
       - name: Verify build configuration
@@ -309,7 +362,7 @@ jobs:
             -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }} \
             DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
             PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
-            CODE_SIGN_STYLE="Manual" \
+            CODE_SIGN_STYLE="Automatic" \
             CODE_SIGN_IDENTITY="Apple Distribution" \
             CODE_SIGNING_ALLOWED="YES" \
             CODE_SIGNING_REQUIRED="YES" \
@@ -349,14 +402,9 @@ jobs:
               <key>teamID</key>
               <string>${{ secrets.IOS_TEAM_ID }}</string>
               <key>signingStyle</key>
-              <string>manual</string>
+              <string>automatic</string>
               <key>signingCertificate</key>
               <string>Apple Distribution</string>
-              <key>provisioningProfiles</key>
-              <dict>
-                  <key>com.stash.sdkdemo</key>
-                  <string>${{ env.PROFILE_UUID }}</string>
-              </dict>
               <key>uploadBitcode</key>
               <false/>
               <key>uploadSymbols</key>
