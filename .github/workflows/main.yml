@@ -252,26 +252,15 @@ jobs:
           sed -i '' "s/DEVELOPMENT_TEAM = \"[^\"]*\"/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\"/g" Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' "s/DEVELOPMENT_TEAM = ;/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\";/g" Unity-iPhone.xcodeproj/project.pbxproj
           
-          # Configure code signing - use automatic signing for App Store distribution
-          echo "Configuring code signing for App Store distribution..."
-          # Use automatic signing which should handle In-App Purchase capability automatically
-          sed -i '' 's/CODE_SIGN_STYLE = Manual/CODE_SIGN_STYLE = Automatic/g' Unity-iPhone.xcodeproj/project.pbxproj
-          sed -i '' 's/CODE_SIGN_STYLE = ;/CODE_SIGN_STYLE = Automatic;/g' Unity-iPhone.xcodeproj/project.pbxproj
+          # Configure code signing - use MANUAL signing for App Store distribution
+          # Manual signing gives us full control and prevents Xcode from creating development certificates via API
+          echo "Configuring code signing for App Store distribution (MANUAL signing)..."
           
-          # Remove ALL manual CODE_SIGN_IDENTITY settings - let automatic signing choose based on provisioning profile
-          # With IOS_APP_STORE profiles, automatic signing will automatically use "Apple Distribution"
-          sed -i '' '/CODE_SIGN_IDENTITY/d' Unity-iPhone.xcodeproj/project.pbxproj
+          # Switch to manual signing for all targets
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' Unity-iPhone.xcodeproj/project.pbxproj
+          sed -i '' 's/CODE_SIGN_STYLE = ;/CODE_SIGN_STYLE = Manual;/g' Unity-iPhone.xcodeproj/project.pbxproj
           
-          # Set PROVISIONING_PROFILE_SPECIFIER to use the App Store profile we downloaded
-          # This prevents Xcode from creating development profiles via API
-          # We'll set this after we identify the profile UUID
-          
-          # Ensure automatic signing works correctly
-          # Xcode's automatic signing will select the App Store profile for the main app
-          # Library targets (like GameAssembly) should be signed as part of the main app
-          # or will use ad-hoc signing automatically if they don't need distribution profiles
-          
-          echo "Code signing configured: Automatic signing (Xcode will select profiles based on target type)"
+          echo "Code signing style set to Manual"
           
           # Fix Unity framework issue: Set "Embedded Content Contains Swift Code" to NO
           # This prevents the "Invalid Bundle contains disallowed file 'Frameworks'" error
@@ -340,20 +329,126 @@ jobs:
             echo "✅ Copied App Store profile to Xcode user data directory: $XCODE_PROFILE_DIR"
           fi
           
-          # Set PROVISIONING_PROFILE_SPECIFIER in the project file to use the App Store profile
-          # This prevents Xcode from creating development profiles via API
-          # We need to set this for Release configuration for all targets
+          # Configure manual signing with App Store profile and Distribution certificate
+          # This prevents Xcode from creating development profiles/certificates via API
           if [ -n "$ACTUAL_UUID" ]; then
-            echo "Setting PROVISIONING_PROFILE_SPECIFIER to $ACTUAL_UUID in project file..."
-            # Set for Release configuration (replace any existing value or add if missing)
+            echo "Configuring manual signing with App Store profile: $ACTUAL_UUID"
+            
+            # Set PROVISIONING_PROFILE_SPECIFIER for app targets (Unity-iPhone, UnityFramework)
+            # Replace any existing value or add if missing
             sed -i '' "s/PROVISIONING_PROFILE_SPECIFIER = \"[^\"]*\"/PROVISIONING_PROFILE_SPECIFIER = \"$ACTUAL_UUID\"/g" Unity-iPhone.xcodeproj/project.pbxproj
             sed -i '' "s/PROVISIONING_PROFILE_SPECIFIER = ;/PROVISIONING_PROFILE_SPECIFIER = \"$ACTUAL_UUID\";/g" Unity-iPhone.xcodeproj/project.pbxproj
-            # Add if it doesn't exist in Release build settings
-            if ! grep -q "PROVISIONING_PROFILE_SPECIFIER" Unity-iPhone.xcodeproj/project.pbxproj; then
-              # This is complex - we'll let automatic signing handle it, but we'll remove -allowProvisioningUpdates
-              echo "Note: PROVISIONING_PROFILE_SPECIFIER not found in project, will rely on automatic signing"
-            fi
-            echo "✅ Provisioning profile UUID set in project file"
+            
+            # Set CODE_SIGN_IDENTITY to "Apple Distribution" for app targets
+            # Remove any existing CODE_SIGN_IDENTITY settings first
+            sed -i '' '/CODE_SIGN_IDENTITY\[sdk=iphoneos\*\]/d' Unity-iPhone.xcodeproj/project.pbxproj
+            
+            # For Release configuration, set CODE_SIGN_IDENTITY = "Apple Distribution"
+            # We'll add it after DEVELOPMENT_TEAM settings for Release builds
+            # This targets Unity-iPhone and UnityFramework targets (not GameAssembly)
+            sed -i '' 's/\(DEVELOPMENT_TEAM = "[^"]*";\)/\1\
+\t\t\t\tCODE_SIGN_IDENTITY = "Apple Distribution";/g' Unity-iPhone.xcodeproj/project.pbxproj
+            
+            # For GameAssembly target, disable code signing (it's a static library, doesn't need signing)
+            # Use Python to properly modify the pbxproj file structure
+            python3 << 'PYTHON_SCRIPT'
+import re
+
+project_file = 'Unity-iPhone.xcodeproj/project.pbxproj'
+with open(project_file, 'r') as f:
+    content = f.read()
+
+# Find all build configuration list entries for GameAssembly target
+# We need to find the XCConfigurationList that contains GameAssembly build configurations
+# and modify the Release build settings to disable code signing
+
+# Pattern: Find build configuration sections that belong to GameAssembly
+# Look for buildSettings blocks that are in GameAssembly's configuration list
+gameassembly_build_config_pattern = r'(buildSettings = \{[^}]*?name = Release[^}]*?)(\s*\};\s*/\* Release \*/\s*/\* End XCBuildConfiguration section \*/\s*/\* XCBuildConfiguration \*/\s*/\* GameAssembly[^}]*?buildSettings = \{[^}]*?name = Release)'
+
+# Actually, simpler: find buildSettings for Release that are followed by GameAssembly comments
+# Or find GameAssembly target's build configuration IDs and modify those
+
+# Better approach: Find the XCBuildConfiguration section for GameAssembly Release
+# Look for: /* XCBuildConfiguration */ ... /* GameAssembly */ ... buildSettings ... name = Release
+pattern = r'(/\* XCBuildConfiguration \*/\s*[0-9A-F]{24} /\* GameAssembly[^}]*?buildSettings = \{[^}]*?name = Release[^}]*?)(\s*\};\s*/\* Release \*/)'
+
+def disable_gameassembly_signing(match):
+    settings = match.group(1)
+    closing = match.group(2)
+    
+    # Remove any existing CODE_SIGN settings
+    settings = re.sub(r'\s*CODE_SIGN[^;]*;\s*', '', settings)
+    
+    # Add CODE_SIGNING_ALLOWED = NO before the closing brace
+    settings = settings.rstrip()
+    if not settings.endswith('\n'):
+        settings += '\n'
+    settings += '\t\t\t\tCODE_SIGNING_ALLOWED = NO;\n'
+    settings += '\t\t\t\tCODE_SIGN_IDENTITY = "-";\n'
+    
+    return settings + closing
+
+# Try the replacement
+new_content = re.sub(pattern, disable_gameassembly_signing, content, flags=re.DOTALL)
+
+# If pattern didn't match, try a different approach: find by buildSettings content
+if new_content == content:
+    # Alternative: Find all Release buildSettings and check if they're for GameAssembly
+    # by looking at the context (nearby comments or target references)
+    lines = content.split('\n')
+    result = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        result.append(line)
+        
+        # Look for GameAssembly reference followed by Release buildSettings
+        if 'GameAssembly' in line:
+            # Look ahead for buildSettings with Release
+            j = i + 1
+            found_build_settings = False
+            found_release = False
+            brace_count = 0
+            settings_start = -1
+            
+            while j < len(lines) and j < i + 50:  # Look ahead up to 50 lines
+                look_line = lines[j]
+                if 'buildSettings = {' in look_line:
+                    found_build_settings = True
+                    settings_start = len(result)
+                    brace_count = 1
+                elif found_build_settings:
+                    if '{' in look_line:
+                        brace_count += look_line.count('{')
+                    if '}' in look_line:
+                        brace_count -= look_line.count('}')
+                    if 'name = Release' in look_line:
+                        found_release = True
+                    # If we're in Release buildSettings and find closing brace
+                    if found_release and brace_count == 0 and '};' in look_line:
+                        # Insert CODE_SIGNING settings before this line
+                        result.insert(settings_start + 1, '\t\t\t\tCODE_SIGNING_ALLOWED = NO;')
+                        result.insert(settings_start + 2, '\t\t\t\tCODE_SIGN_IDENTITY = "-";')
+                        break
+                j += 1
+        
+        i += 1
+    
+    new_content = '\n'.join(result)
+
+with open(project_file, 'w') as f:
+    f.write(new_content)
+
+print("✅ GameAssembly code signing disabled")
+PYTHON_SCRIPT
+
+            echo "✅ Manual signing configured:"
+            echo "   - App targets (Unity-iPhone, UnityFramework): Apple Distribution certificate with App Store profile"
+            echo "   - GameAssembly: Ad-hoc signing (no certificate required)"
+          else
+            echo "❌ ERROR: Could not find App Store provisioning profile UUID"
+            exit 1
           fi
       
       # iOS: Verify build configuration
@@ -485,9 +580,9 @@ jobs:
             
           # Build archive for device (not simulator)
           # Use generic iOS device destination to avoid simulator
-          # Note: We explicitly set PROVISIONING_PROFILE_SPECIFIER to use the App Store profile we downloaded.
-          # We do NOT use -allowProvisioningUpdates as it allows Xcode to create development profiles via API,
-          # which then requires development certificates. Instead, we use the App Store profiles we downloaded.
+          # Note: We use MANUAL signing with the App Store profile we downloaded.
+          # We do NOT use -allowProvisioningUpdates as it allows Xcode to create development profiles via API.
+          # Manual signing prevents Xcode from creating development certificates.
           xcodebuild archive \
             -project Unity-iPhone.xcodeproj \
               -scheme Unity-iPhone \
@@ -499,7 +594,9 @@ jobs:
               PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
               MARKETING_VERSION="$LATEST_TAG" \
               CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-              CODE_SIGN_STYLE="Automatic" \
+              CODE_SIGN_STYLE="Manual" \
+              CODE_SIGN_IDENTITY="Apple Distribution" \
+              "PROVISIONING_PROFILE_SPECIFIER=$ACTUAL_UUID" \
               CODE_SIGNING_ALLOWED="YES" \
               CODE_SIGNING_REQUIRED="YES" \
             ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=NO \
