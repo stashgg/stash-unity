@@ -245,22 +245,6 @@ jobs:
           security default-keychain -s "$KEYCHAIN_NAME"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
           
-          # Update project.pbxproj to set team ID for all targets
-          echo "Setting development team ID..."
-          sed -i '' "s/DevelopmentTeam = \"[^\"]*\"/DevelopmentTeam = \"${{ secrets.IOS_TEAM_ID }}\"/g" Unity-iPhone.xcodeproj/project.pbxproj
-          sed -i '' "s/DevelopmentTeam = ;/DevelopmentTeam = \"${{ secrets.IOS_TEAM_ID }}\";/g" Unity-iPhone.xcodeproj/project.pbxproj
-          sed -i '' "s/DEVELOPMENT_TEAM = \"[^\"]*\"/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\"/g" Unity-iPhone.xcodeproj/project.pbxproj
-          sed -i '' "s/DEVELOPMENT_TEAM = ;/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\";/g" Unity-iPhone.xcodeproj/project.pbxproj
-          
-          # Configure code signing - use manual signing for App Store distribution
-          echo "Configuring code signing for App Store distribution (manual signing)..."
-          
-          # Ensure manual signing is set for all targets
-          sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' Unity-iPhone.xcodeproj/project.pbxproj
-          sed -i '' 's/CODE_SIGN_STYLE = ;/CODE_SIGN_STYLE = Manual;/g' Unity-iPhone.xcodeproj/project.pbxproj
-          
-          echo "Code signing configured: Manual signing"
-          
           # Fix Unity framework issue: Set "Embedded Content Contains Swift Code" to NO
           # This prevents the "Invalid Bundle contains disallowed file 'Frameworks'" error
           # See: https://stackoverflow.com/questions/25880134/invalid-bundle-contains-disallowed-file-frameworks
@@ -272,13 +256,7 @@ jobs:
           # Also set EMBEDDED_CONTENT_CONTAINS_SWIFT to NO if present
           sed -i '' 's/EMBEDDED_CONTENT_CONTAINS_SWIFT = YES/EMBEDDED_CONTENT_CONTAINS_SWIFT = NO/g' Unity-iPhone.xcodeproj/project.pbxproj
           echo "Embedded Content Contains Swift Code configured to NO"
-          
-          # Note: UnityFramework bundle identifier will be fixed post-archive
-          # This is more reliable than trying to modify the Xcode project file
-          # The post-archive fix step will update the Info.plist and remove signatures
-          # so the export process can re-sign with the correct bundle ID
-          echo "UnityFramework bundle ID will be fixed post-archive if needed"
-          
+           
           # Force device-only builds by excluding simulator architectures
           echo "Configuring for device-only build..."
           # Set ONLY_ACTIVE_ARCH to NO for Release builds
@@ -286,43 +264,6 @@ jobs:
           
           echo "Build configuration updated for device-only build"
           
-          # Get the provisioning profile UUID for manual signing
-          # Prefer a profile with In-App Purchase capability
-          PROFILE_PATH=""
-          PROFILE_UUID=""
-          
-          # First, try to find a profile with In-App Purchase
-          for profile in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
-            if security cms -D -i "$profile" | grep -q "com.apple.InAppPurchase"; then
-              PROFILE_PATH="$profile"
-              PROFILE_UUID=$(basename "$profile" .mobileprovision)
-              echo "✅ Found profile with In-App Purchase: $PROFILE_UUID"
-              break
-            fi
-          done
-          
-          # If no IAP profile found, use the first available profile
-          if [ -z "$PROFILE_PATH" ]; then
-          PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -1)
-          PROFILE_UUID=$(basename "$PROFILE_PATH" .mobileprovision)
-            echo "⚠️  Using profile without In-App Purchase: $PROFILE_UUID"
-            echo "⚠️  WARNING: This may cause build failures if the app requires In-App Purchase"
-          fi
-          
-          echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
-          echo "Using provisioning profile: $PROFILE_UUID from $PROFILE_PATH"
-          
-          # Extract the actual UUID from the profile (not just filename)
-          ACTUAL_UUID=$(security cms -D -i "$PROFILE_PATH" | plutil -extract UUID raw - 2>/dev/null || echo "$PROFILE_UUID")
-          echo "ACTUAL_PROFILE_UUID=$ACTUAL_UUID" >> $GITHUB_ENV
-          echo "Actual profile UUID: $ACTUAL_UUID"
-          
-          # Manual signing will be configured via xcodebuild build settings
-          echo "Manual signing will be configured via xcodebuild parameters:"
-          echo "  CODE_SIGN_STYLE: Manual"
-          echo "  CODE_SIGN_IDENTITY: Apple Distribution"
-          echo "  PROVISIONING_PROFILE_SPECIFIER: $ACTUAL_UUID"
-      
       # iOS: Verify build configuration
       - name: Verify build configuration
         if: inputs.platform == 'iOS'
