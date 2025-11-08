@@ -333,10 +333,10 @@ jobs:
       - name: Generate build number
         if: inputs.platform == 'iOS'
         run: |
-          # Generate build number from timestamp (YYYYMMDDHHMM format)
-          # Using UTC to avoid timezone issues
-          BUILD_NUMBER=$(date -u +"%Y%m%d%H%M")
-          echo "Build number (timestamp UTC): $BUILD_NUMBER"
+          # Generate build number from Unix epoch seconds
+          # This ensures it's always higher than previous versions
+          BUILD_NUMBER=$(date +%s)
+          echo "Build number (epoch seconds): $BUILD_NUMBER"
           
           # Store as environment variable for later steps
           echo "CURRENT_PROJECT_VERSION=$BUILD_NUMBER" >> $GITHUB_ENV
@@ -453,6 +453,34 @@ jobs:
             echo ""
             echo "Checking for simulator architectures (should be empty):"
             lipo -info "$ARCHIVE_BINARY" 2>&1 | grep -i simulator && echo "⚠️  WARNING: Simulator architectures found!" || echo "✅ No simulator architectures found"
+          fi
+          
+          # Verify and fix build number in archive
+          echo ""
+          echo "Verifying build number in archive..."
+          APP_BUNDLE=$(find Unity-iPhone.xcarchive -name "*.app" -type d | head -1)
+          if [ -n "$APP_BUNDLE" ]; then
+            ARCHIVE_VERSION=$(plutil -extract CFBundleShortVersionString raw "$APP_BUNDLE/Info.plist" 2>/dev/null || echo "")
+            ARCHIVE_BUILD=$(plutil -extract CFBundleVersion raw "$APP_BUNDLE/Info.plist" 2>/dev/null || echo "")
+            echo "Archive version: $ARCHIVE_VERSION (expected: $MARKETING_VERSION)"
+            echo "Archive build: $ARCHIVE_BUILD (expected: $CURRENT_PROJECT_VERSION)"
+            
+            NEED_RESIGN=false
+            if [ "$ARCHIVE_BUILD" != "$CURRENT_PROJECT_VERSION" ] || [ "$ARCHIVE_VERSION" != "$MARKETING_VERSION" ]; then
+              echo "⚠️  Build number/version mismatch! Updating Info.plist..."
+              plutil -replace CFBundleVersion -string "$CURRENT_PROJECT_VERSION" "$APP_BUNDLE/Info.plist"
+              plutil -replace CFBundleShortVersionString -string "$MARKETING_VERSION" "$APP_BUNDLE/Info.plist"
+              echo "✅ Updated build number to: $CURRENT_PROJECT_VERSION"
+              NEED_RESIGN=true
+            fi
+            
+            # Re-sign if we updated the Info.plist
+            if [ "$NEED_RESIGN" = "true" ]; then
+              echo "Re-signing app after build number update..."
+              CODESIGN_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_NAME" | grep "Apple Distribution" | head -1 | sed -E 's/.*"([^"]+)".*/\1/' || echo "Apple Distribution")
+              codesign --force --sign "$CODESIGN_IDENTITY" --timestamp=none "$APP_BUNDLE" || codesign --force --sign "-" --timestamp=none "$APP_BUNDLE"
+              echo "✅ App re-signed"
+            fi
           fi
       
       # iOS: Fix UnityFramework bundle identifier in archive (post-archive fix)
