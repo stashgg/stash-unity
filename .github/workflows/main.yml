@@ -273,15 +273,11 @@ jobs:
           # See: https://stackoverflow.com/questions/25880134/invalid-bundle-contains-disallowed-file-frameworks
           echo "Configuring Embedded Content Contains Swift Code to NO (Unity fix)..."
           # Set ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES to NO for all targets
+          # This fixes the "Invalid Bundle contains disallowed file 'Frameworks'" error
           sed -i '' 's/ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES/ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO/g' Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' 's/ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = "$(inherited)"/ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO/g' Unity-iPhone.xcodeproj/project.pbxproj
           # Also set EMBEDDED_CONTENT_CONTAINS_SWIFT to NO if present
           sed -i '' 's/EMBEDDED_CONTENT_CONTAINS_SWIFT = YES/EMBEDDED_CONTENT_CONTAINS_SWIFT = NO/g' Unity-iPhone.xcodeproj/project.pbxproj
-          # Ensure it's set to NO if not already set
-          if ! grep -q "ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES" Unity-iPhone.xcodeproj/project.pbxproj; then
-            # Add it to build settings sections using printf to avoid YAML parsing issues
-            sed -i '' "s/buildSettings = {/buildSettings = {$(printf '\n\t\t\t')ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;/g" Unity-iPhone.xcodeproj/project.pbxproj
-          fi
           echo "Embedded Content Contains Swift Code configured to NO"
           
           # Force device-only builds by excluding simulator architectures
