@@ -251,13 +251,22 @@ jobs:
           sed -i '' "s/DEVELOPMENT_TEAM = \"[^\"]*\"/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\"/g" Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' "s/DEVELOPMENT_TEAM = ;/DEVELOPMENT_TEAM = \"${{ secrets.IOS_TEAM_ID }}\";/g" Unity-iPhone.xcodeproj/project.pbxproj
           
-          # Configure code signing - try automatic first (handles capabilities better)
+          # Configure code signing - use automatic signing (handles capabilities better)
           echo "Configuring code signing..."
           # Use automatic signing which should handle In-App Purchase capability automatically
+          # With automatic signing, Xcode will automatically select the correct certificate
           sed -i '' 's/CODE_SIGN_STYLE = Manual/CODE_SIGN_STYLE = Automatic/g' Unity-iPhone.xcodeproj/project.pbxproj
-          # But ensure we use the Distribution certificate
-          sed -i '' 's/CODE_SIGN_IDENTITY = "[^"]*"/CODE_SIGN_IDENTITY = "Apple Distribution"/g' Unity-iPhone.xcodeproj/project.pbxproj
-          sed -i '' 's/CODE_SIGN_IDENTITY = ;/CODE_SIGN_IDENTITY = "Apple Distribution";/g' Unity-iPhone.xcodeproj/project.pbxproj
+          sed -i '' 's/CODE_SIGN_STYLE = ;/CODE_SIGN_STYLE = Automatic;/g' Unity-iPhone.xcodeproj/project.pbxproj
+          
+          # Remove any manual CODE_SIGN_IDENTITY settings - let automatic signing choose
+          # For App Store profiles, it will automatically use "Apple Distribution"
+          # Remove the entire CODE_SIGN_IDENTITY line for automatic signing
+          sed -i '' '/CODE_SIGN_IDENTITY = "Apple Distribution"/d' Unity-iPhone.xcodeproj/project.pbxproj
+          sed -i '' '/CODE_SIGN_IDENTITY = "Apple Development"/d' Unity-iPhone.xcodeproj/project.pbxproj
+          sed -i '' '/CODE_SIGN_IDENTITY = "iPhone Developer"/d' Unity-iPhone.xcodeproj/project.pbxproj
+          sed -i '' '/CODE_SIGN_IDENTITY = "iPhone Distribution"/d' Unity-iPhone.xcodeproj/project.pbxproj
+          
+          echo "Code signing configured for automatic signing"
           
           # Force device-only builds by excluding simulator architectures
           echo "Configuring for device-only build..."
@@ -363,7 +372,6 @@ jobs:
             DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
             PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
             CODE_SIGN_STYLE="Automatic" \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
             CODE_SIGNING_ALLOWED="YES" \
             CODE_SIGNING_REQUIRED="YES" \
             OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_NAME" \
@@ -403,8 +411,6 @@ jobs:
               <string>${{ secrets.IOS_TEAM_ID }}</string>
               <key>signingStyle</key>
               <string>automatic</string>
-              <key>signingCertificate</key>
-              <string>Apple Distribution</string>
               <key>uploadBitcode</key>
               <false/>
               <key>uploadSymbols</key>
