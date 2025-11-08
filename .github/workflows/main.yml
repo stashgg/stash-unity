@@ -478,43 +478,107 @@ jobs:
           echo "UnityFramework current bundle ID: $CURRENT_BUNDLE_ID"
           echo "Target bundle ID: $UNITY_FRAMEWORK_BUNDLE_ID"
           
-          if [ "$CURRENT_BUNDLE_ID" = "$MAIN_BUNDLE_ID" ]; then
-            echo "⚠️  UnityFramework still has main app bundle ID. Fixing in archive..."
+          # Always update the bundle ID if it doesn't match, and re-sign
+          if [ "$CURRENT_BUNDLE_ID" != "$UNITY_FRAMEWORK_BUNDLE_ID" ]; then
+            echo "⚠️  UnityFramework has bundle ID: $CURRENT_BUNDLE_ID, updating to: $UNITY_FRAMEWORK_BUNDLE_ID"
             
             # Update the bundle ID in Info.plist
             plutil -replace CFBundleIdentifier -string "$UNITY_FRAMEWORK_BUNDLE_ID" "$UNITY_FRAMEWORK_PLIST"
-            echo "✅ Updated Info.plist bundle ID"
+            echo "✅ Updated Info.plist bundle ID to: $UNITY_FRAMEWORK_BUNDLE_ID"
             
-            # Remove code signatures so export will re-sign with correct bundle IDs
-            # Modifying Info.plist invalidates signatures, so we need to remove them
-            echo "Removing code signatures (export will re-sign automatically)..."
+            # Get the codesign identity from the app's existing signature or keychain
+            echo "Finding codesign identity..."
+            CODESIGN_IDENTITY=$(codesign -dvv "$APP_BUNDLE" 2>&1 | grep "Authority" | head -1 | sed -E 's/.*Authority=([^ ]+).*/\1/' || echo "")
             
-            # Remove _CodeSignature folders to invalidate signatures
-            # The export process will detect unsigned frameworks and re-sign them
-            if [ -d "$APP_BUNDLE/Frameworks/UnityFramework.framework/_CodeSignature" ]; then
-              rm -rf "$APP_BUNDLE/Frameworks/UnityFramework.framework/_CodeSignature"
-              echo "✅ Removed UnityFramework.framework code signature"
+            # If not found, try to get from security find-identity
+            if [ -z "$CODESIGN_IDENTITY" ]; then
+              CODESIGN_IDENTITY=$(security find-identity -v -p codesigning | grep "Apple Distribution" | head -1 | sed -E 's/.*"([^"]+)".*/\1/' || echo "")
             fi
             
-            if [ -d "$APP_BUNDLE/_CodeSignature" ]; then
-              rm -rf "$APP_BUNDLE/_CodeSignature"
-              echo "✅ Removed main app code signature"
+            # If still not found, try Apple Development
+            if [ -z "$CODESIGN_IDENTITY" ]; then
+              CODESIGN_IDENTITY=$(security find-identity -v -p codesigning | grep "Apple Development" | head -1 | sed -E 's/.*"([^"]+)".*/\1/' || echo "")
             fi
             
-            echo "✅ Signatures removed - export process will re-sign with correct bundle IDs"
+            if [ -z "$CODESIGN_IDENTITY" ]; then
+              echo "⚠️  WARNING: Could not determine codesign identity"
+              echo "Available identities:"
+              security find-identity -v -p codesigning || true
+              echo "Will attempt to use automatic signing identity..."
+              CODESIGN_IDENTITY="Apple Distribution"
+            else
+              echo "Using codesign identity: $CODESIGN_IDENTITY"
+            fi
             
-            # Verify the bundle ID was updated
+            # Remove existing signature from framework
+            echo "Removing existing signature from UnityFramework.framework..."
+            codesign --remove-signature "$APP_BUNDLE/Frameworks/UnityFramework.framework" 2>/dev/null || {
+              # If remove-signature doesn't work, just delete the _CodeSignature folder
+              rm -rf "$APP_BUNDLE/Frameworks/UnityFramework.framework/_CodeSignature" 2>/dev/null || true
+            }
+            
+            # Re-sign the framework with the new bundle ID
+            echo "Re-signing UnityFramework.framework with bundle ID: $UNITY_FRAMEWORK_BUNDLE_ID..."
+            codesign --force --sign "$CODESIGN_IDENTITY" \
+              --identifier "$UNITY_FRAMEWORK_BUNDLE_ID" \
+              --timestamp=none \
+              "$APP_BUNDLE/Frameworks/UnityFramework.framework" || {
+              echo "⚠️  First attempt failed, trying with - option (let system choose identity)..."
+              codesign --force --sign "-" \
+                --identifier "$UNITY_FRAMEWORK_BUNDLE_ID" \
+                --timestamp=none \
+                "$APP_BUNDLE/Frameworks/UnityFramework.framework" || {
+                echo "❌ ERROR: Failed to re-sign framework"
+                exit 1
+              }
+            }
+            
+            # Verify the signature
+            echo "Verifying framework signature..."
+            codesign -vv "$APP_BUNDLE/Frameworks/UnityFramework.framework" 2>&1 || {
+              echo "⚠️  WARNING: Framework signature verification failed"
+            }
+            
+            # Check that the identifier in the signature matches
+            SIGNATURE_ID=$(codesign -dvv "$APP_BUNDLE/Frameworks/UnityFramework.framework" 2>&1 | grep "Identifier" | head -1 | sed -E 's/.*Identifier=([^ ]+).*/\1/' || echo "")
+            if [ "$SIGNATURE_ID" = "$UNITY_FRAMEWORK_BUNDLE_ID" ]; then
+              echo "✅ Verified: Framework signature identifier matches: $SIGNATURE_ID"
+            else
+              echo "⚠️  WARNING: Signature identifier is: $SIGNATURE_ID, expected: $UNITY_FRAMEWORK_BUNDLE_ID"
+            fi
+            
+            # Verify the bundle ID in Info.plist
             VERIFY_BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw "$UNITY_FRAMEWORK_PLIST" 2>/dev/null || echo "")
             if [ "$VERIFY_BUNDLE_ID" = "$UNITY_FRAMEWORK_BUNDLE_ID" ]; then
-              echo "✅ Verified: UnityFramework bundle ID is now: $VERIFY_BUNDLE_ID"
-              echo "ℹ️  Code signatures removed - export process will re-sign with correct bundle IDs"
+              echo "✅ Verified: Info.plist bundle ID is: $VERIFY_BUNDLE_ID"
             else
-              echo "⚠️  WARNING: Bundle ID update may have failed. Current: $VERIFY_BUNDLE_ID"
+              echo "⚠️  WARNING: Info.plist bundle ID is: $VERIFY_BUNDLE_ID, expected: $UNITY_FRAMEWORK_BUNDLE_ID"
             fi
-          elif [ "$CURRENT_BUNDLE_ID" = "$UNITY_FRAMEWORK_BUNDLE_ID" ]; then
-            echo "✅ UnityFramework already has correct bundle ID: $UNITY_FRAMEWORK_BUNDLE_ID"
           else
-            echo "ℹ️  UnityFramework bundle ID is: $CURRENT_BUNDLE_ID (different from expected)"
+            echo "✅ UnityFramework already has correct bundle ID: $UNITY_FRAMEWORK_BUNDLE_ID"
+            
+            # Verify the signature matches the bundle ID
+            SIGNATURE_ID=$(codesign -dvv "$APP_BUNDLE/Frameworks/UnityFramework.framework" 2>&1 | grep "Identifier" | head -1 | sed -E 's/.*Identifier=([^ ]+).*/\1/' || echo "")
+            if [ "$SIGNATURE_ID" != "$UNITY_FRAMEWORK_BUNDLE_ID" ]; then
+              echo "⚠️  WARNING: Signature identifier ($SIGNATURE_ID) doesn't match bundle ID ($UNITY_FRAMEWORK_BUNDLE_ID)"
+              echo "Re-signing framework to fix signature..."
+              
+              # Get codesign identity
+              CODESIGN_IDENTITY=$(codesign -dvv "$APP_BUNDLE" 2>&1 | grep "Authority" | head -1 | sed -E 's/.*Authority=([^ ]+).*/\1/' || echo "Apple Distribution")
+              
+              # Remove and re-sign
+              codesign --remove-signature "$APP_BUNDLE/Frameworks/UnityFramework.framework" 2>/dev/null || true
+              codesign --force --sign "$CODESIGN_IDENTITY" \
+                --identifier "$UNITY_FRAMEWORK_BUNDLE_ID" \
+                --timestamp=none \
+                "$APP_BUNDLE/Frameworks/UnityFramework.framework" || {
+                codesign --force --sign "-" \
+                  --identifier "$UNITY_FRAMEWORK_BUNDLE_ID" \
+                  --timestamp=none \
+                  "$APP_BUNDLE/Frameworks/UnityFramework.framework"
+              }
+              echo "✅ Re-signed framework with correct identifier"
+            fi
           fi
       
       # iOS: Create export options
