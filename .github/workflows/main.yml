@@ -745,11 +745,60 @@ jobs:
         with:
           credentials_json: ${{ secrets.PIE_PROD_GCP_SERVICE_ACCOUNT_CREDENTIALS_FOR_UPLOAD_DEMO }}
       
-      # Upload artifacts to Google Cloud Storage
-      - name: Upload to Google Cloud Storage
+      # Upload artifacts to Google Cloud Storage (full build directory)
+      - name: Upload build artifacts to GCS
         uses: google-github-actions/upload-cloud-storage@v3
         with:
           path: build/${{ inputs.platform }}
           destination: stash_sdk_demo/${{ inputs.platform }}/${{ github.run_number }}
+          parent: false
+          gzip: false
+      
+      # Upload platform-specific artifacts to latest/
+      - name: Find and upload latest Android APK to GCS
+        if: inputs.platform == 'Android'
+        run: |
+          APK_FILE=$(find build/Android -name "*.apk" -type f | head -1)
+          if [ -z "$APK_FILE" ]; then
+            echo "ERROR: APK file not found in build/Android"
+            exit 1
+          fi
+          echo "Found APK: $APK_FILE"
+          APK_NAME=$(basename "$APK_FILE")
+          echo "APK_FILE=$APK_FILE" >> $GITHUB_ENV
+          echo "APK_NAME=$APK_NAME" >> $GITHUB_ENV
+      
+      - name: Upload latest Android APK to GCS
+        if: inputs.platform == 'Android'
+        uses: google-github-actions/upload-cloud-storage@v3
+        with:
+          path: ${{ env.APK_FILE }}
+          destination: stash_sdk_demo/Android/latest/${{ env.APK_NAME }}
+          parent: false
+          gzip: false
+      
+      - name: Upload latest iOS IPA to GCS
+        if: inputs.platform == 'iOS'
+        uses: google-github-actions/upload-cloud-storage@v3
+        with:
+          path: build/iOS/iOS/export/StashDemo.ipa
+          destination: stash_sdk_demo/iOS/latest/StashDemo.ipa
+          parent: false
+          gzip: false
+      
+      - name: Create latest build archive
+        if: inputs.platform != 'Android' && inputs.platform != 'iOS'
+        run: |
+          cd build/${{ inputs.platform }}
+          zip -r ${{ github.workspace }}/build/${{ inputs.platform }}-latest.zip .
+          cd ${{ github.workspace }}
+          echo "Created archive: build/${{ inputs.platform }}-latest.zip"
+      
+      - name: Upload latest build archive to GCS
+        if: inputs.platform != 'Android' && inputs.platform != 'iOS'
+        uses: google-github-actions/upload-cloud-storage@v3
+        with:
+          path: build/${{ inputs.platform }}-latest.zip
+          destination: stash_sdk_demo/${{ inputs.platform }}/latest/${{ inputs.platform }}-latest.zip
           parent: false
           gzip: false
