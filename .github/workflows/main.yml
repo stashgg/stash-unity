@@ -236,7 +236,7 @@ jobs:
         with:
           targetPlatform: ${{ inputs.platform }}
           buildName: ${{ inputs.platform == 'iOS' && 'iOS' || inputs.platform }}
-          androidExportType: ${{ inputs.platform == 'Android' && 'apk' || '' }}
+          androidExportType: ${{ inputs.platform == 'Android' && 'androidPackage' || '' }}
           androidKeystoreName: ${{ inputs.platform == 'Android' && 'user.keystore' || '' }}
           androidKeystoreBase64: ${{ inputs.platform == 'Android' && secrets.ANDROID_KEYSTORE_BASE64 || '' }}
           androidKeystorePass: ${{ inputs.platform == 'Android' && secrets.ANDROID_KEYSTORE_PASS || '' }}
