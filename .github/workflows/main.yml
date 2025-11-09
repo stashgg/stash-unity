@@ -773,7 +773,7 @@ jobs:
         uses: google-github-actions/upload-cloud-storage@v3
         with:
           path: ${{ env.APK_FILE }}
-          destination: stash_sdk_demo/Android/latest/StashDemo.apk
+          destination: stash_sdk_demo/Android/latest/StashDemo-latest.apk
           parent: false
           gzip: false
       
@@ -782,7 +782,7 @@ jobs:
         uses: google-github-actions/upload-cloud-storage@v3
         with:
           path: build/iOS/iOS/export/StashDemo.ipa
-          destination: stash_sdk_demo/iOS/latest/StashDemo.ipa
+          destination: stash_sdk_demo/iOS/latest/StashDemo-latest.ipa
           parent: false
           gzip: false
       
