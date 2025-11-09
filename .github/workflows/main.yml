@@ -8,8 +8,6 @@
 #   - secrets.APPSTORE_PRIVATE_KEY
 #   - secrets.APPSTORE_KEY_ID
 #   - secrets.APPSTORE_ISSUER_ID
-# Android Build Notes:
-# 
 
 name: Build Unity Project
 
@@ -749,7 +747,7 @@ jobs:
       
       # iOS: Upload to TestFlight using Apple's recommended action
       - name: Upload to TestFlight
-        if: matrix.platform == 'iOS' && github.event_name == 'workflow_dispatch' && inputs.upload_to_testflight == true
+        if: matrix.platform == 'iOS' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.upload_to_testflight == true))
         uses: apple-actions/upload-testflight-build@v1
         with:
           app-path: 'build/iOS/iOS/export/StashDemo.ipa'
@@ -788,35 +786,32 @@ jobs:
         uses: google-github-actions/upload-cloud-storage@v3
         with:
           path: ${{ env.APK_FILE }}
-          destination: stash_sdk_demo/Android/latest/StashDemo.apk
-          parent: false
-          gzip: false
+          destination: stash_sdk_demo/Android/latest/
       
       - name: Upload latest iOS IPA to GCS
         if: matrix.platform == 'iOS'
         uses: google-github-actions/upload-cloud-storage@v3
         with:
           path: build/iOS/iOS/export/StashDemo.ipa
-          destination: stash_sdk_demo/iOS/latest/StashDemo.ipa
-          parent: false
-          gzip: false
+          destination: stash_sdk_demo/iOS/latest/
       
       - name: Create latest build archive
         if: matrix.platform != 'Android' && matrix.platform != 'iOS'
         run: |
-          cd build/${{ matrix.platform }}
-          zip -r ${{ github.workspace }}/build/${{ matrix.platform }}-latest.zip .
           cd ${{ github.workspace }}
-          echo "Created archive: build/${{ matrix.platform }}-latest.zip"
+          ZIP_FILE="${{ github.workspace }}/${{ matrix.platform }}-latest.zip"
+          cd build/${{ matrix.platform }}
+          zip -r "$ZIP_FILE" . -q
+          cd ${{ github.workspace }}
+          echo "Created archive: $ZIP_FILE"
+          ls -lh "$ZIP_FILE"
       
       - name: Upload latest build archive to GCS
         if: matrix.platform != 'Android' && matrix.platform != 'iOS'
         uses: google-github-actions/upload-cloud-storage@v3
         with:
-          path: build/${{ matrix.platform }}-latest.zip
-          destination: stash_sdk_demo/${{ matrix.platform }}/latest/${{ matrix.platform }}-latest.zip
-          parent: false
-          gzip: false
+          path: ${{ github.workspace }}/${{ matrix.platform }}-latest.zip
+          destination: stash_sdk_demo/${{ matrix.platform }}/latest/
 
 
 
