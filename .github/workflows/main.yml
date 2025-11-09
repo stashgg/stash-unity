@@ -14,6 +14,9 @@
 name: Build Unity Project
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       platform:
@@ -28,12 +31,30 @@ on:
         description: 'Upload to TestFlight (iOS only)'
         required: false
         type: boolean
-        default: false
+        default: true
 
 jobs:
+  determine-platforms:
+    runs-on: ubuntu-latest
+    outputs:
+      platforms: ${{ steps.set-platforms.outputs.platforms }}
+    steps:
+      - id: set-platforms
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo 'platforms=["Android","iOS","StandaloneWindows64"]' >> $GITHUB_OUTPUT
+          else
+            echo "platforms=[\"${{ inputs.platform }}\"]" >> $GITHUB_OUTPUT
+          fi
+  
   build:
-    name: Build for ${{ inputs.platform }}
-    runs-on: ${{ inputs.platform == 'iOS' && 'macos-latest' || 'ubuntu-latest' }}
+    name: Build for ${{ matrix.platform }}
+    needs: determine-platforms
+    runs-on: ${{ matrix.platform == 'iOS' && 'macos-latest' || 'ubuntu-latest' }}
+    strategy:
+      matrix:
+        platform: ${{ fromJSON(needs.determine-platforms.outputs.platforms) }}
+      fail-fast: false
     
     steps:
       # Checkout repository with LFS support
@@ -49,19 +70,19 @@ jobs:
         uses: actions/cache@v3
         with:
           path: Library
-          key: Library-${{ inputs.platform }}-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          key: Library-${{ matrix.platform }}-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
           restore-keys: |
-            Library-${{ inputs.platform }}-
+            Library-${{ matrix.platform }}-
             Library-
       
       # Free up disk space for Android builds
       - name: Free disk space (Android only)
-        if: inputs.platform == 'Android'
+        if: matrix.platform == 'Android'
         uses: jlumbroso/free-disk-space@v1.3.1
       
       # iOS: Setup certificates and provisioning profiles
       - name: Clean iOS certificate state
-        if: inputs.platform == 'iOS'
+        if: matrix.platform == 'iOS'
         run: |
           # Create App Store Connect API key for certificate management
           mkdir -p ~/.appstoreconnect/private_keys
@@ -79,7 +100,7 @@ jobs:
           echo "Certificate state cleaned successfully"
       
       - name: Setup iOS certificates
-        if: inputs.platform == 'iOS'
+        if: matrix.platform == 'iOS'
         run: |
           # Create a unique keychain to avoid conflicts
           KEYCHAIN_NAME="build-$(date +%s).keychain"
@@ -147,7 +168,7 @@ jobs:
           echo "Certificate setup completed"
       
       - name: Download iOS provisioning profiles
-        if: inputs.platform == 'iOS'
+        if: matrix.platform == 'iOS'
         uses: Apple-Actions/download-provisioning-profiles@v4
         with:
           bundle-id: 'com.stash.sdkdemo'
@@ -157,7 +178,7 @@ jobs:
           api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
       
       - name: Verify provisioning profile capabilities
-        if: inputs.platform == 'iOS'
+        if: matrix.platform == 'iOS'
         run: |
           echo "Checking provisioning profiles..."
           for profile in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
@@ -183,7 +204,7 @@ jobs:
           fi
       
       - name: Verify iOS setup
-        if: inputs.platform == 'iOS'
+        if: matrix.platform == 'iOS'
         run: |
           echo "Available signing identities in default keychain:"
           security find-identity -v -p codesigning
@@ -239,18 +260,18 @@ jobs:
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
-          targetPlatform: ${{ inputs.platform }}
-          buildName: ${{ inputs.platform == 'iOS' && 'iOS' || inputs.platform }}
-          androidExportType: ${{ inputs.platform == 'Android' && 'androidPackage' || '' }}
-          androidKeystoreName: ${{ inputs.platform == 'Android' && 'user.keystore' || '' }}
-          androidKeystoreBase64: ${{ inputs.platform == 'Android' && secrets.ANDROID_KEYSTORE_BASE64 || '' }}
-          androidKeystorePass: ${{ inputs.platform == 'Android' && secrets.ANDROID_KEYSTORE_PASS || '' }}
-          androidKeyaliasName: ${{ inputs.platform == 'Android' && secrets.ANDROID_KEYALIAS_NAME || '' }}
-          androidKeyaliasPass: ${{ inputs.platform == 'Android' && secrets.ANDROID_KEYALIAS_PASS || '' }}
+          targetPlatform: ${{ matrix.platform }}
+          buildName: ${{ matrix.platform == 'iOS' && 'iOS' || matrix.platform }}
+          androidExportType: ${{ matrix.platform == 'Android' && 'androidPackage' || '' }}
+          androidKeystoreName: ${{ matrix.platform == 'Android' && 'user.keystore' || '' }}
+          androidKeystoreBase64: ${{ matrix.platform == 'Android' && secrets.ANDROID_KEYSTORE_BASE64 || '' }}
+          androidKeystorePass: ${{ matrix.platform == 'Android' && secrets.ANDROID_KEYSTORE_PASS || '' }}
+          androidKeyaliasName: ${{ matrix.platform == 'Android' && secrets.ANDROID_KEYALIAS_NAME || '' }}
+          androidKeyaliasPass: ${{ matrix.platform == 'Android' && secrets.ANDROID_KEYALIAS_PASS || '' }}
       
       # iOS: Prepare Xcode project
       - name: Prepare Xcode project
-        if: inputs.platform == 'iOS'
+        if: matrix.platform == 'iOS'
         run: |
           cd build/iOS/iOS/
           
@@ -284,7 +305,7 @@ jobs:
       
       # iOS: Verify build configuration
       - name: Verify build configuration
-        if: inputs.platform == 'iOS'
+        if: matrix.platform == 'iOS'
         run: |
           cd build/iOS/iOS/
           
@@ -306,7 +327,7 @@ jobs:
       
       # iOS: Clean Xcode project
       - name: Clean Xcode project
-        if: inputs.platform == 'iOS'
+        if: matrix.platform == 'iOS'
         run: |
           cd build/iOS/iOS/
           xcodebuild clean \
@@ -318,7 +339,7 @@ jobs:
       
       # iOS: Get version from git tag
       - name: Get version from git tag
-        if: inputs.platform == 'iOS'
+        if: matrix.platform == 'iOS'
         run: |
           echo "Getting version information from git..."
           
@@ -349,7 +370,7 @@ jobs:
       
       # iOS: Generate build number
       - name: Generate build number
-        if: inputs.platform == 'iOS'
+        if: matrix.platform == 'iOS'
         run: |
           # Generate build number from Unix epoch seconds
           # This ensures it's always higher than previous versions
@@ -362,7 +383,7 @@ jobs:
       
       # iOS: Set version in Xcode project
       - name: Set version in Xcode project
-        if: inputs.platform == 'iOS'
+        if: matrix.platform == 'iOS'
         run: |
           cd build/iOS/iOS/
           
@@ -405,7 +426,7 @@ jobs:
       
       # iOS: Build archive for device
       - name: Build & verify iOS archive
-        if: inputs.platform == 'iOS'
+        if: matrix.platform == 'iOS'
         env:
           APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
           APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
@@ -514,7 +535,7 @@ jobs:
       
       # iOS: Fix UnityFramework bundle identifier in archive (post-archive fix)
       - name: Fix UnityFramework bundle identifier in archive
-        if: inputs.platform == 'iOS'
+        if: matrix.platform == 'iOS'
         run: |
           cd build/iOS/iOS/
           
@@ -648,7 +669,7 @@ jobs:
       
       # iOS: Create export options
       - name: Create export options plist
-        if: inputs.platform == 'iOS'
+        if: matrix.platform == 'iOS'
         run: |
           cd build/iOS/iOS/
           
@@ -685,7 +706,7 @@ jobs:
       
       # iOS: Export IPA
       - name: Export IPA
-        if: inputs.platform == 'iOS'
+        if: matrix.platform == 'iOS'
         env:
           APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
           APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
@@ -709,7 +730,7 @@ jobs:
 
       # iOS: Verify IPA
       - name: Verify IPA
-        if: inputs.platform == 'iOS'
+        if: matrix.platform == 'iOS'
         run: |
           echo "Contents of build/iOS/iOS/export:"
           ls -la build/iOS/iOS/export/
@@ -728,7 +749,7 @@ jobs:
       
       # iOS: Upload to TestFlight using Apple's recommended action
       - name: Upload to TestFlight
-        if: inputs.platform == 'iOS' && inputs.upload_to_testflight == true
+        if: matrix.platform == 'iOS' && github.event_name == 'workflow_dispatch' && inputs.upload_to_testflight == true
         uses: apple-actions/upload-testflight-build@v1
         with:
           app-path: 'build/iOS/iOS/export/StashDemo.ipa'
@@ -740,8 +761,8 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Build-${{ inputs.platform }}
-          path: build/${{ inputs.platform }}
+          name: Build-${{ matrix.platform }}
+          path: build/${{ matrix.platform }}
           retention-days: 7
       
       # Authenticate with Google Cloud
@@ -751,8 +772,8 @@ jobs:
           credentials_json: ${{ secrets.PIE_PROD_GCP_SERVICE_ACCOUNT_CREDENTIALS_FOR_UPLOAD_DEMO }}
             
       # Upload platform-specific artifacts to latest/
-      - name: Find and upload latest Android APK to GCS
-        if: inputs.platform == 'Android'
+      - name: Find Android APK for upload
+        if: matrix.platform == 'Android'
         run: |
           APK_FILE=$(find build/Android -name "*.apk" -type f | head -1)
           if [ -z "$APK_FILE" ]; then
@@ -760,37 +781,51 @@ jobs:
             exit 1
           fi
           echo "Found APK: $APK_FILE"
-          APK_NAME=$(basename "$APK_FILE")
           echo "APK_FILE=$APK_FILE" >> $GITHUB_ENV
-          echo "APK_NAME=$APK_NAME" >> $GITHUB_ENV
       
       - name: Upload latest Android APK to GCS
-        if: inputs.platform == 'Android'
+        if: matrix.platform == 'Android'
         uses: google-github-actions/upload-cloud-storage@v3
         with:
           path: ${{ env.APK_FILE }}
-          destination: stash_sdk_demo/Android/latest/
+          destination: stash_sdk_demo/Android/latest/StashDemo.apk
+          parent: false
+          gzip: false
       
       - name: Upload latest iOS IPA to GCS
-        if: inputs.platform == 'iOS'
+        if: matrix.platform == 'iOS'
         uses: google-github-actions/upload-cloud-storage@v3
         with:
           path: build/iOS/iOS/export/StashDemo.ipa
-          destination: stash_sdk_demo/iOS/latest/
-      
-      - name: Create latest build archive
-        if: inputs.platform != 'Android' && inputs.platform != 'iOS'
-        run: |
-          cd build/${{ inputs.platform }}
-          zip -r ${{ github.workspace }}/build/${{ inputs.platform }}-latest.zip .
-          cd ${{ github.workspace }}
-          echo "Created archive: build/${{ inputs.platform }}-latest.zip"
-      
-      - name: Upload latest build archive to GCS
-        if: inputs.platform != 'Android' && inputs.platform != 'iOS'
-        uses: google-github-actions/upload-cloud-storage@v3
-        with:
-          path: build/${{ inputs.platform }}-latest.zip
-          destination: stash_sdk_demo/${{ inputs.platform }}/latest/${{ inputs.platform }}-latest.zip
+          destination: stash_sdk_demo/iOS/latest/StashDemo.ipa
           parent: false
           gzip: false
+      
+      - name: Create latest build archive
+        if: matrix.platform != 'Android' && matrix.platform != 'iOS'
+        run: |
+          cd build/${{ matrix.platform }}
+          zip -r ${{ github.workspace }}/build/${{ matrix.platform }}-latest.zip .
+          cd ${{ github.workspace }}
+          echo "Created archive: build/${{ matrix.platform }}-latest.zip"
+      
+      - name: Upload latest build archive to GCS
+        if: matrix.platform != 'Android' && matrix.platform != 'iOS'
+        uses: google-github-actions/upload-cloud-storage@v3
+        with:
+          path: build/${{ matrix.platform }}-latest.zip
+          destination: stash_sdk_demo/${{ matrix.platform }}/latest/${{ matrix.platform }}-latest.zip
+          parent: false
+          gzip: false
+
+
+
+
+
+
+
+
+
+
+
+
