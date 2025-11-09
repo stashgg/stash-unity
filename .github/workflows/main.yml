@@ -352,20 +352,36 @@ jobs:
           echo "  MARKETING_VERSION: $MARKETING_VERSION"
           echo "  CURRENT_PROJECT_VERSION: $CURRENT_PROJECT_VERSION"
           
-          # Update MARKETING_VERSION - handle all patterns (quoted and unquoted)
+          # Update MARKETING_VERSION in project.pbxproj
           sed -i '' "s/MARKETING_VERSION = [^;]*;/MARKETING_VERSION = $MARKETING_VERSION;/g" Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' "s/MARKETING_VERSION = \"[^\"]*\";/MARKETING_VERSION = $MARKETING_VERSION;/g" Unity-iPhone.xcodeproj/project.pbxproj
           
-          # Update CURRENT_PROJECT_VERSION - handle all patterns (quoted and unquoted)
+          # Update CURRENT_PROJECT_VERSION in project.pbxproj
           sed -i '' "s/CURRENT_PROJECT_VERSION = [^;]*;/CURRENT_PROJECT_VERSION = $CURRENT_PROJECT_VERSION;/g" Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' "s/CURRENT_PROJECT_VERSION = \"[^\"]*\";/CURRENT_PROJECT_VERSION = $CURRENT_PROJECT_VERSION;/g" Unity-iPhone.xcodeproj/project.pbxproj
           
-          # Verify the changes
-          echo "Verifying changes:"
+          # Find and update Info.plist file directly (Unity generates this)
+          # Look for Info.plist in the project directory
+          if [ -f "Info.plist" ]; then
+            echo "Updating Info.plist file..."
+            plutil -replace CFBundleVersion -string "$CURRENT_PROJECT_VERSION" Info.plist
+            plutil -replace CFBundleShortVersionString -string "$MARKETING_VERSION" Info.plist
+            echo "✅ Updated Info.plist"
+          fi
+          
+          # Also check for Info.plist in any subdirectories Unity might create
+          find . -name "Info.plist" -type f | while read plist; do
+            echo "Updating $plist..."
+            plutil -replace CFBundleVersion -string "$CURRENT_PROJECT_VERSION" "$plist" 2>/dev/null || true
+            plutil -replace CFBundleShortVersionString -string "$MARKETING_VERSION" "$plist" 2>/dev/null || true
+          done
+          
+          # Verify the changes in project file
+          echo "Verifying project.pbxproj changes:"
           grep "MARKETING_VERSION = " Unity-iPhone.xcodeproj/project.pbxproj | head -3
           grep "CURRENT_PROJECT_VERSION = " Unity-iPhone.xcodeproj/project.pbxproj | head -3
           
-          echo "✅ Version set in Xcode project"
+          echo "✅ Version set in Xcode project and Info.plist files"
       
       # iOS: Build archive for device
       - name: Build & verify iOS archive
@@ -399,6 +415,10 @@ jobs:
               -archivePath Unity-iPhone.xcarchive \
               DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
               PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
+              MARKETING_VERSION="$MARKETING_VERSION" \
+              CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION" \
+              INFOPLIST_KEY_CFBundleShortVersionString="$MARKETING_VERSION" \
+              INFOPLIST_KEY_CFBundleVersion="$CURRENT_PROJECT_VERSION" \
               CODE_SIGN_STYLE="Manual" \
               CODE_SIGN_IDENTITY="Apple Distribution" \
               CODE_SIGNING_ALLOWED="YES" \
