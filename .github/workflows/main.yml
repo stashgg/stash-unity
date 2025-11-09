@@ -8,8 +8,6 @@
 #   - secrets.APPSTORE_PRIVATE_KEY
 #   - secrets.APPSTORE_KEY_ID
 #   - secrets.APPSTORE_ISSUER_ID
-# Android Build Notes:
-# 
 
 name: Build Unity Project
 
@@ -804,16 +802,19 @@ jobs:
       - name: Create latest build archive
         if: matrix.platform != 'Android' && matrix.platform != 'iOS'
         run: |
-          cd build/${{ matrix.platform }}
-          zip -r ${{ github.workspace }}/build/${{ matrix.platform }}-latest.zip .
           cd ${{ github.workspace }}
-          echo "Created archive: build/${{ matrix.platform }}-latest.zip"
+          ZIP_FILE="${{ github.workspace }}/${{ matrix.platform }}-latest.zip"
+          cd build/${{ matrix.platform }}
+          zip -r "$ZIP_FILE" . -q
+          cd ${{ github.workspace }}
+          echo "Created archive: $ZIP_FILE"
+          ls -lh "$ZIP_FILE"
       
       - name: Upload latest build archive to GCS
         if: matrix.platform != 'Android' && matrix.platform != 'iOS'
         uses: google-github-actions/upload-cloud-storage@v3
         with:
-          path: build/${{ matrix.platform }}-latest.zip
+          path: ${{ github.workspace }}/${{ matrix.platform }}-latest.zip
           destination: stash_sdk_demo/${{ matrix.platform }}/latest/${{ matrix.platform }}-latest.zip
           parent: false
           gzip: false
