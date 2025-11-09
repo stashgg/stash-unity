@@ -366,6 +366,7 @@ jobs:
             echo "Updating Info.plist file..."
             plutil -replace CFBundleVersion -string "$CURRENT_PROJECT_VERSION" Info.plist
             plutil -replace CFBundleShortVersionString -string "$MARKETING_VERSION" Info.plist
+            plutil -replace ITSAppUsesNonExemptEncryption -bool NO Info.plist
             echo "✅ Updated Info.plist"
           fi
           
@@ -374,6 +375,7 @@ jobs:
             echo "Updating $plist..."
             plutil -replace CFBundleVersion -string "$CURRENT_PROJECT_VERSION" "$plist" 2>/dev/null || true
             plutil -replace CFBundleShortVersionString -string "$MARKETING_VERSION" "$plist" 2>/dev/null || true
+            plutil -replace ITSAppUsesNonExemptEncryption -bool NO "$plist" 2>/dev/null || true
           done
           
           # Verify the changes in project file
@@ -419,6 +421,7 @@ jobs:
               CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION" \
               INFOPLIST_KEY_CFBundleShortVersionString="$MARKETING_VERSION" \
               INFOPLIST_KEY_CFBundleVersion="$CURRENT_PROJECT_VERSION" \
+              INFOPLIST_KEY_ITSAppUsesNonExemptEncryption="NO" \
               CODE_SIGN_STYLE="Manual" \
               CODE_SIGN_IDENTITY="Apple Distribution" \
               CODE_SIGNING_ALLOWED="YES" \
