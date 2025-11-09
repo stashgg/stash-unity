@@ -773,7 +773,7 @@ jobs:
         uses: google-github-actions/upload-cloud-storage@v3
         with:
           path: ${{ env.APK_FILE }}
-          destination: stash_sdk_demo/Android/latest/${{ env.APK_NAME }}
+          destination: stash_sdk_demo/Android/latest/StashDemo.apk
           parent: false
           gzip: false
       
