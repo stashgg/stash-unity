@@ -738,3 +738,18 @@ jobs:
           name: Build-${{ inputs.platform }}
           path: build/${{ inputs.platform }}
           retention-days: 7
+      
+      # Authenticate with Google Cloud
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.PIE_PROD_GCP_SERVICE_ACCOUNT_CREDENTIALS_FOR_UPLOAD_DEMO }}
+      
+      # Upload artifacts to Google Cloud Storage
+      - name: Upload to Google Cloud Storage
+        uses: google-github-actions/upload-cloud-storage@v3
+        with:
+          path: build/${{ inputs.platform }}
+          destination: stash_sdk_demo/${{ inputs.platform }}/${{ github.run_number }}
+          parent: false
+          gzip: false
