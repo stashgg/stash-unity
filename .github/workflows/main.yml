@@ -787,14 +787,20 @@ jobs:
         uses: google-github-actions/upload-cloud-storage@v3
         with:
           path: ${{ env.APK_FILE }}
-          destination: stash_sdk_demo/Android/latest/
+          destination: stash_sdk_demo/Android/latest/StashDemo.apk
+          parent: false
+          gzip: false
+          process_gcloudignore: false
       
       - name: Upload latest iOS IPA to GCS
         if: matrix.platform == 'iOS'
         uses: google-github-actions/upload-cloud-storage@v3
         with:
           path: build/iOS/iOS/export/StashDemo.ipa
-          destination: stash_sdk_demo/iOS/latest/
+          destination: stash_sdk_demo/iOS/latest/StashDemo.ipa
+          parent: false
+          gzip: false
+          process_gcloudignore: false
       
       - name: Create latest build archive
         if: matrix.platform != 'Android' && matrix.platform != 'iOS'
@@ -812,7 +818,10 @@ jobs:
         uses: google-github-actions/upload-cloud-storage@v3
         with:
           path: ${{ github.workspace }}/${{ matrix.platform }}-latest.zip
-          destination: stash_sdk_demo/${{ matrix.platform }}/latest/
+          destination: stash_sdk_demo/${{ matrix.platform }}/latest/${{ matrix.platform }}-latest.zip
+          parent: false
+          gzip: false
+          process_gcloudignore: false
 
 
 
