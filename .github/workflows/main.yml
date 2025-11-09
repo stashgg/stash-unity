@@ -352,11 +352,18 @@ jobs:
           echo "  MARKETING_VERSION: $MARKETING_VERSION"
           echo "  CURRENT_PROJECT_VERSION: $CURRENT_PROJECT_VERSION"
           
-          # Update MARKETING_VERSION (handles both quoted and unquoted values)
-          sed -i '' "s/MARKETING_VERSION = [^;]*;/MARKETING_VERSION = \"$MARKETING_VERSION\";/g" Unity-iPhone.xcodeproj/project.pbxproj
+          # Update MARKETING_VERSION - handle all patterns (quoted and unquoted)
+          sed -i '' "s/MARKETING_VERSION = [^;]*;/MARKETING_VERSION = $MARKETING_VERSION;/g" Unity-iPhone.xcodeproj/project.pbxproj
+          sed -i '' "s/MARKETING_VERSION = \"[^\"]*\";/MARKETING_VERSION = $MARKETING_VERSION;/g" Unity-iPhone.xcodeproj/project.pbxproj
           
-          # Update CURRENT_PROJECT_VERSION (handles both quoted and unquoted values)
-          sed -i '' "s/CURRENT_PROJECT_VERSION = [^;]*;/CURRENT_PROJECT_VERSION = \"$CURRENT_PROJECT_VERSION\";/g" Unity-iPhone.xcodeproj/project.pbxproj
+          # Update CURRENT_PROJECT_VERSION - handle all patterns (quoted and unquoted)
+          sed -i '' "s/CURRENT_PROJECT_VERSION = [^;]*;/CURRENT_PROJECT_VERSION = $CURRENT_PROJECT_VERSION;/g" Unity-iPhone.xcodeproj/project.pbxproj
+          sed -i '' "s/CURRENT_PROJECT_VERSION = \"[^\"]*\";/CURRENT_PROJECT_VERSION = $CURRENT_PROJECT_VERSION;/g" Unity-iPhone.xcodeproj/project.pbxproj
+          
+          # Verify the changes
+          echo "Verifying changes:"
+          grep "MARKETING_VERSION = " Unity-iPhone.xcodeproj/project.pbxproj | head -3
+          grep "CURRENT_PROJECT_VERSION = " Unity-iPhone.xcodeproj/project.pbxproj | head -3
           
           echo "✅ Version set in Xcode project"
       
@@ -392,8 +399,6 @@ jobs:
               -archivePath Unity-iPhone.xcarchive \
               DEVELOPMENT_TEAM="${{ secrets.IOS_TEAM_ID }}" \
               PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
-              MARKETING_VERSION="$MARKETING_VERSION" \
-              CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION" \
               CODE_SIGN_STYLE="Manual" \
               CODE_SIGN_IDENTITY="Apple Distribution" \
               CODE_SIGNING_ALLOWED="YES" \
@@ -455,7 +460,7 @@ jobs:
             lipo -info "$ARCHIVE_BINARY" 2>&1 | grep -i simulator && echo "⚠️  WARNING: Simulator architectures found!" || echo "✅ No simulator architectures found"
           fi
           
-          # Verify and fix build number in archive
+          # Verify build number in archive
           echo ""
           echo "Verifying build number in archive..."
           APP_BUNDLE=$(find Unity-iPhone.xcarchive -name "*.app" -type d | head -1)
@@ -464,23 +469,6 @@ jobs:
             ARCHIVE_BUILD=$(plutil -extract CFBundleVersion raw "$APP_BUNDLE/Info.plist" 2>/dev/null || echo "")
             echo "Archive version: $ARCHIVE_VERSION (expected: $MARKETING_VERSION)"
             echo "Archive build: $ARCHIVE_BUILD (expected: $CURRENT_PROJECT_VERSION)"
-            
-            NEED_RESIGN=false
-            if [ "$ARCHIVE_BUILD" != "$CURRENT_PROJECT_VERSION" ] || [ "$ARCHIVE_VERSION" != "$MARKETING_VERSION" ]; then
-              echo "⚠️  Build number/version mismatch! Updating Info.plist..."
-              plutil -replace CFBundleVersion -string "$CURRENT_PROJECT_VERSION" "$APP_BUNDLE/Info.plist"
-              plutil -replace CFBundleShortVersionString -string "$MARKETING_VERSION" "$APP_BUNDLE/Info.plist"
-              echo "✅ Updated build number to: $CURRENT_PROJECT_VERSION"
-              NEED_RESIGN=true
-            fi
-            
-            # Re-sign if we updated the Info.plist
-            if [ "$NEED_RESIGN" = "true" ]; then
-              echo "Re-signing app after build number update..."
-              CODESIGN_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_NAME" | grep "Apple Distribution" | head -1 | sed -E 's/.*"([^"]+)".*/\1/' || echo "Apple Distribution")
-              codesign --force --sign "$CODESIGN_IDENTITY" --timestamp=none "$APP_BUNDLE" || codesign --force --sign "-" --timestamp=none "$APP_BUNDLE"
-              echo "✅ App re-signed"
-            fi
           fi
       
       # iOS: Fix UnityFramework bundle identifier in archive (post-archive fix)
