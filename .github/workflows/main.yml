@@ -807,9 +807,25 @@ jobs:
         run: |
           cd ${{ github.workspace }}
           ZIP_FILE="${{ github.workspace }}/${{ matrix.platform }}-latest.zip"
-          cd build/${{ matrix.platform }}
-          zip -r "$ZIP_FILE" . -q
-          cd ${{ github.workspace }}
+          
+          if [ "${{ matrix.platform }}" = "StandaloneOSX" ]; then
+            # For macOS, find the .app bundle and use ditto (standard macOS tool)
+            APP_FILE=$(find build/StandaloneOSX -name "*.app" -type d | head -1)
+            if [ -z "$APP_FILE" ]; then
+              echo "ERROR: .app file not found in build/StandaloneOSX"
+              exit 1
+            fi
+            echo "Found macOS app: $APP_FILE"
+            # Use ditto to create a proper macOS zip (preserves metadata, permissions, symlinks)
+            ditto -ck --sequesterRsrc --keepParent "$APP_FILE" "$ZIP_FILE"
+            echo "APP_FILE=$APP_FILE" >> $GITHUB_ENV
+          else
+            # For other platforms (Windows), use standard zip
+            cd build/${{ matrix.platform }}
+            zip -r "$ZIP_FILE" . -q
+            cd ${{ github.workspace }}
+          fi
+          
           echo "Created archive: $ZIP_FILE"
           ls -lh "$ZIP_FILE"
       
@@ -822,6 +838,26 @@ jobs:
           parent: false
           gzip: false
           process_gcloudignore: false
+      
+      # macOS: Install Stash CLI and upload to Stash Studio
+      - name: Install Stash CLI
+        if: matrix.platform == 'StandaloneOSX'
+        run: |
+          /bin/bash -c "$(curl -fsSL https://cli.stash.gg/install.sh)"
+          echo "✅ Stash CLI installed"
+          stash-cli --version
+      
+      - name: Upload macOS build to Stash Studio
+        if: matrix.platform == 'StandaloneOSX'
+        run: |
+          stash-cli upload \
+            --env=test \
+            --secret="${{ secrets.STASH_API_KEY }}" \
+            --file_path="${{ github.workspace }}/StandaloneOSX-latest.zip" \
+            --executable_path="${{ env.APP_FILE }}" \
+            --platform=mac \
+            --channel=2b9989ec-c4dd-43cd-833d-ad0478148e5e
+          echo "✅ Build uploaded to Stash Studio"
 
 
 
