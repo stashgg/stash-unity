@@ -257,8 +257,9 @@ jobs:
         run: |
           Write-Host "Setting up Windows environment for Unity..."
           
-          # Verify license is available (don't print it for security)
-          if ([string]::IsNullOrEmpty("${{ secrets.UNITY_LICENSE }}")) {
+          # Verify license is available (store in variable to avoid parsing issues with XML content)
+          $license = '${{ secrets.UNITY_LICENSE }}'
+          if ([string]::IsNullOrWhiteSpace($license)) {
             Write-Host "ERROR: UNITY_LICENSE secret is not set"
             exit 1
           }
