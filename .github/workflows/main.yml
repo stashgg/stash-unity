@@ -896,8 +896,8 @@ jobs:
       
   upload-windows-to-stash:
     name: Upload Windows build to Stash Studio
-    needs: build
-    if: always()
+    needs: [determine-platforms, build]
+    if: always() && contains(needs.determine-platforms.outputs.platforms, 'StandaloneWindows64')
     runs-on: windows-latest
     steps:
       - name: Checkout repository
@@ -909,6 +909,37 @@ jobs:
           pattern: windows-build-*
           path: .
           merge-multiple: false
+          if-no-artifacts-found: error
+      
+      - name: Find artifact directory and move files
+        shell: bash
+        run: |
+          # Find the artifact directory (it will be named windows-build-*)
+          ARTIFACT_DIR=$(find . -maxdepth 1 -type d -name "windows-build-*" | head -1)
+          if [ -z "$ARTIFACT_DIR" ]; then
+            echo "ERROR: Windows build artifact directory not found"
+            exit 1
+          fi
+          echo "Found artifact directory: $ARTIFACT_DIR"
+          
+          # Move files from artifact directory to workspace root
+          if [ -f "$ARTIFACT_DIR/StandaloneWindows64-latest.zip" ]; then
+            mv "$ARTIFACT_DIR/StandaloneWindows64-latest.zip" .
+            echo "✅ Moved StandaloneWindows64-latest.zip to workspace root"
+          fi
+          
+          if [ -d "$ARTIFACT_DIR/build/StandaloneWindows64" ]; then
+            mkdir -p build
+            mv "$ARTIFACT_DIR/build/StandaloneWindows64" build/
+            echo "✅ Moved build/StandaloneWindows64 to workspace"
+          fi
+          
+          # Verify files exist
+          if [ ! -f "StandaloneWindows64-latest.zip" ] && [ ! -d "build/StandaloneWindows64" ]; then
+            echo "ERROR: Windows build artifact not found after extraction"
+            exit 1
+          fi
+          echo "✅ Windows build artifact verified"
       
       - name: Find Windows executable
         shell: bash
