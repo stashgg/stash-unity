@@ -49,7 +49,7 @@ jobs:
   build:
     name: Build for ${{ matrix.platform }}
     needs: determine-platforms
-    runs-on: ${{ (matrix.platform == 'iOS' || matrix.platform == 'StandaloneOSX') && 'macos-latest' || 'ubuntu-latest' }}
+    runs-on: ${{ (matrix.platform == 'iOS' || matrix.platform == 'StandaloneOSX') && 'macos-latest' || (matrix.platform == 'StandaloneWindows64' && 'windows-latest' || 'ubuntu-latest') }}
     strategy:
       matrix:
         platform: ${{ fromJSON(needs.determine-platforms.outputs.platforms) }}
@@ -251,6 +251,16 @@ jobs:
             echo "---"
           done
       
+      # Windows: Pre-create Library folder to avoid activation issues
+      - name: Pre-create Library folder (Windows)
+        if: matrix.platform == 'StandaloneWindows64'
+        shell: powershell
+        run: |
+          if (-not (Test-Path "Library")) {
+            New-Item -ItemType Directory -Path "Library" | Out-Null
+            Write-Host "Created Library folder"
+          }
+      
       # Build Unity project
       - name: Build Unity project
         uses: game-ci/unity-builder@v4
@@ -267,6 +277,8 @@ jobs:
           androidKeystorePass: ${{ matrix.platform == 'Android' && secrets.ANDROID_KEYSTORE_PASS || '' }}
           androidKeyaliasName: ${{ matrix.platform == 'Android' && secrets.ANDROID_KEYALIAS_NAME || '' }}
           androidKeyaliasPass: ${{ matrix.platform == 'Android' && secrets.ANDROID_KEYALIAS_PASS || '' }}
+          # Windows: Enable Docker host mapping to help with DLL loading
+          allowDockerHostMapping: ${{ matrix.platform == 'StandaloneWindows64' && 'true' || 'false' }}
       
       # iOS: Prepare Xcode project
       - name: Prepare Xcode project
@@ -838,9 +850,9 @@ jobs:
             ditto -ck --sequesterRsrc --keepParent "$APP_FILE" "$ZIP_FILE"
             echo "EXECUTABLE_PATH=$EXECUTABLE_PATH" >> $GITHUB_ENV
           elif [ "${{ matrix.platform }}" = "StandaloneWindows64" ]; then
-            # For Windows, use standard zip (building on Ubuntu)
+            # For Windows, use PowerShell Compress-Archive (native Windows tool)
             cd build/${{ matrix.platform }}
-            zip -r "$ZIP_FILE" . -q
+            powershell -Command "Compress-Archive -Path * -DestinationPath '$ZIP_FILE' -Force"
             cd ${{ github.workspace }}
           else
             # For other platforms, use standard zip
@@ -883,10 +895,10 @@ jobs:
           echo "✅ Build uploaded to Stash Studio"
       
       # Windows: Install Stash CLI and upload to Stash Studio
-      - name: Install Stash CLI (Windows - Linux runner)
+      - name: Install Stash CLI (Windows)
         if: matrix.platform == 'StandaloneWindows64'
         run: |
-          /bin/bash -c "$(curl -fsSL https://cli.stash.gg/install.sh)"
+          powershell.exe -ExecutionPolicy Bypass -Command "IEX (Invoke-WebRequest 'https://cli.stash.gg/install.ps1')"
           echo "✅ Stash CLI installed"
           stash-cli --version
       
