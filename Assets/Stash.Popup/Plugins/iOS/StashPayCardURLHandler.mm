@@ -2110,7 +2110,7 @@ extern "C" {
                     "window.stash_sdk.onPurchaseProcessing = function(data) {"
                         "window.webkit.messageHandlers.stashPurchaseProcessing.postMessage(data || {});"
                     "};"
-                    "window.stash_sdk.optin = function(optinType) {"
+                    "window.stash_sdk.setPaymentChannel = function(optinType) {"
                         "window.webkit.messageHandlers.stashOptin.postMessage(optinType || '');"
                     "};"
                 "})();";
