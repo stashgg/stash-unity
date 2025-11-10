@@ -948,6 +948,7 @@ jobs:
       
       # Install Stash CLI on macOS runner (required for upload)
       - name: Install Stash CLI
+        continue-on-error: true
         run: |
           /bin/bash -c "$(curl -fsSL https://cli.stash.gg/install.sh)"
           echo "✅ Stash CLI installed"
@@ -1034,6 +1035,7 @@ jobs:
       
       # Install Stash CLI on Windows runner (required for upload)
       - name: Install Stash CLI
+        continue-on-error: true
         run: |
           powershell.exe -ExecutionPolicy Bypass -Command "IEX (Invoke-WebRequest 'https://cli.stash.gg/install.ps1')"
           echo "✅ Stash CLI installed"
