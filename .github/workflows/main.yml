@@ -279,8 +279,8 @@ jobs:
           androidKeyaliasPass: ${{ matrix.platform == 'Android' && secrets.ANDROID_KEYALIAS_PASS || '' }}
           # Windows: Skip activation since we have a pre-activated license file
           skipActivation: ${{ matrix.platform == 'StandaloneWindows64' && 'true' || 'false' }}
-          # Windows: Try process isolation mode to help with DLL loading issues
-          dockerIsolationMode: ${{ matrix.platform == 'StandaloneWindows64' && 'process' || '' }}
+          # Windows: Run as host user to help with DLL access
+          runAsHostUser: ${{ matrix.platform == 'StandaloneWindows64' && 'true' || 'false' }}
       
       # iOS: Prepare Xcode project
       - name: Prepare Xcode project
