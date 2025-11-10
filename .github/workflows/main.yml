@@ -265,6 +265,22 @@ jobs:
           }
           Write-Host "Unity license secret is configured"
           
+          # Try to extract serial number from license file (workaround for Docker activation issue)
+          Write-Host "Attempting to extract serial number from license file..."
+          try {
+            $licenseXml = [xml]$license
+            $serialNode = $licenseXml.SelectSingleNode("//Serial")
+            if ($serialNode -and $serialNode.InnerText) {
+              $serial = $serialNode.InnerText
+              Write-Host "Found serial number in license file"
+              Write-Host "UNITY_SERIAL=$serial" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            } else {
+              Write-Host "⚠️  Could not extract serial number from license file"
+            }
+          } catch {
+            Write-Host "⚠️  Could not parse license file as XML: $_"
+          }
+          
           # Check .NET Framework
           Write-Host "Checking .NET Framework..."
           $netVersion = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full\" -Name Release -ErrorAction SilentlyContinue
@@ -296,9 +312,10 @@ jobs:
       - name: Build Unity project
         uses: game-ci/unity-builder@v4
         env:
-          # Use license file for all platforms (license files are cross-platform XML)
-          # Email/password are used as fallback if license file activation fails
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          # Windows: Try using serial number instead of license file (workaround for Docker activation issue)
+          # Other platforms: Use license file
+          UNITY_LICENSE: ${{ matrix.platform != 'StandaloneWindows64' && secrets.UNITY_LICENSE || '' }}
+          UNITY_SERIAL: ${{ matrix.platform == 'StandaloneWindows64' && env.UNITY_SERIAL || '' }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
           # Windows: Enable verbose logging for debugging
