@@ -251,75 +251,13 @@ jobs:
             echo "---"
           done
       
-      # Windows: Setup for Unity build
-      - name: Windows setup for Unity
-        if: matrix.platform == 'StandaloneWindows64'
-        run: |
-          Write-Host "Setting up Windows environment for Unity..."
-          
-          # Verify license is available (store in variable to avoid parsing issues with XML content)
-          $license = '${{ secrets.UNITY_LICENSE }}'
-          if ([string]::IsNullOrWhiteSpace($license)) {
-            Write-Host "ERROR: UNITY_LICENSE secret is not set"
-            exit 1
-          }
-          Write-Host "Unity license secret is configured"
-          
-          # Try to extract serial number from license file (workaround for Docker activation issue)
-          Write-Host "Attempting to extract serial number from license file..."
-          try {
-            $licenseXml = [xml]$license
-            $serialNode = $licenseXml.SelectSingleNode("//Serial")
-            if ($serialNode -and $serialNode.InnerText) {
-              $serial = $serialNode.InnerText
-              Write-Host "Found serial number in license file"
-              Write-Host "UNITY_SERIAL=$serial" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-            } else {
-              Write-Host "⚠️  Could not extract serial number from license file"
-            }
-          } catch {
-            Write-Host "⚠️  Could not parse license file as XML: $_"
-          }
-          
-          # Check .NET Framework
-          Write-Host "Checking .NET Framework..."
-          $netVersion = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full\" -Name Release -ErrorAction SilentlyContinue
-          if ($netVersion) {
-            Write-Host ".NET Framework version: $($netVersion.Release)"
-          } else {
-            Write-Host "⚠️  .NET Framework not found in registry (may still be installed)"
-          }
-          
-          # Install Visual C++ Redistributables (required for Unity)
-          Write-Host "Installing Visual C++ Redistributables..."
-          $vcRedistUrl = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
-          $vcRedistPath = "$env:TEMP\vc_redist.x64.exe"
-          try {
-            Invoke-WebRequest -Uri $vcRedistUrl -OutFile $vcRedistPath -UseBasicParsing
-            $process = Start-Process -FilePath $vcRedistPath -ArgumentList "/quiet", "/norestart" -Wait -PassThru -NoNewWindow
-            if ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010) {
-              Write-Host "✅ Visual C++ Redistributables installed (exit code: $($process.ExitCode))"
-            } else {
-              Write-Host "⚠️  VC++ Redistributables installer returned exit code: $($process.ExitCode)"
-            }
-          } catch {
-            Write-Host "⚠️  Could not install VC++ Redistributables: $_"
-          }
-          
-          Write-Host "Windows setup complete"
-      
       # Build Unity project
       - name: Build Unity project
         uses: game-ci/unity-builder@v4
         env:
-          # Windows: Try using serial number instead of license file (workaround for Docker activation issue)
-          # Other platforms: Use license file
-          UNITY_LICENSE: ${{ matrix.platform != 'StandaloneWindows64' && secrets.UNITY_LICENSE || '' }}
-          UNITY_SERIAL: ${{ matrix.platform == 'StandaloneWindows64' && env.UNITY_SERIAL || '' }}
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-          # Windows: Enable verbose logging for debugging
-          UNITY_LOG_LEVEL: ${{ matrix.platform == 'StandaloneWindows64' && 'Debug' || 'Info' }}
         with:
           targetPlatform: ${{ matrix.platform }}
           buildName: ${{ matrix.platform == 'iOS' && 'iOS' || (matrix.platform == 'StandaloneOSX' && 'macOS' || matrix.platform) }}
@@ -788,7 +726,6 @@ jobs:
           echo "IPA export completed"
           ls -la export/
       
-
       # iOS: Verify IPA
       - name: Verify IPA
         if: matrix.platform == 'iOS'
