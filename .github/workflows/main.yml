@@ -281,6 +281,8 @@ jobs:
           skipActivation: ${{ matrix.platform == 'StandaloneWindows64' && 'true' || 'false' }}
           # Windows: Run as host user to help with DLL access
           runAsHostUser: ${{ matrix.platform == 'StandaloneWindows64' && 'true' || 'false' }}
+          # Windows: Use Mono image instead of IL2CPP to avoid DLL issues
+          customImage: ${{ matrix.platform == 'StandaloneWindows64' && 'unityci/editor:windows-2022.3.62f3-windows-mono-3' || '' }}
       
       # iOS: Prepare Xcode project
       - name: Prepare Xcode project
