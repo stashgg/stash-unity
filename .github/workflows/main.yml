@@ -277,8 +277,10 @@ jobs:
           androidKeystorePass: ${{ matrix.platform == 'Android' && secrets.ANDROID_KEYSTORE_PASS || '' }}
           androidKeyaliasName: ${{ matrix.platform == 'Android' && secrets.ANDROID_KEYALIAS_NAME || '' }}
           androidKeyaliasPass: ${{ matrix.platform == 'Android' && secrets.ANDROID_KEYALIAS_PASS || '' }}
-          # Windows: Enable Docker host mapping to help with DLL loading
-          allowDockerHostMapping: ${{ matrix.platform == 'StandaloneWindows64' && 'true' || 'false' }}
+          # Windows: Skip activation since we have a pre-activated license file
+          skipActivation: ${{ matrix.platform == 'StandaloneWindows64' && 'true' || 'false' }}
+          # Windows: Try process isolation mode to help with DLL loading issues
+          dockerIsolationMode: ${{ matrix.platform == 'StandaloneWindows64' && 'process' || '' }}
       
       # iOS: Prepare Xcode project
       - name: Prepare Xcode project
