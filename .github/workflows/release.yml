@@ -60,12 +60,32 @@ jobs:
           git tag -a "v${{ steps.validate-version.outputs.version }}" -m "Release v${{ steps.validate-version.outputs.version }}"
           git push origin "v${{ steps.validate-version.outputs.version }}"
       
+      - name: Format release body
+        id: format-body
+        run: |
+          VERSION="${{ steps.validate-version.outputs.version }}"
+          DATE=$(date +%Y-%m-%d)
+          CHANGELOG="${{ inputs.changelog }}"
+          
+          # Format changelog: prefix each non-empty line with "- "
+          # Remove any existing bullet formatting and normalize
+          FORMATTED_CHANGELOG=$(printf '%s\n' "$CHANGELOG" | awk 'NF {gsub(/^[[:space:]]*-?[[:space:]]*/, ""); print "- " $0} !NF {print ""}')
+          
+          # Create the formatted body using multiline output
+          {
+            echo "body<<RELEASE_BODY"
+            echo "## [$VERSION] - $DATE"
+            echo ""
+            printf '%s\n' "$FORMATTED_CHANGELOG"
+            echo "RELEASE_BODY"
+          } >> $GITHUB_OUTPUT
+      
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ steps.validate-version.outputs.version }}
-          name: Release v${{ steps.validate-version.outputs.version }}
-          body: ${{ inputs.changelog }}
+          name: Stash Unity v${{ steps.validate-version.outputs.version }}
+          body: ${{ steps.format-body.outputs.body }}
           draft: false
           prerelease: false
         env:
