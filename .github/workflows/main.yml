@@ -49,7 +49,7 @@ jobs:
   build:
     name: Build for ${{ matrix.platform }}
     needs: determine-platforms
-    runs-on: ${{ (matrix.platform == 'iOS' || matrix.platform == 'StandaloneOSX') && 'macos-latest' || (matrix.platform == 'StandaloneWindows64' && 'windows-latest' || 'ubuntu-latest') }}
+    runs-on: ${{ (matrix.platform == 'iOS' || matrix.platform == 'StandaloneOSX') && 'macos-latest' || 'ubuntu-latest' }}
     strategy:
       matrix:
         platform: ${{ fromJSON(needs.determine-platforms.outputs.platforms) }}
@@ -277,12 +277,6 @@ jobs:
           androidKeystorePass: ${{ matrix.platform == 'Android' && secrets.ANDROID_KEYSTORE_PASS || '' }}
           androidKeyaliasName: ${{ matrix.platform == 'Android' && secrets.ANDROID_KEYALIAS_NAME || '' }}
           androidKeyaliasPass: ${{ matrix.platform == 'Android' && secrets.ANDROID_KEYALIAS_PASS || '' }}
-          # Windows: Skip activation since we have a pre-activated license file
-          skipActivation: ${{ matrix.platform == 'StandaloneWindows64' && 'true' || 'false' }}
-          # Windows: Run as host user to help with DLL access
-          runAsHostUser: ${{ matrix.platform == 'StandaloneWindows64' && 'true' || 'false' }}
-          # Windows: Use Mono image instead of IL2CPP to avoid DLL issues
-          customImage: ${{ matrix.platform == 'StandaloneWindows64' && 'unityci/editor:windows-2022.3.62f3-windows-mono-3' || '' }}
       
       # iOS: Prepare Xcode project
       - name: Prepare Xcode project
@@ -854,9 +848,9 @@ jobs:
             ditto -ck --sequesterRsrc --keepParent "$APP_FILE" "$ZIP_FILE"
             echo "EXECUTABLE_PATH=$EXECUTABLE_PATH" >> $GITHUB_ENV
           elif [ "${{ matrix.platform }}" = "StandaloneWindows64" ]; then
-            # For Windows, use PowerShell Compress-Archive (native Windows tool)
+            # For Windows, use standard zip (building on Ubuntu)
             cd build/${{ matrix.platform }}
-            powershell -Command "Compress-Archive -Path * -DestinationPath '$ZIP_FILE' -Force"
+            zip -r "$ZIP_FILE" . -q
             cd ${{ github.workspace }}
           else
             # For other platforms, use standard zip
@@ -898,16 +892,34 @@ jobs:
             --channel=2b9989ec-c4dd-43cd-833d-ad0478148e5e
           echo "✅ Build uploaded to Stash Studio"
       
-      # Windows: Install Stash CLI and upload to Stash Studio
-      - name: Install Stash CLI (Windows)
+      # Windows: Upload build artifact for Stash CLI upload job
+      - name: Upload Windows build artifact
         if: matrix.platform == 'StandaloneWindows64'
-        run: |
-          powershell.exe -ExecutionPolicy Bypass -Command "IEX (Invoke-WebRequest 'https://cli.stash.gg/install.ps1')"
-          echo "✅ Stash CLI installed"
-          stash-cli --version
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-${{ github.run_number }}
+          path: |
+            ${{ github.workspace }}/StandaloneWindows64-latest.zip
+            build/StandaloneWindows64
+          retention-days: 1
+      
+  upload-windows-to-stash:
+    name: Upload Windows build to Stash Studio
+    needs: build
+    if: always()
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Download Windows build artifact
+        uses: actions/download-artifact@v4
+        with:
+          pattern: windows-build-*
+          path: .
+          merge-multiple: false
       
       - name: Find Windows executable
-        if: matrix.platform == 'StandaloneWindows64'
         shell: bash
         run: |
           EXE_FILE=$(find build/StandaloneWindows64 -name "*.exe" -type f | head -1)
@@ -922,8 +934,13 @@ jobs:
           echo "Executable path (relative to zip): $EXE_RELATIVE_PATH"
           echo "EXECUTABLE_PATH=$EXE_RELATIVE_PATH" >> $GITHUB_ENV
       
+      - name: Install Stash CLI
+        run: |
+          powershell.exe -ExecutionPolicy Bypass -Command "IEX (Invoke-WebRequest 'https://cli.stash.gg/install.ps1')"
+          echo "✅ Stash CLI installed"
+          stash-cli --version
+      
       - name: Upload Windows build to Stash Studio
-        if: matrix.platform == 'StandaloneWindows64'
         run: |
           stash-cli upload \
             --env=test \
