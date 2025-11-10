@@ -49,7 +49,7 @@ jobs:
   build:
     name: Build for ${{ matrix.platform }}
     needs: determine-platforms
-    runs-on: ${{ (matrix.platform == 'iOS' || matrix.platform == 'StandaloneOSX') && 'macos-latest' || 'ubuntu-latest' }}
+    runs-on: ${{ (matrix.platform == 'iOS' || matrix.platform == 'StandaloneOSX') && 'macos-latest' || (matrix.platform == 'StandaloneWindows64' && 'windows-latest' || 'ubuntu-latest') }}
     strategy:
       matrix:
         platform: ${{ fromJSON(needs.determine-platforms.outputs.platforms) }}
@@ -804,6 +804,7 @@ jobs:
       
       - name: Create latest build archive
         if: matrix.platform != 'Android' && matrix.platform != 'iOS'
+        shell: bash
         run: |
           cd ${{ github.workspace }}
           ZIP_FILE="${{ github.workspace }}/${{ matrix.platform }}-latest.zip"
@@ -816,18 +817,41 @@ jobs:
               exit 1
             fi
             echo "Found macOS app: $APP_FILE"
+            APP_NAME=$(basename "$APP_FILE")
+            # Find the actual executable inside the .app bundle
+            MACOS_DIR="$APP_FILE/Contents/MacOS"
+            if [ -d "$MACOS_DIR" ]; then
+              EXECUTABLE_NAME=$(ls "$MACOS_DIR" | head -1)
+              if [ -z "$EXECUTABLE_NAME" ]; then
+                echo "ERROR: No executable found in $MACOS_DIR"
+                exit 1
+              fi
+              EXECUTABLE_PATH="$APP_NAME/Contents/MacOS/$EXECUTABLE_NAME"
+            else
+              # Fallback: assume executable name matches app name (without .app)
+              EXECUTABLE_NAME=$(basename "$APP_FILE" .app)
+              EXECUTABLE_PATH="$APP_NAME/Contents/MacOS/$EXECUTABLE_NAME"
+            fi
+            echo "App name: $APP_NAME"
+            echo "Executable name: $EXECUTABLE_NAME"
+            echo "Executable path (relative to zip): $EXECUTABLE_PATH"
             # Use ditto to create a proper macOS zip (preserves metadata, permissions, symlinks)
             ditto -ck --sequesterRsrc --keepParent "$APP_FILE" "$ZIP_FILE"
-            echo "APP_FILE=$APP_FILE" >> $GITHUB_ENV
+            echo "EXECUTABLE_PATH=$EXECUTABLE_PATH" >> $GITHUB_ENV
+          elif [ "${{ matrix.platform }}" = "StandaloneWindows64" ]; then
+            # For Windows, use PowerShell Compress-Archive (native Windows tool)
+            cd build/${{ matrix.platform }}
+            powershell -Command "Compress-Archive -Path * -DestinationPath '$ZIP_FILE' -Force"
+            cd ${{ github.workspace }}
           else
-            # For other platforms (Windows), use standard zip
+            # For other platforms, use standard zip
             cd build/${{ matrix.platform }}
             zip -r "$ZIP_FILE" . -q
             cd ${{ github.workspace }}
           fi
           
           echo "Created archive: $ZIP_FILE"
-          ls -lh "$ZIP_FILE"
+          ls -lh "$ZIP_FILE" || dir "$ZIP_FILE"
       
       - name: Upload latest build archive to GCS
         if: matrix.platform != 'Android' && matrix.platform != 'iOS'
@@ -840,7 +864,7 @@ jobs:
           process_gcloudignore: false
       
       # macOS: Install Stash CLI and upload to Stash Studio
-      - name: Install Stash CLI
+      - name: Install Stash CLI (MacOS)
         if: matrix.platform == 'StandaloneOSX'
         run: |
           /bin/bash -c "$(curl -fsSL https://cli.stash.gg/install.sh)"
@@ -854,8 +878,44 @@ jobs:
             --env=test \
             --secret="${{ secrets.STASH_API_KEY }}" \
             --file_path="${{ github.workspace }}/StandaloneOSX-latest.zip" \
-            --executable_path="${{ env.APP_FILE }}" \
+            --executable_path="${{ env.EXECUTABLE_PATH }}" \
             --platform=mac \
+            --channel=2b9989ec-c4dd-43cd-833d-ad0478148e5e
+          echo "✅ Build uploaded to Stash Studio"
+      
+      # Windows: Install Stash CLI and upload to Stash Studio
+      - name: Install Stash CLI (Windows)
+        if: matrix.platform == 'StandaloneWindows64'
+        run: |
+          powershell.exe -ExecutionPolicy Bypass -Command "IEX (Invoke-WebRequest 'https://cli.stash.gg/install.ps1')"
+          echo "✅ Stash CLI installed"
+          stash-cli --version
+      
+      - name: Find Windows executable
+        if: matrix.platform == 'StandaloneWindows64'
+        shell: bash
+        run: |
+          EXE_FILE=$(find build/StandaloneWindows64 -name "*.exe" -type f | head -1)
+          if [ -z "$EXE_FILE" ]; then
+            echo "ERROR: .exe file not found in build/StandaloneWindows64"
+            exit 1
+          fi
+          echo "Found Windows executable: $EXE_FILE"
+          # Get relative path inside the zip (zip contains files from build/StandaloneWindows64/)
+          EXE_NAME=$(basename "$EXE_FILE")
+          EXE_RELATIVE_PATH="$EXE_NAME"
+          echo "Executable path (relative to zip): $EXE_RELATIVE_PATH"
+          echo "EXECUTABLE_PATH=$EXE_RELATIVE_PATH" >> $GITHUB_ENV
+      
+      - name: Upload Windows build to Stash Studio
+        if: matrix.platform == 'StandaloneWindows64'
+        run: |
+          stash-cli upload \
+            --env=test \
+            --secret="${{ secrets.STASH_API_KEY }}" \
+            --file_path="${{ github.workspace }}/StandaloneWindows64-latest.zip" \
+            --executable_path="${{ env.EXECUTABLE_PATH }}" \
+            --platform=windows \
             --channel=2b9989ec-c4dd-43cd-833d-ad0478148e5e
           echo "✅ Build uploaded to Stash Studio"
 
