@@ -79,7 +79,7 @@ jobs:
         if: matrix.platform == 'Android'
         uses: jlumbroso/free-disk-space@v1.3.1
       
-      # iOS: Setup certificates and provisioning profiles
+      # iOS: Clean up any existing certificate/keychain state to avoid conflicts
       - name: Clean iOS certificate state
         if: matrix.platform == 'iOS'
         run: |
@@ -98,6 +98,7 @@ jobs:
           
           echo "Certificate state cleaned successfully"
       
+      # iOS: Setup certificates and keychain for code signing
       - name: Setup iOS certificates
         if: matrix.platform == 'iOS'
         run: |
@@ -166,6 +167,7 @@ jobs:
           
           echo "Certificate setup completed"
       
+      # iOS: Download provisioning profiles from App Store Connect
       - name: Download iOS provisioning profiles
         if: matrix.platform == 'iOS'
         uses: Apple-Actions/download-provisioning-profiles@v4
@@ -176,32 +178,7 @@ jobs:
           api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
       
-      - name: Verify provisioning profile capabilities
-        if: matrix.platform == 'iOS'
-        run: |
-          echo "Checking provisioning profiles..."
-          for profile in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
-            echo ""
-            echo "Profile: $(basename "$profile")"
-            security cms -D -i "$profile" | plutil -p - | grep -E '(Name|TeamIdentifier|UUID|Entitlements|com.apple.InAppPurchase)' || true
-            echo "---"
-          done
-          
-          # Check if any profile has In-App Purchase capability
-          HAS_IAP=false
-          for profile in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
-            if security cms -D -i "$profile" | grep -q "com.apple.InAppPurchase"; then
-              HAS_IAP=true
-              echo "✅ Found profile with In-App Purchase: $(basename "$profile")"
-              break
-            fi
-          done
-          
-          if [ "$HAS_IAP" = "false" ]; then
-            echo "⚠️  WARNING: No provisioning profile with In-App Purchase capability found"
-            echo "The app may require In-App Purchase capability. If the build fails, ensure your App ID has In-App Purchase enabled in App Store Connect."
-          fi
-      
+      # iOS: Verify certificates and provisioning profiles are correctly installed
       - name: Verify iOS setup
         if: matrix.platform == 'iOS'
         run: |
@@ -251,7 +228,6 @@ jobs:
             echo "---"
           done
       
-    
       # Build Unity project
       - name: Build Unity project
         uses: game-ci/unity-builder@v4
@@ -756,7 +732,7 @@ jobs:
           api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
       
-      # Upload build artifacts
+      # Upload build artifacts to GitHub Actions for download/debugging
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -764,13 +740,13 @@ jobs:
           path: build/${{ matrix.platform }}
           retention-days: 7
       
-      # Authenticate with Google Cloud
+      # Authenticate with Google Cloud Storage for artifact uploads
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
         with:
           credentials_json: ${{ secrets.PIE_PROD_GCP_SERVICE_ACCOUNT_CREDENTIALS_FOR_UPLOAD_DEMO }}
             
-      # Upload platform-specific artifacts to latest/
+      # Android: Locate the APK file for upload to GCS
       - name: Find Android APK for upload
         if: matrix.platform == 'Android'
         run: |
@@ -782,6 +758,7 @@ jobs:
           echo "Found APK: $APK_FILE"
           echo "APK_FILE=$APK_FILE" >> $GITHUB_ENV
       
+      # Android: Upload APK to GCS latest/ directory for direct download
       - name: Upload latest Android APK to GCS
         if: matrix.platform == 'Android'
         uses: google-github-actions/upload-cloud-storage@v3
@@ -792,6 +769,7 @@ jobs:
           gzip: false
           process_gcloudignore: false
       
+      # iOS: Upload IPA to GCS latest/ directory for direct download
       - name: Upload latest iOS IPA to GCS
         if: matrix.platform == 'iOS'
         uses: google-github-actions/upload-cloud-storage@v3
@@ -802,6 +780,7 @@ jobs:
           gzip: false
           process_gcloudignore: false
       
+      # Create zip archive for non-Android/iOS platforms (macOS, Windows, etc.)
       - name: Create latest build archive
         if: matrix.platform != 'Android' && matrix.platform != 'iOS'
         shell: bash
@@ -853,6 +832,7 @@ jobs:
           echo "Created archive: $ZIP_FILE"
           ls -lh "$ZIP_FILE" || dir "$ZIP_FILE"
       
+      # Upload zip archive to GCS latest/ directory for direct download
       - name: Upload latest build archive to GCS
         if: matrix.platform != 'Android' && matrix.platform != 'iOS'
         uses: google-github-actions/upload-cloud-storage@v3
@@ -863,25 +843,16 @@ jobs:
           gzip: false
           process_gcloudignore: false
       
-      # macOS: Install Stash CLI and upload to Stash Studio
-      - name: Install Stash CLI (MacOS)
+      # macOS: Upload build artifact for Stash CLI upload job
+      - name: Upload macOS build artifact
         if: matrix.platform == 'StandaloneOSX'
-        run: |
-          /bin/bash -c "$(curl -fsSL https://cli.stash.gg/install.sh)"
-          echo "✅ Stash CLI installed"
-          stash-cli --version
-      
-      - name: Upload macOS build to Stash Studio
-        if: matrix.platform == 'StandaloneOSX'
-        run: |
-          stash-cli upload \
-            --env=test \
-            --secret="${{ secrets.STASH_API_KEY }}" \
-            --file_path="${{ github.workspace }}/StandaloneOSX-latest.zip" \
-            --executable_path="${{ env.EXECUTABLE_PATH }}" \
-            --platform=mac \
-            --channel=2b9989ec-c4dd-43cd-833d-ad0478148e5e
-          echo "✅ Build uploaded to Stash Studio"
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-build-${{ github.run_number }}
+          path: |
+            ${{ github.workspace }}/StandaloneOSX-latest.zip
+            build/StandaloneOSX
+          retention-days: 1
       
       # Windows: Upload build artifact for Stash CLI upload job
       - name: Upload Windows build artifact
@@ -894,15 +865,118 @@ jobs:
             build/StandaloneWindows64
           retention-days: 1
       
+  # Upload MacOS build to Stash Studio using Stash CLI - Test Stash CLI on MacOS
+  upload-macos-to-stash:
+    name: Upload macOS build to Stash Studio
+    needs: [determine-platforms, build]
+    if: always() && contains(needs.determine-platforms.outputs.platforms, 'StandaloneOSX')
+    runs-on: macos-latest
+    steps:
+      # Checkout repository (needed for bash scripts)
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      # Download the macOS build artifact uploaded from the build job
+      - name: Download macOS build artifact
+        uses: actions/download-artifact@v4
+        with:
+          pattern: macos-build-*
+          path: .
+          merge-multiple: false
+          if-no-artifacts-found: error
+      
+      # Extract files from artifact subdirectory to workspace root
+      - name: Find artifact directory and move files
+        shell: bash
+        run: |
+          # Find the artifact directory (it will be named macos-build-*)
+          ARTIFACT_DIR=$(find . -maxdepth 1 -type d -name "macos-build-*" | head -1)
+          if [ -z "$ARTIFACT_DIR" ]; then
+            echo "ERROR: macOS build artifact directory not found"
+            exit 1
+          fi
+          echo "Found artifact directory: $ARTIFACT_DIR"
+          
+          # Move files from artifact directory to workspace root
+          if [ -f "$ARTIFACT_DIR/StandaloneOSX-latest.zip" ]; then
+            mv "$ARTIFACT_DIR/StandaloneOSX-latest.zip" .
+            echo "✅ Moved StandaloneOSX-latest.zip to workspace root"
+          fi
+          
+          if [ -d "$ARTIFACT_DIR/build/StandaloneOSX" ]; then
+            mkdir -p build
+            mv "$ARTIFACT_DIR/build/StandaloneOSX" build/
+            echo "✅ Moved build/StandaloneOSX to workspace"
+          fi
+          
+          # Verify files exist
+          if [ ! -f "StandaloneOSX-latest.zip" ] && [ ! -d "build/StandaloneOSX" ]; then
+            echo "ERROR: macOS build artifact not found after extraction"
+            exit 1
+          fi
+          echo "✅ macOS build artifact verified"
+      
+      # Find the macOS .app bundle and extract executable path
+      - name: Find macOS executable
+        shell: bash
+        run: |
+          APP_FILE=$(find build/StandaloneOSX -name "*.app" -type d | head -1)
+          if [ -z "$APP_FILE" ]; then
+            echo "ERROR: .app file not found in build/StandaloneOSX"
+            exit 1
+          fi
+          echo "Found macOS app: $APP_FILE"
+          APP_NAME=$(basename "$APP_FILE")
+          # Find the actual executable inside the .app bundle
+          MACOS_DIR="$APP_FILE/Contents/MacOS"
+          if [ -d "$MACOS_DIR" ]; then
+            EXECUTABLE_NAME=$(ls "$MACOS_DIR" | head -1)
+            if [ -z "$EXECUTABLE_NAME" ]; then
+              echo "ERROR: No executable found in $MACOS_DIR"
+              exit 1
+            fi
+            EXECUTABLE_PATH="$APP_NAME/Contents/MacOS/$EXECUTABLE_NAME"
+          else
+            # Fallback: assume executable name matches app name (without .app)
+            EXECUTABLE_NAME=$(basename "$APP_FILE" .app)
+            EXECUTABLE_PATH="$APP_NAME/Contents/MacOS/$EXECUTABLE_NAME"
+          fi
+          echo "App name: $APP_NAME"
+          echo "Executable name: $EXECUTABLE_NAME"
+          echo "Executable path (relative to zip): $EXECUTABLE_PATH"
+          echo "EXECUTABLE_PATH=$EXECUTABLE_PATH" >> $GITHUB_ENV
+      
+      # Install Stash CLI on macOS runner (required for upload)
+      - name: Install Stash CLI
+        run: |
+          /bin/bash -c "$(curl -fsSL https://cli.stash.gg/install.sh)"
+          echo "✅ Stash CLI installed"
+          stash-cli --version
+      
+      # Upload macOS build to Stash Studio using Stash CLI
+      - name: Upload macOS build to Stash Studio
+        run: |
+          stash-cli upload \
+            --env=test \
+            --secret="${{ secrets.STASH_API_KEY }}" \
+            --file_path="${{ github.workspace }}/StandaloneOSX-latest.zip" \
+            --executable_path="${{ env.EXECUTABLE_PATH }}" \
+            --platform=mac \
+            --channel=2b9989ec-c4dd-43cd-833d-ad0478148e5e
+          echo "✅ Build uploaded to Stash Studio"
+  
+  # Upload Windows build to Stash Studio using Stash CLI - Test Stash CLI on Windows
   upload-windows-to-stash:
     name: Upload Windows build to Stash Studio
     needs: [determine-platforms, build]
     if: always() && contains(needs.determine-platforms.outputs.platforms, 'StandaloneWindows64')
     runs-on: windows-latest
     steps:
+      # Checkout repository (needed for bash scripts)
       - name: Checkout repository
         uses: actions/checkout@v4
       
+      # Download the Windows build artifact uploaded from the build job
       - name: Download Windows build artifact
         uses: actions/download-artifact@v4
         with:
@@ -911,6 +985,7 @@ jobs:
           merge-multiple: false
           if-no-artifacts-found: error
       
+      # Extract files from artifact subdirectory to workspace root
       - name: Find artifact directory and move files
         shell: bash
         run: |
@@ -941,6 +1016,7 @@ jobs:
           fi
           echo "✅ Windows build artifact verified"
       
+      # Locate the main .exe file for Stash Studio upload
       - name: Find Windows executable
         shell: bash
         run: |
@@ -956,12 +1032,14 @@ jobs:
           echo "Executable path (relative to zip): $EXE_RELATIVE_PATH"
           echo "EXECUTABLE_PATH=$EXE_RELATIVE_PATH" >> $GITHUB_ENV
       
+      # Install Stash CLI on Windows runner (required for upload)
       - name: Install Stash CLI
         run: |
           powershell.exe -ExecutionPolicy Bypass -Command "IEX (Invoke-WebRequest 'https://cli.stash.gg/install.ps1')"
           echo "✅ Stash CLI installed"
           stash-cli --version
       
+      # Upload Windows build to Stash Studio using Stash CLI
       - name: Upload Windows build to Stash Studio
         run: |
           stash-cli upload \
@@ -972,16 +1050,3 @@ jobs:
             --platform=windows \
             --channel=2b9989ec-c4dd-43cd-833d-ad0478148e5e
           echo "✅ Build uploaded to Stash Studio"
-
-
-
-
-
-
-
-
-
-
-
-
-
