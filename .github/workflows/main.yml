@@ -1036,15 +1036,20 @@ jobs:
       # Install Stash CLI on Windows runner (required for upload)
       - name: Install Stash CLI
         continue-on-error: true
+        shell: powershell
         run: |
-          powershell.exe -ExecutionPolicy Bypass -Command "IEX (Invoke-WebRequest 'https://cli.stash.gg/install.ps1')"
+          IEX (Invoke-WebRequest 'https://cli.stash.gg/install.ps1')
           echo "✅ Stash CLI installed"
+          # Refresh environment variables to pick up the new PATH
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
           stash-cli --version
       
       # Upload Windows build to Stash Studio using Stash CLI
       - name: Upload Windows build to Stash Studio
         shell: powershell
         run: |
+          # Refresh environment variables to ensure stash-cli is in PATH
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
           stash-cli upload `
             --env=test `
             --secret="${{ secrets.STASH_API_KEY }}" `
