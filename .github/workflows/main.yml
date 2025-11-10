@@ -31,16 +31,22 @@ on:
         required: false
         type: boolean
         default: true
+  workflow_run:
+    workflows: ["Create Release"]
+    types:
+      - completed
 
 jobs:
   determine-platforms:
     runs-on: ubuntu-latest
+    # Skip if workflow_run event but release workflow didn't succeed
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     outputs:
       platforms: ${{ steps.set-platforms.outputs.platforms }}
     steps:
       - id: set-platforms
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
+          if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "workflow_run" ]; then
             echo 'platforms=["Android","iOS","StandaloneWindows64","StandaloneOSX"]' >> $GITHUB_OUTPUT
           else
             echo "platforms=[\"${{ inputs.platform }}\"]" >> $GITHUB_OUTPUT
@@ -724,7 +730,7 @@ jobs:
       
       # iOS: Upload to TestFlight using Apple's recommended action
       - name: Upload to TestFlight
-        if: matrix.platform == 'iOS' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.upload_to_testflight == true))
+        if: matrix.platform == 'iOS' && (github.event_name == 'push' || github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && inputs.upload_to_testflight == true))
         uses: apple-actions/upload-testflight-build@v1
         with:
           app-path: 'build/iOS/iOS/export/StashDemo.ipa'

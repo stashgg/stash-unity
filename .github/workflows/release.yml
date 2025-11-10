@@ -60,60 +60,14 @@ jobs:
           git tag -a "v${{ steps.validate-version.outputs.version }}" -m "Release v${{ steps.validate-version.outputs.version }}"
           git push origin "v${{ steps.validate-version.outputs.version }}"
       
-      - name: Generate meta file list for unitypackage
-        run: |
-          echo "Generating meta file list for unitypackage..."
-          
-          # Create meta list file
-          META_LIST="metaList"
-          > "$META_LIST"
-          
-          # Add .meta files for directories
-          echo "Assets/Stash.meta" >> "$META_LIST"
-          echo "Assets/Stash.Popup.meta" >> "$META_LIST"
-          echo "Assets/Stash.Samples.meta" >> "$META_LIST"
-          
-          # Find all .meta files in the three directories
-          find Assets/Stash -name "*.meta" >> "$META_LIST"
-          find Assets/Stash.Popup -name "*.meta" >> "$META_LIST"
-          find Assets/Stash.Samples -name "*.meta" >> "$META_LIST"
-          
-          echo "✅ Generated meta file list:"
-          wc -l "$META_LIST"
-      
-      - name: Create output directory
-        run: |
-          mkdir -p release
-      
-      - name: Create Unity Package
-        uses: pCYSl5EDgo/create-unitypackage@v1.2.3
-        with:
-          package-path: "release/StashSDK-v${{ steps.validate-version.outputs.version }}.unitypackage"
-          include-files: metaList
-          project-folder: "./"
-          working-folder: "./"
-      
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ steps.validate-version.outputs.version }}
           name: Release v${{ steps.validate-version.outputs.version }}
-          body: |
-            ${{ inputs.changelog }}
-            
-            ## Downloads
-            
-            - [StashSDK-v${{ steps.validate-version.outputs.version }}.unitypackage](https://github.com/${{ github.repository }}/releases/download/v${{ steps.validate-version.outputs.version }}/StashSDK-v${{ steps.validate-version.outputs.version }}.unitypackage)
-          files: release/StashSDK-v${{ steps.validate-version.outputs.version }}.unitypackage
+          body: ${{ inputs.changelog }}
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: stash-sdk-unitypackage-v${{ steps.validate-version.outputs.version }}
-          path: release/StashSDK-v${{ steps.validate-version.outputs.version }}.unitypackage
-          retention-days: 30
 
