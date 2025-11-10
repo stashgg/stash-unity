@@ -1043,12 +1043,13 @@ jobs:
       
       # Upload Windows build to Stash Studio using Stash CLI
       - name: Upload Windows build to Stash Studio
+        shell: powershell
         run: |
-          stash-cli upload \
-            --env=test \
-            --secret="${{ secrets.STASH_API_KEY }}" \
-            --file_path="${{ github.workspace }}/StandaloneWindows64-latest.zip" \
-            --executable_path="${{ env.EXECUTABLE_PATH }}" \
-            --platform=windows \
+          stash-cli upload `
+            --env=test `
+            --secret="${{ secrets.STASH_API_KEY }}" `
+            --file_path="${{ github.workspace }}/StandaloneWindows64-latest.zip" `
+            --executable_path="${{ env.EXECUTABLE_PATH }}" `
+            --platform=windows `
             --channel=2b9989ec-c4dd-43cd-833d-ad0478148e5e
           echo "✅ Build uploaded to Stash Studio"
