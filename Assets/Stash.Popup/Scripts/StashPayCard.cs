@@ -212,23 +212,15 @@ namespace StashPopup
             {
                 if (isPopup)
                 {
-                    float smallerDimension = Mathf.Min(Screen.width, Screen.height);
-                    // Tablet gets compact popup (50% of screen), phone uses 75%
-                    bool isTablet = smallerDimension > 600;
-                    float minSize = isTablet ? 400f : 300f;
-                    float maxSize = isTablet ? 500f : 500f;
-                    float percentage = isTablet ? 0.5f : 0.75f;
-                    float squareSize = Mathf.Clamp(smallerDimension * percentage, minSize, maxSize);
-                    float squareWidthRatio = squareSize / Screen.width;
-                    float squareHeightRatio = squareSize / Screen.height;
-                    float centerPosition = 0.5f + (squareHeightRatio / 2.0f);
-                    androidPluginInstance.Call("setCardConfiguration", squareHeightRatio, centerPosition, squareWidthRatio);
+                    // Call openPopup for popup presentation
+                    androidPluginInstance.Call("openPopup", url);
                 }
                 else
                 {
+                    // Apply card configuration and call openURL for card presentation
                     androidPluginInstance.Call("setCardConfiguration", _cardHeightRatio, _cardVerticalPosition, _cardWidthRatio);
+                    androidPluginInstance.Call("openURL", url);
                 }
-                androidPluginInstance.Call("openURL", url);
             }
             else
             {
