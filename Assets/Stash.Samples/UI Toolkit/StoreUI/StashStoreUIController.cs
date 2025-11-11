@@ -24,7 +24,7 @@ namespace Stash.Samples
     [SerializeField] private List<StoreItem> storeItems = new List<StoreItem>();
 
     [Header("Stash Configuration")]
-    [SerializeField] private string apiKey = "your-api-key-here";
+    private string apiKey = "zyIbbfvO1ZRTaDt1VBZ5CJrwrdzyfDyLgt-VWNT-1uWj-5h42aeB6BNGAl8MGImw";
     [SerializeField] private StashEnvironment environment = StashEnvironment.Test;
     
     [Header("User Information")]
