@@ -145,7 +145,7 @@ BOOL isRunningOniPad();
         _hasStartedRendering = NO;
         
         // Create a fallback timer to handle cases where navigation events aren't fired
-        _timeoutTimer = [NSTimer scheduledTimerWithTimeInterval:0.2  // Fast timeout for immediate content display
+        _timeoutTimer = [NSTimer scheduledTimerWithTimeInterval:0.1  // Very fast timeout for first paint
                                                         target:self 
                                                       selector:@selector(handleTimeout:) 
                                                       userInfo:nil 
@@ -198,27 +198,9 @@ BOOL isRunningOniPad();
 }
 
 - (void)handleTimeout:(NSTimer*)timer {
-    if (_webView.hidden) {
-        // Check if the page is truly ready
-        NSString *readyCheck = @"(function() { \
-            if (document.readyState !== 'complete') return false; \
-            if (document.documentElement.style.display === 'none') return false; \
-            if (document.body === null) return false; \
-            if (window.getComputedStyle(document.body).display === 'none') return false; \
-            return true; \
-        })()";
-        
-        [_webView evaluateJavaScript:readyCheck completionHandler:^(id result, NSError *error) {
-            if ([result boolValue]) {
-        [self showWebViewAndRemoveLoading];
-            } else {
-                // If not ready, wait a bit more
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                    [self handleTimeout:timer];
-                });
-            }
-        }];
-    }
+    // Fallback: if navigation events didn't fire, show anyway for first paint
+    // This ensures the WebView is always shown even if didCommit doesn't fire
+    [self showWebViewAndRemoveLoading];
 }
 
 - (void)showWebViewAndRemoveLoading {
@@ -229,51 +211,41 @@ BOOL isRunningOniPad();
     
     // Check if we've already shown the webview (alpha > 0)
     if (_webView.alpha < 0.01) {
-        // Final check to ensure page is truly ready
-        [_webView evaluateJavaScript:@"document.readyState === 'complete' && document.body !== null" completionHandler:^(id result, NSError *error) {
-            if (![result boolValue]) {
-                // If not ready, wait and try again
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                    [self showWebViewAndRemoveLoading];
-                });
-                return;
+        // Get the current system background color
+        UIColor *backgroundColor;
+        if (@available(iOS 13.0, *)) {
+            UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
+            backgroundColor = (currentStyle == UIUserInterfaceStyleDark) ? [UIColor blackColor] : [UIColor systemBackgroundColor];
+        } else {
+            backgroundColor = [UIColor whiteColor];
+        }
+        
+        // Ensure WebView background is solid and matches loading view
+        _webView.backgroundColor = backgroundColor;
+        _webView.scrollView.backgroundColor = backgroundColor;
+        _webView.scrollView.opaque = YES;
+        _webView.opaque = YES;
+        
+        // Force background color in the web content (only for dark mode)
+        if (@available(iOS 13.0, *)) {
+            UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
+            if (currentStyle == UIUserInterfaceStyleDark) {
+                NSString *forceColor = @"document.documentElement.style.backgroundColor = 'black'; \
+                                      document.body.style.backgroundColor = 'black'; \
+                                      var style = document.createElement('style'); \
+                                      style.innerHTML = 'body, html { background-color: black !important; }'; \
+                                      document.head.appendChild(style);";
+                [_webView evaluateJavaScript:forceColor completionHandler:nil];
             }
-            
-            // Get the current system background color
-            UIColor *backgroundColor;
-            if (@available(iOS 13.0, *)) {
-                UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
-                backgroundColor = (currentStyle == UIUserInterfaceStyleDark) ? [UIColor blackColor] : [UIColor systemBackgroundColor];
-            } else {
-                backgroundColor = [UIColor whiteColor];
-            }
-            
-            // Ensure WebView background is solid and matches loading view
-            self->_webView.backgroundColor = backgroundColor;
-            self->_webView.scrollView.backgroundColor = backgroundColor;
-            self->_webView.scrollView.opaque = YES;
-            self->_webView.opaque = YES;
-            
-            // Force background color in the web content
-            if (@available(iOS 13.0, *)) {
-                UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
-                if (currentStyle == UIUserInterfaceStyleDark) {
-                    NSString *forceColor = @"document.documentElement.style.backgroundColor = 'black'; \
-                                          document.body.style.backgroundColor = 'black'; \
-                                          var style = document.createElement('style'); \
-                                          style.innerHTML = 'body, html { background-color: black !important; }'; \
-                                          document.head.appendChild(style);";
-                    [self->_webView evaluateJavaScript:forceColor completionHandler:nil];
-                }
-            }
-            
-            // Seamless cross-fade: both views visible, just swap opacity
-            [UIView animateWithDuration:0.3 delay:0 options:UIViewAnimationOptionCurveEaseInOut animations:^{
-                self->_loadingView.alpha = 0.0;
-                self->_webView.alpha = 1.0;
-            } completion:^(BOOL finished) {
-                [self->_loadingView removeFromSuperview];
-            }];
+        }
+        
+        // Seamless cross-fade: both views visible, just swap opacity
+        // Faster animation (0.2s instead of 0.3s) for snappier feel
+        [UIView animateWithDuration:0.2 delay:0 options:UIViewAnimationOptionCurveEaseInOut animations:^{
+            self->_loadingView.alpha = 0.0;
+            self->_webView.alpha = 1.0;
+        } completion:^(BOOL finished) {
+            [self->_loadingView removeFromSuperview];
         }];
     }
 }
@@ -328,9 +300,11 @@ BOOL isRunningOniPad();
 }
 
 - (void)webView:(WKWebView *)webView didCommitNavigation:(WKNavigation *)navigation {
-    // Content has started rendering
+    // Content has started rendering - show immediately at first paint!
     _hasStartedRendering = YES;
-    // Don't show the webview here anymore, wait for full load
+    
+    // Show the WebView as soon as first paint happens (fastest possible display)
+    [self showWebViewAndRemoveLoading];
 }
 
 - (void)webView:(WKWebView *)webView didStartProvisionalNavigation:(WKNavigation *)navigation {
@@ -2264,7 +2238,9 @@ extern "C" {
                     if (finalY < 0) finalY = 0;
                 }
                 
-                CGFloat y = _usePopupPresentation ? finalY : screenBounds.size.height;
+                // Start at final position to enable immediate WebView rendering
+                // We'll use opacity + slight transform for animation instead of off-screen position
+                CGFloat y = finalY;
                 
                 // Use window-based presentation for all cases (iPhone, iPad, popup)
                 // This provides consistent behavior and proper orientation handling
@@ -2315,26 +2291,29 @@ extern "C" {
                 maskLayer.path = maskPath.CGPath;
                 containerVC.view.layer.mask = maskLayer;
                 
-                // Set initial state for popup presentation
+                // Set initial state for ALL presentations (card starts invisible but on-screen for faster WebView rendering)
+                containerVC.view.alpha = 0.0;
                 if (_usePopupPresentation) {
-                    containerVC.view.alpha = 0.0;
                     containerVC.view.transform = CGAffineTransformMakeScale(0.9, 0.9);
+                } else {
+                    // Card: start with slight downward offset (50pt) for subtle slide-up effect
+                    containerVC.view.transform = CGAffineTransformMakeTranslation(0, 50);
                 }
                 
                 CGFloat overlayOpacity = isRunningOniPad() ? 0.25 : 0.4;
-                CGFloat animationDuration = _usePopupPresentation ? 0.2 : 0.15;
+                // Shorter duration since opacity/transform is smoother than position-based animation
+                CGFloat animationDuration = _usePopupPresentation ? 0.15 : 0.12;
                 
-                // Animate card presentation
-                [UIView animateWithDuration:animationDuration animations:^{
-                    if (_usePopupPresentation) {
-                        // Popup: fade in and scale up
-                        containerVC.view.alpha = 1.0;
-                        containerVC.view.transform = CGAffineTransformIdentity;
-                    } else {
-                        // Card: slide up from bottom
-                        containerVC.customFrame = CGRectMake(x, finalY, width, height);
-                        containerVC.view.frame = containerVC.customFrame;
-                    }
+                // Animate card presentation with spring for natural feel (opacity + subtle transform, NO position change)
+                // This allows WebView to start rendering immediately since it's already on-screen
+                [UIView animateWithDuration:animationDuration 
+                                      delay:0 
+                     usingSpringWithDamping:0.85 
+                      initialSpringVelocity:0.5 
+                                    options:UIViewAnimationOptionCurveEaseOut 
+                                 animations:^{
+                    containerVC.view.alpha = 1.0;
+                    containerVC.view.transform = CGAffineTransformIdentity;
                     overlayView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:overlayOpacity];
                 } completion:^(BOOL finished) {
                     // Add drag tray and gestures for non-popup presentations
