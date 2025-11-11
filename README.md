@@ -1,6 +1,6 @@
 # Stash SDK for Unity ![buildtest](https://github.com/stashgg/stash-unity/actions/workflows/main.yml/badge.svg)
 
-This package is designed to get your Unity project up and running with the Stash web shop in just a few steps. The package is lightweight and wraps Stash API endpoints without any external dependencies. 
+This package is designed to get your Unity project up and running with the Stash web shop in just a few steps. The package is lightweight and wraps Stash API endpoints without any external dependencies.
 
 To get started, you need to import the latest package from the [releases](https://github.com/stashgg/stash-unity/releases) section and follow our [Unity guide](https://docs.stash.gg/docs/configure-unity-project).
 
@@ -8,17 +8,35 @@ To get started, you need to import the latest package from the [releases](https:
 
 The Stash package always targets the latest LTS version of Unity. We recommend you use the LTS version of Unity to build projects that are in production or about to ship. However, you should not encounter any issues when integrating or migrating into any other versions of Unity above the targeted release.
 
-
 ## Components
 
 All components are optional, you can mix and match based on your needs.
 
-| Component     | Description                                                                 |
-|---------------|-----------------------------------------------------------------------------|
-| Stash.Core    | Provides core functionalities and API wrappers for Stash.                   |
-| [Stash.Popup](https://github.com/stashgg/stash-unity/tree/main/Assets/Stash.Popup)   | Offers a customizable card-style popup for Stash Pay.                       |
-| Stash.Samples | Includes sample scene using the Stash SDK.                 |
+| Component                                                                          | Description                                                           |
+| ---------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Stash.Core                                                                         | Provides core functionalities, API wrappers, and analytics for Stash. |
+| [Stash.Popup](https://github.com/stashgg/stash-unity/tree/main/Assets/Stash.Popup) | Offers a customizable card-style popup for Stash Pay.                 |
+| Stash.Samples                                                                      | Includes sample scene using the Stash SDK.                            |
 
+### Event Tracking
+
+Track user interactions and behavior in your game with built-in analytics:
+
+```csharp
+// Initialize SDK with analytics
+StashSDK.Initialize("your-shop-handle", StashEnvironment.Production);
+
+// Track click events
+StashSDK.TrackClick("shop_button", "main_menu");
+
+// Track with custom data
+var customData = new Dictionary<string, object>
+{
+    { "itemId", "premium_pack" },
+    { "price", 9.99f }
+};
+StashSDK.TrackClick("purchase_button", "store", customData);
+```
 
 ## Installation
 
