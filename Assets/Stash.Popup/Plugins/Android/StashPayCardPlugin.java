@@ -238,11 +238,11 @@ public class StashPayCardPlugin {
     }
     
     private boolean shouldUsePortraitActivity() {
-        // Use portrait Activity for all cards on phones (not popups, not tablets)
-        if (usePopupPresentation || isTablet()) {
+        // Use portrait Activity for all card presentations (phones and tablets, not popups)
+        if (usePopupPresentation) {
             return false;
         }
-        return true;
+        return true; // Use Activity for all cards (phones and tablets)
     }
     
     private void launchPortraitActivity(String url) {
@@ -328,8 +328,8 @@ public class StashPayCardPlugin {
                 window.setAttributes(params);
             }
             
-            // Dismiss on overlay tap
-            mainFrame.setOnClickListener(v -> dismissPopupDialog());
+            // Popup is modal - no tap-outside-to-dismiss
+            // Consume clicks on popup container to prevent them from bubbling
             currentContainer.setOnClickListener(v -> {});
 
         // Set dismiss listener
@@ -552,19 +552,21 @@ public class StashPayCardPlugin {
                         if (Math.abs(deltaY) > dpToPx(10)) {
                             isDragging = true;
                             if (deltaY > 0) {
-                                // Downward drag - dismiss behavior
-                                float newTranslationY = initialTranslationY + (deltaY * 0.7f);
+                                // Downward drag - dismiss behavior (follow finger exactly)
+                                float newTranslationY = initialTranslationY + deltaY;
                                 currentContainer.setTranslationY(newTranslationY);
                                 float progress = Math.min(deltaY / dpToPx(200), 1.0f);
                                 currentContainer.setAlpha(1.0f - (progress * 0.3f));
                             } else if (deltaY < 0 && !isExpanded) {
                                 // Upward drag - expand behavior
-                                float upwardProgress = Math.min(Math.abs(deltaY) / dpToPx(150), 1.0f);
                                 DisplayMetrics metrics = activity.getResources().getDisplayMetrics();
                                 int screenHeight = metrics.heightPixels;
                                 int baseHeight = (int)(screenHeight * 0.68f);
                                 int maxHeight = (int)(screenHeight * 0.88f);
-                                int newHeight = (int)(baseHeight + (maxHeight - baseHeight) * upwardProgress);
+                                
+                                // Make height follow finger drag directly (balanced multiplier)
+                                int heightIncrease = (int)(Math.abs(deltaY) * 0.75f); // 75% tracking for natural feel
+                                int newHeight = Math.min(baseHeight + heightIncrease, maxHeight);
                                 
                                 FrameLayout.LayoutParams cardParams = 
                                     (FrameLayout.LayoutParams)currentContainer.getLayoutParams();
@@ -949,27 +951,41 @@ public class StashPayCardPlugin {
                     ((ViewGroup)loadingIndicator.getParent()).removeView(loadingIndicator);
                 }
                 
-                // Create ProgressBar with proper indeterminate style
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    // Use Material Design large spinner style
-                    loadingIndicator = new ProgressBar(activity, null, android.R.attr.progressBarStyleLarge);
-                } else {
-                    loadingIndicator = new ProgressBar(activity);
+                // Use application context for proper Material theme
+                Context appContext = activity.getApplicationContext();
+                
+                // Create ProgressBar with default style (not Large - matches Activity implementation)
+                loadingIndicator = new ProgressBar(appContext);
+                
+                // Enable hardware acceleration
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
+                    loadingIndicator.setLayerType(View.LAYER_TYPE_HARDWARE, null);
                 }
                 
                 // Set to indeterminate mode (spinning animation)
                 loadingIndicator.setIndeterminate(true);
                 
                 // Apply theme color
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     loadingIndicator.setIndeterminateTintList(
                         android.content.res.ColorStateList.valueOf(isDarkTheme() ? Color.WHITE : Color.DKGRAY));
                 }
                 
+                // Same size as Activity
                 FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dpToPx(48), dpToPx(48));
                 params.gravity = Gravity.CENTER;
                 loadingIndicator.setLayoutParams(params);
+                
                 currentContainer.addView(loadingIndicator);
+                loadingIndicator.bringToFront();
+                
+                // Force animation to start after layout
+                loadingIndicator.post(() -> {
+                    if (loadingIndicator != null) {
+                        loadingIndicator.setVisibility(View.VISIBLE);
+                        loadingIndicator.requestLayout();
+                    }
+                });
             } catch (Exception e) {
                 Log.e(TAG, "Error showing loading indicator: " + e.getMessage());
             }

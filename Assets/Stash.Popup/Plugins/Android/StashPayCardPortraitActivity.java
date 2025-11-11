@@ -1,6 +1,7 @@
 package com.stash.popup;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.graphics.*;
@@ -69,15 +70,15 @@ public class StashPayCardPortraitActivity extends Activity {
     private void createUI() {
         rootLayout = new FrameLayout(this);
         
-        // If we rotated from landscape: use solid background to hide rotated Unity
-        // If already portrait: use transparent to show Unity underneath
-        if (wasLandscapeBeforeRotation) {
+        // For phones rotated from landscape: use solid background to hide rotated Unity
+        // For tablets or phones already in portrait: use transparent overlay
+        if (wasLandscapeBeforeRotation && !isTablet()) {
             int solidBg = isDarkTheme() ? Color.BLACK : Color.WHITE;
             rootLayout.setBackgroundColor(solidBg);
-            Log.i(TAG, "Using solid background (rotated from landscape)");
+            Log.i(TAG, "Using solid background (phone rotated from landscape)");
         } else {
             rootLayout.setBackgroundColor(Color.parseColor("#20000000")); // Transparent overlay
-            Log.i(TAG, "Using transparent background (already portrait)");
+            Log.i(TAG, "Using transparent background (tablet or already portrait)");
         }
         
         if (usePopup) {
@@ -86,8 +87,11 @@ public class StashPayCardPortraitActivity extends Activity {
             createCard();
         }
         
-        rootLayout.setOnClickListener(v -> dismissWithAnimation());
-        cardContainer.setOnClickListener(v -> {});
+        // Only dismiss on tap-outside for cards, not popups
+        if (!usePopup) {
+            rootLayout.setOnClickListener(v -> dismissWithAnimation());
+        }
+        cardContainer.setOnClickListener(v -> {}); // Consume clicks on container
         
         setContentView(rootLayout);
     }
@@ -100,12 +104,22 @@ public class StashPayCardPortraitActivity extends Activity {
         float heightRatio = wasLandscapeBeforeRotation ? 0.95f : cardHeightRatio;
         int cardHeight = (int) (metrics.heightPixels * heightRatio);
         
-        Log.i(TAG, "Card height ratio: " + heightRatio + " (wasLandscape: " + wasLandscapeBeforeRotation + ")");
+        // For tablets: use narrower width for better readability (70% of screen width, max 600dp)
+        // For phones: use full width
+        int cardWidth;
+        if (isTablet()) {
+            int maxTabletWidth = dpToPx(600); // Max 600dp width on tablets
+            int preferredWidth = (int)(metrics.widthPixels * 0.7f); // 70% of screen width
+            cardWidth = Math.min(preferredWidth, maxTabletWidth);
+        } else {
+            cardWidth = FrameLayout.LayoutParams.MATCH_PARENT; // Full width on phones
+        }
+        
+        Log.i(TAG, "Card size - height: " + cardHeight + ", width: " + cardWidth + ", isTablet: " + isTablet());
         
         cardContainer = new FrameLayout(this);
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT, cardHeight);
-        params.gravity = Gravity.BOTTOM;
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(cardWidth, cardHeight);
+        params.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL; // Center horizontally on tablets
         cardContainer.setLayoutParams(params);
         
         GradientDrawable bg = new GradientDrawable();
@@ -227,19 +241,21 @@ public class StashPayCardPortraitActivity extends Activity {
                             isDragging = true;
                             
                             if (deltaY > 0) {
-                                // Downward drag - dismiss behavior
-                                float newTranslationY = initialTranslationY + (deltaY * 0.7f);
+                                // Downward drag - dismiss behavior (follow finger exactly)
+                                float newTranslationY = initialTranslationY + deltaY;
                                 cardContainer.setTranslationY(newTranslationY);
                                 float progress = Math.min(deltaY / dpToPx(200), 1.0f);
                                 cardContainer.setAlpha(1.0f - (progress * 0.3f));
                             } else if (deltaY < 0 && !isExpanded && !wasLandscapeBeforeRotation) {
                                 // Upward drag - expand behavior (only if not already large from landscape rotation)
-                                float upwardProgress = Math.min(Math.abs(deltaY) / dpToPx(150), 1.0f);
                                 DisplayMetrics metrics = getResources().getDisplayMetrics();
                                 int screenHeight = metrics.heightPixels;
                                 int baseHeight = (int)(screenHeight * cardHeightRatio);
                                 int maxHeight = (int)(screenHeight * 0.95f);
-                                int newHeight = (int)(baseHeight + (maxHeight - baseHeight) * upwardProgress);
+                                
+                                // Make height follow finger drag directly (balanced multiplier)
+                                int heightIncrease = (int)(Math.abs(deltaY) * 0.75f); // 75% tracking for natural feel
+                                int newHeight = Math.min(baseHeight + heightIncrease, maxHeight);
                                 
                                 FrameLayout.LayoutParams cardParams = 
                                     (FrameLayout.LayoutParams)cardContainer.getLayoutParams();
@@ -440,36 +456,52 @@ public class StashPayCardPortraitActivity extends Activity {
     
     private void showLoading() {
         runOnUiThread(() -> {
-            if (loadingIndicator != null) return;
-            
-            // Create standard circular ProgressBar (default is indeterminate/spinning)
-            loadingIndicator = new ProgressBar(this);
-            
-            // Ensure indeterminate mode is enabled (spinning animation)
-            loadingIndicator.setIndeterminate(true);
-            
-            // Ensure visibility
-            loadingIndicator.setVisibility(View.VISIBLE);
-            
-            // Apply theme color for API 21+
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                int color = isDarkTheme() ? Color.WHITE : Color.DKGRAY;
-                loadingIndicator.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(color));
+            try {
+                if (loadingIndicator != null && loadingIndicator.getParent() != null) {
+                    ((ViewGroup)loadingIndicator.getParent()).removeView(loadingIndicator);
+                }
+                
+                // Use application context instead of Activity context for proper Material theme
+                Context appContext = getApplicationContext();
+                
+                // Create ProgressBar with default style (not Large - that's the thick one)
+                loadingIndicator = new ProgressBar(appContext);
+                
+                // Enable hardware acceleration on the ProgressBar itself
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
+                    loadingIndicator.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+                }
+                
+                // Set to indeterminate mode (spinning animation)
+                loadingIndicator.setIndeterminate(true);
+                
+                // Apply theme color
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    loadingIndicator.setIndeterminateTintList(
+                        android.content.res.ColorStateList.valueOf(isDarkTheme() ? Color.WHITE : Color.DKGRAY));
+                }
+                
+                // Same size as popup
+                FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dpToPx(48), dpToPx(48));
+                params.gravity = Gravity.CENTER;
+                loadingIndicator.setLayoutParams(params);
+                
+                // Add to container
+                if (cardContainer != null) {
+                    cardContainer.addView(loadingIndicator);
+                    loadingIndicator.bringToFront();
+                    
+                    // Force the animation to start after layout
+                    loadingIndicator.post(() -> {
+                        if (loadingIndicator != null) {
+                            loadingIndicator.setVisibility(View.VISIBLE);
+                            loadingIndicator.requestLayout();
+                        }
+                    });
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error showing loading: " + e.getMessage());
             }
-            
-            // Use slightly larger size for better visibility
-            FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dpToPx(60), dpToPx(60));
-            params.gravity = Gravity.CENTER;
-            loadingIndicator.setLayoutParams(params);
-            
-            // Ensure it's added to container
-            if (cardContainer != null) {
-                cardContainer.addView(loadingIndicator);
-                // Force a layout pass to ensure animation starts
-                cardContainer.requestLayout();
-            }
-            
-            Log.d(TAG, "Loading indicator added and should be spinning");
         });
     }
     
@@ -586,6 +618,13 @@ public class StashPayCardPortraitActivity extends Activity {
                 == Configuration.UI_MODE_NIGHT_YES;
         }
         return false;
+    }
+    
+    private boolean isTablet() {
+        DisplayMetrics metrics = getResources().getDisplayMetrics();
+        int smallerDimension = Math.min(metrics.widthPixels, metrics.heightPixels);
+        float smallerDp = smallerDimension / metrics.density;
+        return smallerDp >= 600; // Standard tablet threshold
     }
     
     private int dpToPx(int dp) {
