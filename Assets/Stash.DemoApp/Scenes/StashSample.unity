@@ -474,13 +474,7 @@ MonoBehaviour:
     description: 
     pricePerItem: 19.99
     imageUrl: https://portalx.braincloudservers.com/files/portal/g/15152/metadata/itemDefinitions/potion.png
-  apiKey: p0SVSU3awmdDv8VUPFZ_adWz_uC81xXsEY95Gg7WSwx9TZAJ5_ch-ePXK2Xh3B6o
   environment: 0
-  externalUserId: user123
-  userEmail: example@example.com
-  displayName: Example User
-  avatarIconUrl: https://storage.googleapis.com/stash-demo-f9550.firebasestorage.app/avatars/6564ced3-c163-4b0d-aa4e-c1a19e42aa65.png
-  profileUrl: https://storage.googleapis.com/stash-demo-f9550.firebasestorage.app/avatars/6564ced3-c163-4b0d-aa4e-c1a19e42aa65.png
   shopHandle: stashdemo
   currency: USD
 --- !u!4 &1463800469

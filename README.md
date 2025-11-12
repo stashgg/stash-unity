@@ -1,49 +1,52 @@
 # Stash SDK for Unity ![buildtest](https://github.com/stashgg/stash-unity/actions/workflows/main.yml/badge.svg)
 
-This package is designed to get your Unity project up and running with the Stash web shop in just a few steps. The package is lightweight and wraps Stash API endpoints without any external dependencies. 
-
-To get started, you need to import the latest package from the [releases](https://github.com/stashgg/stash-unity/releases) section and follow our [Unity guide](https://docs.stash.gg/docs/configure-unity-project).
+Unity package for integrating Stash Pay checkout flows and web shop functionality. The package is lightweight and wraps Stash API endpoints without external dependencies.
 
 ## Requirements
 
-The Stash package always targets the latest LTS version of Unity. We recommend you use the LTS version of Unity to build projects that are in production or about to ship. However, you should not encounter any issues when integrating or migrating into any other versions of Unity above the targeted release.
-
+- Unity 2019.4+ (LTS recommended)
+- iOS 12.0+ / Android API 21+
 
 ## Components
 
-All components are optional, you can mix and match based on your needs.
+All components are optional. Mix and match based on your needs.
 
-| Component     | Description                                                                 |
-|---------------|-----------------------------------------------------------------------------|
-| Stash.Core    | Provides core functionalities and API wrappers for Stash.                   |
-| [Stash.Popup](https://github.com/stashgg/stash-unity/tree/main/Assets/Stash.Popup)   | Offers a customizable card-style popup for Stash Pay.                       |
-| Stash.Samples | Includes sample scene using the Stash SDK.                 |
+| Component | Product | Description |
+|-----------|---------|-------------|
+| **Stash.Core** | Stash Webshop | API Wrappers for Stash Webshop endpoints. |
+| **[Stash.Popup](Assets/Stash.Popup/README.md)** | Stash Pay | Native popup for Stash Pay checkout on iOS and Android. Includes Sample scene. |
+| **Stash.DemoApp** | x | Stash Demo app and playground for testing. **(Don't use or import.)** |
 
 
 ## Installation
 
 ### Import package manually
 
-1. Download [the latest build from the release page](https://github.com/stashgg/stash-unity/releases).
-2. Import the `.unitypackage` file into your Unity game using the [local asset package import](https://docs.unity3d.com/Manual/AssetPackagesImport.html) process.
-3. Optionally select the `Scenes` folder to test out our reference implementations.
+1. Download the [latest release](https://github.com/stashgg/stash-unity/releases) or repository as a zip file.
+2. Import the `.unitypackage` file into your Unity project
+3. Select the components you need (Stash.Core, Stash.Popup, Stash.DemoApp)
 
-### Import package via repository
+### Import via Git URL
 
-1. In the Unity editor main menu, click **Window > Package Manager**.
-2. Click the **+** icon and select **Add package from git URL**.
-3. Specify the git repository URL: https://github.com/stashgg/stash-unity.git?path=Assets/Stash.
+1. Open **Window > Package Manager**
+2. Click **+** → **Add package from git URL**
+3. Enter: `https://github.com/stashgg/stash-unity.git?path=Assets/Stash`
 
-## Changelog
+## Documentation
 
-This package follows Semantic Versioning `(major.minor.patch)`:
+- [Stash Documentation](https://docs.stash.gg) - Full API reference and integration guides.
+- [Stash.Popup Documentation](Assets/Stash.Popup/README.md) - Native checkout popup integration
 
-- Breaking changes always result in a major version increment.
-- Non-breaking new features result in a minor version increment
-- Bug fixes result in a patch version increment.
+## Versioning
 
-A full version changelog is available in the [changelog](/CHANGELOG.md) file.
+This package follows [Semantic Versioning](https://semver.org/) (major.minor.patch):
 
-## Feedback and troubleshooting
+- **Major**: Breaking changes
+- **Minor**: New features (backward compatible)
+- **Patch**: Bug fixes
 
-If you run into any problems or have a feature request, open up a [new issue](https://github.com/stashgg/stash-unity/issues/new) in the repository. Please follow the issue template.
+## Support
+
+- Documentation: https://docs.stash.gg
+- Email: developers@stash.gg
+- Issues: [GitHub Issues](https://github.com/stashgg/stash-unity/issues/new)

@@ -1,84 +1,183 @@
-# Stash Pay Popup
+# Stash.Popup
 
-A Unity plugin that provides a customizable card-style popup for Stash Pay. The plugin uses native WebKit implementation on iOS to provide a native looking
-IAP experience using Stash payment rails. Currently available for iOS devices, with a browser fallback on other platforms.
-
-Stash Pay Popup is a lightweight & independent module and does not require rest of the Stash SDK to be imported in the Unity project.
+Unity plugin for integrating Stash Pay checkout flows using native WebViews on iOS and Android.
+The plugin also provides SFSafariViewController and Chrome Custom Tabs mode.
 
 ## Requirements
 
-- Unity 2019.4 or later
-- iOS 12.0 or later (for iOS builds)
-- Xcode 11.0 or later (for iOS builds)
-
-Note: On legacy devices (Below iOS 12) the popup falls back to the system browser.
+- Unity 2019.4+
+- iOS 12.0+ / Android API 21+
 
 ## Installation
 
-1. Import the `Stash.Popup` folder into your Unity project.
-2. The plugin will be automatically included in your iOS build.
+Import the `Stash.Popup` folder into your Unity project's Assets directory.
+
+## Folder Structure
+
+### Editor
+Build post-processing scripts that automatically configure platform-specific settings:
+- **`AddWebKitFramework.cs`** - Adds WebKit and SafariServices frameworks to iOS Xcode projects
+- **`StashPopupAndroidPostProcess.cs`** - Injects `StashPayCardPortraitActivity` into Android manifest
+
+### Plugins
+Native platform implementations for WebView integration:
+- **`Plugins/iOS/`** - Objective-C/Objective-C++ code for the native Stash Dialog
+- **`Plugins/Android/`** - Java code for the native Stash Dialog
+
+### Sample
+Start here: Example implementation demonstrating API usage:
+- **`StashPaySample.cs`** - Shows `OpenCheckout()` and `OpenOptin()` with web request integration
+- **`StashPaySample.unity`** - Sample scene with buttons to try checkout
 
 ## Usage
 
-### Basic Setup
+### Opening a Checkout
 
-For detailed instructions on creating Stash Pay checkout links, consult the Stash documentation.
-
-1. Request payment link on the game backend and send the resulting link to the game client.
-2. The plugin provides a singleton `StashPayCard` class that handles all interactions with the popup card. Here's how to use it:
+Use `OpenURL()` to display a Stash Pay checkout in a native card dialog:
 
 ```csharp
 using StashPopup;
 
-public class YourClass : MonoBehaviour
-{  
-    void OpenPaymentCard()
+public class MyStore : MonoBehaviour
+{
+    void PurchaseItem(string checkoutUrl)
     {
-        // Open the Stash Pay URL coming from the backend in the card.
-        // Card offers two callbacks - on dismiss and on successful payment.
-        StashPayCard.Instance.OpenURL("STASH_PAY_URL", OnStashPayDismissed, OnStashPaySuccess);
+        // checkoutUrl is a Stash Pay URL generated on your game backend.
+        StashPayCard.Instance.OpenURL(
+            checkoutUrl,
+            dismissCallback: OnCheckoutDismissed,
+            successCallback: OnPaymentSuccess,
+            failureCallback: OnPaymentFailure
+        );
     }
     
-    void OnStashPayDismissed()
+    void OnCheckoutDismissed()
     {
-        Debug.Log("Card was dismissed.");
-        // Do nothing.
+        // User closed the dialog
+        VerifyPurchaseStatus();
     }
     
-    void OnStashPaySuccess()
+    void OnPaymentSuccess()
     {
-        Debug.Log("Payment was successful.");
-        // Verify purchase using Stash API & grant purchase to the user.
+        // Payment completed - verify on backend before granting items
+        VerifyAndGrantPurchase();
+    }
+    
+    void OnPaymentFailure()
+    {
+        // Payment failed - show error to user
+        ShowErrorMessage("Payment could not be processed");
     }
 }
 ```
 
-3. If the payment is successful, validate the purchase using the Stash API on the game backend.
+**Important:** Always verify purchases on your backend. Never trust client-side callbacks alone.
 
-### Platform Support
 
-- **iOS**: Full native implementation using WebKit.
-- **Unity Editor & Other Platforms**: Falls back to opening URL in the default browser.
+### Opening an Opt-in Popup
 
-Android support coming soon.
+Use `OpenPopup()` for payment channel selection opt-in dialogs. Always handle the `OnOptinResponse` event:
+
+```csharp
+void ShowPaymentChannelSelection()
+{
+    // Subscribe to opt-in response
+    StashPayCard.Instance.OnOptinResponse += OnChannelSelected;
+    
+    StashPayCard.Instance.OpenPopup(
+        "https://your-site.com/payment-channel-selection",
+        dismissCallback: () => {
+            // Unsubscribe when popup closes
+            StashPayCard.Instance.OnOptinResponse -= OnChannelSelected;
+        }
+    );
+}
+
+void OnChannelSelected(string channel)
+{
+    // Receives "native_iap" or "stash_pay"
+    string paymentMethod = channel.ToUpper();
+    
+    // Save user preference
+    PlayerPrefs.SetString("PaymentMethod", paymentMethod);
+    PlayerPrefs.Save();
+    
+    Debug.Log($"User selected: {paymentMethod}");
+}
+```
+
+**Use `OpenPopup()` exclusively for:** Payment channel selection opt-in flows.
+
+
+### Forcing Web View Mode
+
+Stash Popup can also force Web View mode (SFSafariViewController on iOS, Chrome Custom Tabs on Android) instead of in-app WebView. You can either force this in code or later remotely via Stash Studio for specific segments.
+
+Keep in mind that callbacks do not work for the web view mode, and users are instead redirected back to the game via deeplinks after a successful purchase. 
+
+```csharp
+void OpenInBrowser(string url)
+{
+    // Enable browser mode
+    StashPayCard.Instance.ForceWebBasedCheckout = true;
+    
+    // Opens in Safari/Chrome instead of card
+    StashPayCard.Instance.OpenURL(url, OnDismiss, OnSuccess, OnFailure);
+    
+    // Restore default mode
+    StashPayCard.Instance.ForceWebBasedCheckout = false;
+}
+```
 
 ## Troubleshooting
 
-### WebKit Build Issues
+### iOS Build Error: Undefined symbol
 
-If you face xcode project build errors associated with WebKit, such as :
+Add frameworks in Unity Project Settings → iOS → Other Settings → Linked Frameworks:
+- `WebKit.framework`
+- `SafariServices.framework`
 
-````
-Undefined symbol: _OBJC_CLASS_$_SFSafariViewController
-````
-make sure that:
+Clean and rebuild Xcode project.
 
-1. **WebKit.framework** & **SafariServices.framework** is included in your Unity project's iOS build settings
-2. The framework is properly linked in your Xcode project
+### Android: Blank WebView
 
-The plugin includes an editor script that automatically adds necessary framework to your iOS build settings. If you're still experiencing build issues:
-1. Check if the Stash.Popup folder is properly imported in your project
-2. Verify that the editor script is not being stripped from your build
-3. If issues persist, manually add WebKit.framework in Unity's iOS build settings
+1. Ensure internet permission in AndroidManifest.xml
+2. Enable hardware acceleration
 
-It is also likely that you may need to clean or rebuild your Xcode project to prevent any build errors after adding the package.
+### Callbacks Not Firing
+
+- Test on real device (callbacks don't work in Unity Editor)
+- Check native logs (Xcode Console / Android Logcat)
+- Verify your web page calls the correct JavaScript functions
+
+
+## API Reference
+
+### Methods
+
+**`OpenURL(string url, Action onDismiss, Action onSuccess, Action onFailure)`**
+Opens Stash Pay checkout in a sliding card from the bottom of the screen.
+
+**`OpenPopup(string url, Action onDismiss, Action onSuccess, Action onFailure)`**
+Opens Stash opt-in and other remote Stash dialogs in a centered modal popup.
+
+**`ResetPresentationState()`**
+Dismisses current dialog and resets state.
+
+### Properties
+
+**`ForceWebBasedCheckout`** (bool)
+- `false` - Use Stash Pay native card (default)
+- `true` - Use SFSafariViewController/Chrome Custom Tabs for checkout.
+
+**`IsCurrentlyPresented`** (bool, read-only)
+- Returns whether a dialog is currently open.
+
+## Support
+
+- Documentation: https://docs.stash.gg
+- Email: developers@stash.gg
+
+---
+
+Copyright © 2024 Stash. All rights reserved.

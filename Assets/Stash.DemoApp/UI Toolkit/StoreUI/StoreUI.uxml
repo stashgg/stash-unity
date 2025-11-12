@@ -110,8 +110,8 @@
                 </ui:VisualElement>
                 <ui:VisualElement class="settings-options-container">
                     <ui:VisualElement class="settings-option-row">
-                        <ui:Label text="Use Web View" class="settings-option-label" />
-                        <ui:Toggle name="safari-webview-toggle" class="settings-option-toggle" />
+                        <ui:Label text="Payment Method" class="settings-option-label" />
+                        <ui:DropdownField name="payment-method-dropdown" class="settings-option-dropdown" />
                     </ui:VisualElement>
                     <ui:VisualElement class="settings-option-row">
                         <ui:Label text="Lock Portrait Orientation" class="settings-option-label" />
@@ -120,6 +120,32 @@
                     <ui:VisualElement class="settings-option-row">
                         <ui:Label text="Device ID" class="settings-option-label" />
                         <ui:Label name="device-id-label" text="Loading..." class="settings-option-value" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement name="stash-sdk-settings-popup" class="settings-popup">
+            <ui:VisualElement class="settings-popup-content">
+                <ui:VisualElement class="settings-popup-header">
+                    <ui:Label text="Stash SDK Settings" class="settings-popup-title" />
+                    <ui:Button name="stash-sdk-settings-close-button" text="×" class="settings-popup-close-button" />
+                </ui:VisualElement>
+                <ui:VisualElement class="settings-options-container">
+                    <ui:VisualElement class="settings-option-row settings-option-row-column">
+                        <ui:Label text="Stash Pay API Key" class="settings-option-label" />
+                        <ui:TextField name="api-key-input" class="settings-option-textfield" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="settings-option-row settings-option-row-column">
+                        <ui:Label text="Channel Selection URL" class="settings-option-label" />
+                        <ui:TextField name="channel-selection-url-input" class="settings-option-textfield" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="settings-option-row">
+                        <ui:Label text="Use Web View" class="settings-option-label" />
+                        <ui:Toggle name="safari-webview-toggle" class="settings-option-toggle" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="settings-option-row">
+                        <ui:Label text="Show Metrics" class="settings-option-label" />
+                        <ui:Toggle name="show-metrics-toggle" class="settings-option-toggle" />
                     </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>

@@ -24,7 +24,8 @@ namespace Stash.Samples
     [SerializeField] private List<StoreItem> storeItems = new List<StoreItem>();
 
     [Header("Stash Configuration")]
-    [SerializeField] private string apiKey = "your-api-key-here";
+    private string apiKey = "zyIbbfvO1ZRTaDt1VBZ5CJrwrdzyfDyLgt-VWNT-1uWj-5h42aeB6BNGAl8MGImw"; // Default API key
+    private string channelSelectionUrl = "https://store.howlingwoods.shop/pay/channel-selection"; // Default channel selection URL
     [SerializeField] private StashEnvironment environment = StashEnvironment.Test;
     
     [Header("User Information")]
@@ -40,13 +41,28 @@ namespace Stash.Samples
     // Safari WebView toggle
     private bool useSafariWebView = false; // Default to false (unchecked)
     
+    // Show metrics toggle
+    private bool showMetrics = false; // Default to false (disabled)
+    
+    // Payment method selection (Native IAP or Stash Pay)
+    private string paymentMethod = "NATIVE_IAP"; // Default to Native IAP
+    
     // Settings popup elements
     private VisualElement settingsPopup;
-    private Toggle safariWebViewToggle;
+    private DropdownField paymentMethodDropdown;
     private Toggle orientationLockToggle;
     private Label deviceIdLabel;
     private Button settingsButton;
     private Button settingsPopupCloseButton;
+    
+    // Stash SDK settings popup elements
+    private VisualElement stashSdkSettingsPopup;
+    private TextField apiKeyInput;
+    private TextField channelSelectionUrlInput;
+    private Toggle safariWebViewToggle;
+    private Toggle showMetricsToggle;
+    private Button stashSdkSettingsCloseButton;
+    private Label stashLogoLabel;
     
     // Orientation lock state (default: locked to portrait)
     private bool isOrientationLocked = true;
@@ -67,6 +83,26 @@ namespace Stash.Samples
         // Load orientation lock preference (default: true - locked to portrait)
         isOrientationLocked = PlayerPrefs.GetInt("OrientationLocked", 1) == 1;
         
+        // Load payment method preference (default: NATIVE_IAP)
+        paymentMethod = PlayerPrefs.GetString("PaymentMethod", "NATIVE_IAP");
+        
+        // Load API key from PlayerPrefs (use default if not set)
+        string savedApiKey = PlayerPrefs.GetString("StashApiKey", "");
+        if (!string.IsNullOrEmpty(savedApiKey))
+        {
+            apiKey = savedApiKey;
+        }
+        
+        // Load channel selection URL from PlayerPrefs (use default if not set)
+        string savedChannelUrl = PlayerPrefs.GetString("ChannelSelectionUrl", "");
+        if (!string.IsNullOrEmpty(savedChannelUrl))
+        {
+            channelSelectionUrl = savedChannelUrl;
+        }
+        
+        // Load show metrics preference (default: false)
+        showMetrics = PlayerPrefs.GetInt("ShowMetrics", 0) == 1;
+        
         // Apply orientation setting
         ApplyOrientationSetting();
         
@@ -75,6 +111,12 @@ namespace Stash.Samples
         
         // Setup settings popup
         SetupSettingsPopup();
+        
+        // Setup Stash SDK settings popup
+        SetupStashSdkSettingsPopup();
+        
+        // Subscribe to page load events
+        StashPayCard.Instance.OnPageLoaded += OnPageLoaded;
         
         // Ensure we have the right number of store items defined based on the UI
         ValidateAndInitializeStoreItems();
@@ -102,7 +144,7 @@ namespace Stash.Samples
         
         // Get settings popup elements
         settingsPopup = root.Q<VisualElement>("settings-popup");
-        safariWebViewToggle = root.Q<Toggle>("safari-webview-toggle");
+        paymentMethodDropdown = root.Q<DropdownField>("payment-method-dropdown");
         orientationLockToggle = root.Q<Toggle>("orientation-lock-toggle");
         deviceIdLabel = root.Q<Label>("device-id-label");
         settingsPopupCloseButton = root.Q<Button>("settings-popup-close-button");
@@ -112,14 +154,20 @@ namespace Stash.Samples
             settingsPopup.visible = false;
         }
         
-        if (safariWebViewToggle != null)
+        if (paymentMethodDropdown != null)
         {
-            safariWebViewToggle.value = useSafariWebView; // Set initial value
-            safariWebViewToggle.RegisterValueChangedCallback(OnSafariToggleChanged);
+            // Setup dropdown choices
+            paymentMethodDropdown.choices = new List<string> { "Native IAP", "Stash Pay" };
+            
+            // Set initial value from PlayerPrefs
+            paymentMethodDropdown.value = paymentMethod == "NATIVE_IAP" ? "Native IAP" : "Stash Pay";
+            
+            // Register callback
+            paymentMethodDropdown.RegisterValueChangedCallback(OnPaymentMethodChanged);
         }
         else
         {
-            Debug.LogWarning("[StoreUI] Could not find safari-webview-toggle");
+            Debug.LogWarning("[StoreUI] Could not find payment-method-dropdown");
         }
         
         if (orientationLockToggle != null)
@@ -153,6 +201,89 @@ namespace Stash.Samples
         }
     }
     
+    private void SetupStashSdkSettingsPopup()
+    {
+        // Get Stash logo and make it clickable
+        stashLogoLabel = root.Q<Label>("app-title");
+        if (stashLogoLabel != null)
+        {
+            // Make the logo clickable by adding a pointer event handler
+            stashLogoLabel.RegisterCallback<ClickEvent>(evt => ShowStashSdkSettingsPopup());
+        }
+        else
+        {
+            Debug.LogWarning("[StoreUI] Could not find app-title (Stash logo)");
+        }
+        
+        // Get Stash SDK settings popup elements
+        stashSdkSettingsPopup = root.Q<VisualElement>("stash-sdk-settings-popup");
+        apiKeyInput = root.Q<TextField>("api-key-input");
+        channelSelectionUrlInput = root.Q<TextField>("channel-selection-url-input");
+        safariWebViewToggle = root.Q<Toggle>("safari-webview-toggle");
+        showMetricsToggle = root.Q<Toggle>("show-metrics-toggle");
+        stashSdkSettingsCloseButton = root.Q<Button>("stash-sdk-settings-close-button");
+        
+        if (stashSdkSettingsPopup != null)
+        {
+            stashSdkSettingsPopup.visible = false;
+        }
+        
+        if (apiKeyInput != null)
+        {
+            // Set initial value
+            apiKeyInput.value = apiKey;
+            
+            // Register callback for when user finishes editing (on blur/enter)
+            apiKeyInput.RegisterCallback<FocusOutEvent>(evt => OnApiKeyChanged());
+        }
+        else
+        {
+            Debug.LogWarning("[StoreUI] Could not find api-key-input");
+        }
+        
+        if (channelSelectionUrlInput != null)
+        {
+            // Set initial value
+            channelSelectionUrlInput.value = channelSelectionUrl;
+            
+            // Register callback for when user finishes editing (on blur/enter)
+            channelSelectionUrlInput.RegisterCallback<FocusOutEvent>(evt => OnChannelSelectionUrlChanged());
+        }
+        else
+        {
+            Debug.LogWarning("[StoreUI] Could not find channel-selection-url-input");
+        }
+        
+        if (safariWebViewToggle != null)
+        {
+            safariWebViewToggle.value = useSafariWebView; // Set initial value
+            safariWebViewToggle.RegisterValueChangedCallback(OnSafariToggleChanged);
+        }
+        else
+        {
+            Debug.LogWarning("[StoreUI] Could not find safari-webview-toggle");
+        }
+        
+        if (showMetricsToggle != null)
+        {
+            showMetricsToggle.value = showMetrics; // Set initial value from PlayerPrefs
+            showMetricsToggle.RegisterValueChangedCallback(OnShowMetricsToggleChanged);
+        }
+        else
+        {
+            Debug.LogWarning("[StoreUI] Could not find show-metrics-toggle");
+        }
+        
+        if (stashSdkSettingsCloseButton != null)
+        {
+            stashSdkSettingsCloseButton.clicked += HideStashSdkSettingsPopup;
+        }
+        else
+        {
+            Debug.LogWarning("[StoreUI] Could not find stash-sdk-settings-close-button");
+        }
+    }
+    
     private void ShowSettingsPopup()
     {
         if (settingsPopup != null)
@@ -178,10 +309,96 @@ namespace Stash.Samples
         }
     }
     
+    private void ShowStashSdkSettingsPopup()
+    {
+        if (stashSdkSettingsPopup != null)
+        {
+            stashSdkSettingsPopup.style.display = DisplayStyle.Flex;
+            stashSdkSettingsPopup.visible = true;
+            stashSdkSettingsPopup.AddToClassList("visible");
+        }
+    }
+    
+    private void HideStashSdkSettingsPopup()
+    {
+        if (stashSdkSettingsPopup != null)
+        {
+            stashSdkSettingsPopup.RemoveFromClassList("visible");
+            Invoke(() => {
+                if (stashSdkSettingsPopup != null && !stashSdkSettingsPopup.ClassListContains("visible"))
+                {
+                    stashSdkSettingsPopup.visible = false;
+                    stashSdkSettingsPopup.style.display = DisplayStyle.None;
+                }
+            }, 0.3f); // Match the CSS transition duration
+        }
+    }
+    
+    private void OnPaymentMethodChanged(ChangeEvent<string> evt)
+    {
+        // Convert dropdown value to internal format
+        paymentMethod = evt.newValue == "Native IAP" ? "NATIVE_IAP" : "STASH_PAY";
+        
+        // Save preference to PlayerPrefs
+        PlayerPrefs.SetString("PaymentMethod", paymentMethod);
+        PlayerPrefs.Save();
+        
+        Debug.Log($"[StoreUI] Payment method changed to: {paymentMethod}");
+    }
+    
+    private void OnApiKeyChanged()
+    {
+        if (apiKeyInput == null) return;
+        
+        string newApiKey = apiKeyInput.value?.Trim() ?? "";
+        
+        // Only update if the key has actually changed and is not empty
+        if (!string.IsNullOrEmpty(newApiKey) && newApiKey != apiKey)
+        {
+            apiKey = newApiKey;
+            
+            // Save to PlayerPrefs
+            PlayerPrefs.SetString("StashApiKey", apiKey);
+            PlayerPrefs.Save();
+            
+            Debug.Log($"[StoreUI] Stash API Key updated");
+        }
+    }
+    
+    private void OnChannelSelectionUrlChanged()
+    {
+        if (channelSelectionUrlInput == null) return;
+        
+        string newUrl = channelSelectionUrlInput.value?.Trim() ?? "";
+        
+        // Only update if the URL has actually changed and is not empty
+        if (!string.IsNullOrEmpty(newUrl) && newUrl != channelSelectionUrl)
+        {
+            channelSelectionUrl = newUrl;
+            
+            // Save to PlayerPrefs
+            PlayerPrefs.SetString("ChannelSelectionUrl", channelSelectionUrl);
+            PlayerPrefs.Save();
+            
+            Debug.Log($"[StoreUI] Channel Selection URL updated to: {channelSelectionUrl}");
+        }
+    }
+    
     private void OnSafariToggleChanged(ChangeEvent<bool> evt)
     {
         useSafariWebView = evt.newValue;
         Debug.Log($"[StoreUI] Safari WebView mode changed to: {useSafariWebView}");
+    }
+    
+    private void OnShowMetricsToggleChanged(ChangeEvent<bool> evt)
+    {
+        showMetrics = evt.newValue;
+        
+        // Save preference to PlayerPrefs
+        PlayerPrefs.SetInt("ShowMetrics", showMetrics ? 1 : 0);
+        PlayerPrefs.Save();
+        
+        Debug.Log($"[StoreUI] Show metrics changed to: {showMetrics}");
     }
     
     private void OnOrientationToggleChanged(ChangeEvent<bool> evt)
@@ -370,14 +587,14 @@ namespace Stash.Samples
     /// This displays a centered popup for users to choose their preferred payment method.
     /// </summary>
     public void OpenPaymentChannelSelection()
-                {
+    {
         try
         {
             // Register opt-in response callback
             StashPayCard.Instance.OnOptinResponse += OnChannelSelectionOptinResponse;
             
-            // Open the payment channel selection URL in a centered popup
-            StashPayCard.Instance.OpenPopup("https://store.howlingwoods.shop/pay/channel-selection",
+            // Open the payment channel selection URL in a centered popup (using configured URL)
+            StashPayCard.Instance.OpenPopup(channelSelectionUrl,
                 dismissCallback: () => {
                     // Unregister callback when popup closes
                     StashPayCard.Instance.OnOptinResponse -= OnChannelSelectionOptinResponse;
@@ -390,19 +607,32 @@ namespace Stash.Samples
     }
 
     private void OnChannelSelectionOptinResponse(string optinType)
-        {
+    {
         Debug.Log($"[StoreUI] User selected payment method: {optinType}");
         
-        // Handle the opt-in response
-        if (optinType == "STASH_PAY")
-            {
-            Debug.Log("[StoreUI] User chose Stash Pay");
-            // Handle Stash Pay selection
-        }
-        else if (optinType == "NATIVE_IAP")
+        // Normalize to uppercase format (handles both "stash_pay" and "STASH_PAY")
+        string normalizedType = optinType.ToUpper();
+        
+        // Update payment method preference based on user selection
+        if (normalizedType == "STASH_PAY" || normalizedType == "NATIVE_IAP")
         {
-            Debug.Log("[StoreUI] User chose Native IAP");
-            // Handle Native IAP selection
+            paymentMethod = normalizedType;
+            
+            // Save preference to PlayerPrefs
+            PlayerPrefs.SetString("PaymentMethod", paymentMethod);
+            PlayerPrefs.Save();
+            
+            // Update dropdown to reflect the change
+            if (paymentMethodDropdown != null)
+            {
+                paymentMethodDropdown.value = paymentMethod == "NATIVE_IAP" ? "Native IAP" : "Stash Pay";
+            }
+            
+            Debug.Log($"[StoreUI] Payment method updated to: {paymentMethod}");
+        }
+        else
+        {
+            Debug.LogWarning($"[StoreUI] Unknown payment method selected: {optinType} (normalized: {normalizedType})");
         }
     }
 
@@ -432,9 +662,20 @@ namespace Stash.Samples
         
         if (!SimpleIAPManager.Instance.IsReady())
         {
-            Debug.LogWarning("[StoreUI] ⚠️ SimpleIAPManager not ready yet");
-            Debug.LogWarning("[StoreUI] This usually means Unity IAP is still initializing or failed to initialize");
-            ShowIAPErrorMessage("In-app purchases are still loading. Please wait a moment and try again.");
+            string status = SimpleIAPManager.Instance.GetInitializationStatus();
+            Debug.LogWarning($"[StoreUI] ⚠️ SimpleIAPManager not ready yet. Status: {status}");
+            
+            if (SimpleIAPManager.Instance.IsInitializing())
+            {
+                Debug.LogWarning("[StoreUI] IAP is still initializing, please wait...");
+                ShowIAPErrorMessage("In-app purchases are still loading.\nPlease wait a moment and try again.");
+            }
+            else
+            {
+                Debug.LogError("[StoreUI] IAP initialization failed!");
+                ShowIAPErrorMessage("Native IAP failed to initialize.\nPlease use sandbox account for native purchases.");
+            }
+            
             OnPurchaseCompleted?.Invoke(item.id, false);
             return;
         }
@@ -522,19 +763,28 @@ namespace Stash.Samples
 
         StoreItem item = storeItems[itemIndex];
         
-        Debug.Log($"Processing purchase with Stash for item: {item.id} at price: {item.pricePerItem}");
-        
-        // Disable the buy button to prevent multiple checkouts
-        SetButtonEnabled(buyButtons[itemIndex], false);
-        
-        // Display a loading indicator
-        SetButtonLoadingState(buyButtons[itemIndex], true);
+        // Check which purchase method to use based on settings
+        if (paymentMethod == "NATIVE_IAP")
+        {
+            Debug.Log($"Processing purchase with Native IAP for item: {item.id}");
+            ProcessIAPPurchase(itemIndex);
+        }
+        else // STASH_PAY
+        {
+            Debug.Log($"Processing purchase with Stash Pay for item: {item.id} at price: {item.pricePerItem}");
+            
+            // Disable the buy button to prevent multiple checkouts
+            SetButtonEnabled(buyButtons[itemIndex], false);
+            
+            // Display a loading indicator
+            SetButtonLoadingState(buyButtons[itemIndex], true);
 
-        // Block navigation during purchase
-        NavigationBlocker.Instance.BlockNavigation();
-        
-        // Open Stash popup for checkout
-        OpenStashCheckout(itemIndex);
+            // Block navigation during purchase
+            NavigationBlocker.Instance.BlockNavigation();
+            
+            // Open Stash popup for checkout
+            OpenStashCheckout(itemIndex);
+        }
     }
     
     private async void OpenStashCheckout(int itemIndex)
@@ -1165,6 +1415,41 @@ namespace Stash.Samples
         {
             Debug.Log($"[StoreUI] Unsubscribing OnPaymentSuccessDetected callback for instance: {GetInstanceID()}");
             StashPayCard.Instance.OnPaymentSuccess -= OnPaymentSuccessDetected;
+            StashPayCard.Instance.OnPageLoaded -= OnPageLoaded;
+        }
+    }
+    
+    private void OnPageLoaded(double loadTimeMs)
+    {
+        Debug.Log($"[StoreUI] Page loaded in {loadTimeMs:F0} ms");
+        ShowLoadTimeToast(loadTimeMs);
+    }
+    
+    private void ShowLoadTimeToast(double loadTimeMs)
+    {
+        // Only show toast if metrics are enabled
+        if (!showMetrics)
+        {
+            return;
+        }
+        
+        try
+        {
+            // Create toast notification
+            var toastGO = new GameObject("LoadTimeToast");
+            var toastScript = toastGO.AddComponent<LoadTimeToast>();
+            
+            // Set the root element
+            if (root != null)
+            {
+                toastScript.SetRootElement(root);
+            }
+            
+            toastScript.Show(loadTimeMs);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[StoreUI] Error showing load time toast: {ex.Message}");
         }
     }
 }
@@ -1596,6 +1881,150 @@ public class ConfettiAnimator : MonoBehaviour
         if (container != null && container.parent != null)
         {
             container.RemoveFromHierarchy();
+        }
+    }
+}
+
+/// <summary>
+/// Simple toast notification that shows page load time at the top of the screen
+/// </summary>
+public class LoadTimeToast : MonoBehaviour
+{
+    private VisualElement toastContainer;
+    private VisualElement rootElement;
+    private float showDuration = 2.5f;
+    
+    public void SetRootElement(VisualElement root)
+    {
+        rootElement = root;
+    }
+    
+    public void Show(double loadTimeMs)
+    {
+        if (rootElement == null)
+        {
+            Debug.LogError("[LoadTimeToast] No root element set");
+            Destroy(gameObject);
+            return;
+        }
+        
+        CreateToast(loadTimeMs);
+        
+        // Auto destroy after duration
+        Destroy(gameObject, showDuration);
+    }
+    
+    private void CreateToast(double loadTimeMs)
+    {
+        // Create toast container at the top of screen
+        toastContainer = new VisualElement();
+        toastContainer.name = "LoadTimeToast";
+        toastContainer.style.position = Position.Absolute;
+        toastContainer.style.top = 60; // Below header bar
+        toastContainer.style.left = Length.Percent(50);
+        toastContainer.style.translate = new Translate(Length.Percent(-50), 0);
+        toastContainer.style.backgroundColor = new Color(0.15f, 0.15f, 0.15f, 0.95f);
+        toastContainer.style.borderTopLeftRadius = 8;
+        toastContainer.style.borderTopRightRadius = 8;
+        toastContainer.style.borderBottomLeftRadius = 8;
+        toastContainer.style.borderBottomRightRadius = 8;
+        toastContainer.style.paddingLeft = 16;
+        toastContainer.style.paddingRight = 16;
+        toastContainer.style.paddingTop = 8;
+        toastContainer.style.paddingBottom = 8;
+        toastContainer.style.minWidth = 150;
+        toastContainer.style.alignItems = Align.Center;
+        toastContainer.pickingMode = PickingMode.Ignore;
+        
+        // Add border
+        toastContainer.style.borderLeftWidth = 2;
+        toastContainer.style.borderRightWidth = 2;
+        toastContainer.style.borderTopWidth = 2;
+        toastContainer.style.borderBottomWidth = 2;
+        toastContainer.style.borderLeftColor = new Color(0.3f, 0.7f, 1f, 0.6f);
+        toastContainer.style.borderRightColor = new Color(0.3f, 0.7f, 1f, 0.6f);
+        toastContainer.style.borderTopColor = new Color(0.3f, 0.7f, 1f, 0.6f);
+        toastContainer.style.borderBottomColor = new Color(0.3f, 0.7f, 1f, 0.6f);
+        
+        // Create label with load time
+        string message = $"Rendered in {loadTimeMs:F0}ms";
+        Label toastLabel = new Label(message);
+        toastLabel.style.color = Color.white;
+        toastLabel.style.fontSize = 13;
+        toastLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        toastLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+        
+        toastContainer.Add(toastLabel);
+        rootElement.Add(toastContainer);
+        
+        // Start with slight offset and fade in
+        toastContainer.style.opacity = 0;
+        toastContainer.style.top = 50;
+        
+        // Animate in
+        StartCoroutine(AnimateToastIn());
+    }
+    
+    private System.Collections.IEnumerator AnimateToastIn()
+    {
+        float elapsed = 0f;
+        float duration = 0.3f;
+        
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / duration;
+            
+            if (toastContainer != null)
+            {
+                toastContainer.style.opacity = t;
+                toastContainer.style.top = Mathf.Lerp(50, 60, t);
+            }
+            
+            yield return null;
+        }
+        
+        if (toastContainer != null)
+        {
+            toastContainer.style.opacity = 1;
+            toastContainer.style.top = 60;
+        }
+        
+        // Hold for a moment, then fade out
+        yield return new WaitForSeconds(showDuration - 0.6f);
+        StartCoroutine(AnimateToastOut());
+    }
+    
+    private System.Collections.IEnumerator AnimateToastOut()
+    {
+        float elapsed = 0f;
+        float duration = 0.3f;
+        
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / duration;
+            
+            if (toastContainer != null)
+            {
+                toastContainer.style.opacity = 1 - t;
+                toastContainer.style.top = Mathf.Lerp(60, 50, t);
+            }
+            
+            yield return null;
+        }
+        
+        if (toastContainer != null && toastContainer.parent != null)
+        {
+            toastContainer.RemoveFromHierarchy();
+        }
+    }
+    
+    private void OnDestroy()
+    {
+        if (toastContainer != null && toastContainer.parent != null)
+        {
+            toastContainer.RemoveFromHierarchy();
         }
     }
 }

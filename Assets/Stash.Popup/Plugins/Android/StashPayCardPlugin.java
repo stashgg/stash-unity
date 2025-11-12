@@ -54,6 +54,9 @@ public class StashPayCardPlugin {
     private boolean forceSafariViewController = false;
     private boolean isExpanded = false;
     
+    // Page load tracking
+    private long pageLoadStartTime = 0;
+    
     // Constants
     private String unityGameObjectName = "StashPayCard";
     
@@ -750,6 +753,7 @@ public class StashPayCardPlugin {
             @Override
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
                 super.onPageStarted(view, url, favicon);
+                pageLoadStartTime = System.currentTimeMillis();
                 showLoadingIndicator();
                 view.setVisibility(View.INVISIBLE);
                 injectStashSDKFunctions();
@@ -758,6 +762,17 @@ public class StashPayCardPlugin {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
+                
+                // Calculate and report page load time
+                if (pageLoadStartTime > 0) {
+                    long loadTimeMs = System.currentTimeMillis() - pageLoadStartTime;
+                    android.util.Log.d("StashPayCard", "Page loaded in " + loadTimeMs + " ms");
+                    
+                    // Notify Unity
+                    UnityPlayer.UnitySendMessage(unityGameObjectName, "OnAndroidPageLoaded", String.valueOf(loadTimeMs));
+                    pageLoadStartTime = 0;
+                }
+                
                 injectStashSDKFunctions();
                 view.postDelayed(() -> {
                     hideLoadingIndicator();
@@ -818,6 +833,7 @@ public class StashPayCardPlugin {
             @Override
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
                 super.onPageStarted(view, url, favicon);
+                pageLoadStartTime = System.currentTimeMillis();
                 showLoadingIndicator();
                 view.setVisibility(View.INVISIBLE);
                 injectStashSDKFunctions();
@@ -826,6 +842,17 @@ public class StashPayCardPlugin {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
+                
+                // Calculate and report page load time
+                if (pageLoadStartTime > 0) {
+                    long loadTimeMs = System.currentTimeMillis() - pageLoadStartTime;
+                    android.util.Log.d("StashPayCard", "Page loaded in " + loadTimeMs + " ms");
+                    
+                    // Notify Unity
+                    UnityPlayer.UnitySendMessage(unityGameObjectName, "OnAndroidPageLoaded", String.valueOf(loadTimeMs));
+                    pageLoadStartTime = 0;
+                }
+                
                 handleProviderButtons(url);
                 injectStashSDKFunctions();
                 view.postDelayed(() -> {
