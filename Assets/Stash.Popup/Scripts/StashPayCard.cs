@@ -199,7 +199,11 @@ namespace StashPopup
             }
 
             // Add enable_immediate_fetch query parameter for faster loading on webview and popup.
-            url += "?enable_immediate_fetch=true";
+            // Check if URL already has query parameters to use & instead of ?
+            if (!url.Contains("enable_immediate_fetch"))
+            {
+                url += url.Contains("?") ? "&enable_immediate_fetch=true" : "?enable_immediate_fetch=true";
+            }
 
             // Wait for Flagsmith configuration to be loaded before opening
             if (!_flagsmithConfigLoaded && _flagsmithFetchCoroutine != null)
