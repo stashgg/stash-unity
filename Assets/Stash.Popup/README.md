@@ -11,6 +11,23 @@ Unity plugin for integrating Stash Pay checkout flows using native WebViews on i
 
 Import the `Stash.Popup` folder into your Unity project's Assets directory.
 
+## Plugin Structure
+
+### Editor
+Build post-processing scripts that automatically configure platform-specific settings:
+- **`AddWebKitFramework.cs`** - Adds WebKit and SafariServices frameworks to iOS Xcode projects
+- **`StashPopupAndroidPostProcess.cs`** - Injects `StashPayCardPortraitActivity` into Android manifest
+
+### Plugins
+Native platform implementations for WebView integration:
+- **`Plugins/iOS/`** - Objective-C/Objective-C++ code for native Stash Dialog.
+- **`Plugins/Android/`** - Java code for native Stash Dialog.
+
+### Sample
+Start Here, Example implementation demonstrating API usage:
+- **`StashPaySample.cs`** - Shows `OpenCheckout()` and `OpenOptin()` with web request integration
+- **`StashPaySample.unity`** - Sample scene with buttons to try checkout.
+
 ## Usage
 
 ### Opening a Checkout
@@ -24,6 +41,7 @@ public class MyStore : MonoBehaviour
 {
     void PurchaseItem(string checkoutUrl)
     {
+        // checkoutUrl is a Stash Pay URL generated on your game backend.
         StashPayCard.Instance.OpenURL(
             checkoutUrl,
             dismissCallback: OnCheckoutDismissed,
@@ -34,7 +52,7 @@ public class MyStore : MonoBehaviour
     
     void OnCheckoutDismissed()
     {
-        // User closed the dialog - verify purchase status on backend
+        // User closed the dialog
         VerifyPurchaseStatus();
     }
     
@@ -54,27 +72,45 @@ public class MyStore : MonoBehaviour
 
 **Important:** Always verify purchases on your backend. Never trust client-side callbacks alone.
 
-### Opening a Popup
 
-Use `OpenPopup()` for centered modal dialogs (channel selection, settings, etc.):
+### Opening an Opt-in Popup
+
+Use `OpenPopup()` for payment channel selection opt-in dialogs. Always handle the `OnOptinResponse` event:
 
 ```csharp
-void ShowPaymentOptions()
+void ShowPaymentChannelSelection()
 {
+    // Subscribe to opt-in response
+    StashPayCard.Instance.OnOptinResponse += OnChannelSelected;
+    
     StashPayCard.Instance.OpenPopup(
-        "https://your-site.com/payment-selection",
-        dismissCallback: () => Debug.Log("Popup closed"),
-        successCallback: null,  // Optional
-        failureCallback: null   // Optional
+        "https://your-site.com/payment-channel-selection",
+        dismissCallback: () => {
+            // Unsubscribe when popup closes
+            StashPayCard.Instance.OnOptinResponse -= OnChannelSelected;
+        }
     );
+}
+
+void OnChannelSelected(string channel)
+{
+    // Receives "native_iap" or "stash_pay"
+    string paymentMethod = channel.ToUpper();
+    
+    // Save user preference
+    PlayerPrefs.SetString("PaymentMethod", paymentMethod);
+    PlayerPrefs.Save();
+    
+    Debug.Log($"User selected: {paymentMethod}");
 }
 ```
 
-**Use popup for:** Non-payment flows like payment method selection or account settings.
+**Use `OpenPopup()` exclusively for:** Payment channel selection opt-in flows.
+
 
 ### Forcing Web View Mode
 
-Force native browser (Safari on iOS, Chrome Custom Tabs on Android) instead of in-app WebView:
+Stash Popup can also force Web View Mode (SFSafariViewController on iOS, Chrome Custom Tabs on Android) instead of in-app WebView. You can either force this in code or later remotly via Stash Studio for specific segments.
 
 ```csharp
 void OpenInBrowser(string url)
@@ -87,213 +123,6 @@ void OpenInBrowser(string url)
     
     // Restore default mode
     StashPayCard.Instance.ForceWebBasedCheckout = false;
-}
-```
-
-**Use web view mode when:**
-- Testing third-party payment integrations
-- Debugging payment flows
-- User preference for external browser
-
-## Events
-
-Subscribe to events for advanced integration:
-
-```csharp
-void OnEnable()
-{
-    StashPayCard.Instance.OnPaymentSuccess += HandleSuccess;
-    StashPayCard.Instance.OnOptinResponse += HandlePaymentMethodSelection;
-    StashPayCard.Instance.OnPageLoaded += HandlePageLoad;
-}
-
-void OnDisable()
-{
-    if (StashPayCard.Instance != null)
-    {
-        StashPayCard.Instance.OnPaymentSuccess -= HandleSuccess;
-        StashPayCard.Instance.OnOptinResponse -= HandlePaymentMethodSelection;
-        StashPayCard.Instance.OnPageLoaded -= HandlePageLoad;
-    }
-}
-
-void HandlePaymentMethodSelection(string method)
-{
-    // Receives "native_iap" or "stash_pay"
-    PlayerPrefs.SetString("PaymentMethod", method.ToUpper());
-}
-
-void HandlePageLoad(double loadTimeMs)
-{
-    Debug.Log($"Page rendered in {loadTimeMs}ms");
-}
-```
-
-### Available Events
-
-| Event | Type | Description |
-|-------|------|-------------|
-| `OnSafariViewDismissed` | `Action` | Card dismissed |
-| `OnPaymentSuccess` | `Action` | Payment completed |
-| `OnPaymentFailure` | `Action` | Payment failed |
-| `OnOptinResponse` | `Action<string>` | Payment method selected ("native_iap" or "stash_pay") |
-| `OnPageLoaded` | `Action<double>` | Page loaded (ms) |
-
-## JavaScript Bridge
-
-Your web pages can communicate with Unity via these injected functions:
-
-```javascript
-// Notify payment success
-window.stash_sdk.onPaymentSuccess({});
-
-// Notify payment failure
-window.stash_sdk.onPaymentFailure({});
-
-// Send payment method selection
-window.stash_sdk.setPaymentChannel("native_iap"); // or "stash_pay"
-```
-
-## Complete Example
-
-```csharp
-using UnityEngine;
-using StashPopup;
-using Stash.Core;
-
-public class StoreController : MonoBehaviour
-{
-    private string apiKey = "your-stash-api-key";
-    private string currentCheckoutId;
-    
-    void Start()
-    {
-        StashPayCard.Instance.OnPaymentSuccess += OnPaymentSuccess;
-    }
-    
-    void OnDestroy()
-    {
-        if (StashPayCard.Instance != null)
-        {
-            StashPayCard.Instance.OnPaymentSuccess -= OnPaymentSuccess;
-        }
-    }
-    
-    public async void BuyItem(string itemId, decimal price)
-    {
-        var item = new StashCheckout.CheckoutItemData
-        {
-            id = itemId,
-            pricePerItem = price.ToString("F2"),
-            quantity = 1
-        };
-        
-        var (url, checkoutId) = await StashCheckout.CreateCheckoutLink(
-            userId: GetUserId(),
-            email: GetUserEmail(),
-            shopHandle: "your-shop",
-            item: item,
-            apiKey: apiKey,
-            environment: StashEnvironment.Production
-        );
-        
-        currentCheckoutId = checkoutId;
-        
-        StashPayCard.Instance.OpenURL(
-            url,
-            dismissCallback: () => VerifyPurchase(checkoutId),
-            successCallback: () => VerifyPurchase(checkoutId),
-            failureCallback: () => ShowError("Purchase failed")
-        );
-    }
-    
-    void OnPaymentSuccess()
-    {
-        Debug.Log("Payment completed");
-    }
-    
-    void VerifyPurchase(string checkoutId)
-    {
-        // Always verify on backend before granting items
-        StartCoroutine(VerifyOnBackend(checkoutId));
-    }
-    
-    IEnumerator VerifyOnBackend(string checkoutId)
-    {
-        string url = $"https://api.stash.gg/sdk/checkout_links/order/{checkoutId}";
-        
-        using (var request = UnityWebRequest.PostWwwForm(url, ""))
-        {
-            request.SetRequestHeader("X-Stash-Api-Key", apiKey);
-            yield return request.SendWebRequest();
-            
-            if (request.result == UnityWebRequest.Result.Success)
-            {
-                // Parse response and grant items
-                ProcessPurchase(request.downloadHandler.text);
-            }
-        }
-    }
-    
-    void ProcessPurchase(string response) { /* Your logic */ }
-    void ShowError(string msg) { /* Your logic */ }
-    string GetUserId() { return "user123"; }
-    string GetUserEmail() { return "user@example.com"; }
-}
-```
-
-## Platform Behavior
-
-| Platform | Default | ForceWebBasedCheckout = true |
-|----------|---------|------------------------------|
-| iOS | WKWebView card | SFSafariViewController |
-| Android | WebView card | Chrome Custom Tabs |
-| Editor | System browser | System browser |
-
-## Best Practices
-
-### Always Verify Purchases
-
-```csharp
-void OnPaymentSuccess()
-{
-    // ✅ CORRECT: Verify before granting
-    VerifyPurchaseOnBackend(checkoutId);
-    
-    // ❌ WRONG: Never grant without verification
-    // GrantItemsImmediately();
-}
-```
-
-### Handle All Cases
-
-```csharp
-StashPayCard.Instance.OpenURL(
-    url,
-    dismissCallback: () => {
-        // User might have paid and closed - verify anyway
-        VerifyPurchaseStatus();
-    },
-    successCallback: () => {
-        // Success detected - still verify on backend
-        VerifyAndGrant();
-    },
-    failureCallback: () => {
-        // Definite failure - show error
-        ShowErrorMessage();
-    }
-);
-```
-
-### Unsubscribe from Events
-
-```csharp
-void OnDestroy()
-{
-    if (StashPayCard.Instance != null)
-    {
-        StashPayCard.Instance.OnPaymentSuccess -= YourHandler;
-    }
 }
 ```
 
@@ -311,7 +140,6 @@ Clean and rebuild Xcode project.
 
 1. Ensure internet permission in AndroidManifest.xml
 2. Enable hardware acceleration
-3. Test on real device (not emulator)
 
 ### Callbacks Not Firing
 
@@ -319,15 +147,16 @@ Clean and rebuild Xcode project.
 - Check native logs (Xcode Console / Android Logcat)
 - Verify your web page calls the correct JavaScript functions
 
+
 ## API Reference
 
 ### Methods
 
 **`OpenURL(string url, Action onDismiss, Action onSuccess, Action onFailure)`**
-Opens URL in a sliding card from the bottom of the screen.
+Opens Stash Pay checkout in a sliding card from the bottom of the screen.
 
 **`OpenPopup(string url, Action onDismiss, Action onSuccess, Action onFailure)`**
-Opens URL in a centered modal popup.
+Opens Stash opt-in and other remote Stash dialogs in a centered modal popup.
 
 **`ResetPresentationState()`**
 Dismisses current dialog and resets state.
@@ -335,16 +164,16 @@ Dismisses current dialog and resets state.
 ### Properties
 
 **`ForceWebBasedCheckout`** (bool)
-- `false` - Use native card WebView (default)
-- `true` - Use Safari/Chrome Custom Tabs
+- `false` - Use Stash Pay native card (default)
+- `true` - Use SFSafariViewController/Chrome Custom Tabs for checkout.
 
 **`IsCurrentlyPresented`** (bool, read-only)
-- Returns whether a dialog is currently open
+- Returns whether a dialog is currently open.
 
 ## Support
 
 - Documentation: https://docs.stash.gg
-- Email: support@stash.gg
+- Email: developers@stash.gg
 
 ---
 

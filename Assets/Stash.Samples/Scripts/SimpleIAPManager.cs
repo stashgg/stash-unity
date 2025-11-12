@@ -78,7 +78,7 @@ namespace Stash.Samples
                 if (isUGSInitialized)
                 {
                     Debug.Log("[SimpleIAP] UGS initialized successfully, starting IAP initialization...");
-                    InitializePurchasing();
+                InitializePurchasing();
                 }
                 else
                 {
