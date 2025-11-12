@@ -11,18 +11,19 @@ public class StashPaySample : MonoBehaviour
     
     void Start()
     {
-        // Subscribe to opt-in response for channel selection
+        // Subscribe to opt-in response for channel selection (Optional)
         StashPayCard.Instance.OnOptinResponse += OnChannelSelected;
     }
     
     void OnDestroy()
     {
+        // Unsubscribe from opt-in response for channel selection (Optional)
         if (StashPayCard.Instance != null)
         {
             StashPayCard.Instance.OnOptinResponse -= OnChannelSelected;
         }
     }
-    
+        
     /// <summary>
     /// Opens a Stash Pay checkout URL in a card dialog
     /// </summary>
@@ -35,15 +36,16 @@ public class StashPaySample : MonoBehaviour
     {
         // You can generate a checkout URL using the Stash API.
         // https://docs.stash.gg/api/server-quickpay/GenerateQuickPayUrl
-        // For demo purpouses this happens locally, but in production always generate on the backend !
+        // For demo purposes this happens on client side, but in production always generate on the backend.
+        // This is a sample payload, but can be customized to your needs.
 
         var request = new CheckoutRequest
         {
-            regionCode = "USA",
-            currency = "USD",
+            regionCode = "USA", // Set your region code here (ISO 3166-1 Alpha-3 format, e.g., "USA", "GBR").
+            currency = "USD", // Set your desired currency here (ISO 4217 format, e.g., "USD", "EUR").
             item = new CheckoutItem
             {
-                id = "1d56f95f-28df-4ea5-9829-9671241f455e",
+                id = "1d56f95f-28df-4ea5-9829-9671241f455e", 
                 pricePerItem = "9.99",
                 quantity = 1,
                 imageUrl = "https://upload.wikimedia.org/wikipedia/en/2/2d/Angry_Birds_promo_art.png",
@@ -53,9 +55,9 @@ public class StashPaySample : MonoBehaviour
             user = new CheckoutUser
             {
                 id = "1d56f95f-28df-4ea5-9829-9671241f455e",
-                validatedEmail = "test@rovio.com",
-                regionCode = "US",
-                platform = "IOS"
+                validatedEmail = "test@domain.com", // (Optional) Set your user's email here. Autofills for reciepts.
+                regionCode = "US", 
+                platform = "IOS" // Set your platform here (IOS/ANDROID). We inject platform-specific optimizations into the checkout link for better performance.
             }
         };
         
@@ -67,7 +69,7 @@ public class StashPaySample : MonoBehaviour
             www.uploadHandler = new UploadHandlerRaw(bodyRaw);
             www.downloadHandler = new DownloadHandlerBuffer();
             www.SetRequestHeader("Content-Type", "application/json");
-            www.SetRequestHeader("X-Stash-Api-Key", API_KEY);
+            www.SetRequestHeader("X-Stash-Api-Key", API_KEY); // This is your instance API key. You can find it in the Stash Studio.
             
             yield return www.SendWebRequest();
             

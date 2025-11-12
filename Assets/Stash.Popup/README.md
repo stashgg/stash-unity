@@ -1,6 +1,7 @@
 # Stash.Popup
 
 Unity plugin for integrating Stash Pay checkout flows using native WebViews on iOS and Android.
+The plugin also provides SFSafariViewController and Chrome Custom Tabs mode.
 
 ## Requirements
 
@@ -11,7 +12,7 @@ Unity plugin for integrating Stash Pay checkout flows using native WebViews on i
 
 Import the `Stash.Popup` folder into your Unity project's Assets directory.
 
-## Plugin Structure
+## Folder Structure
 
 ### Editor
 Build post-processing scripts that automatically configure platform-specific settings:
@@ -20,13 +21,13 @@ Build post-processing scripts that automatically configure platform-specific set
 
 ### Plugins
 Native platform implementations for WebView integration:
-- **`Plugins/iOS/`** - Objective-C/Objective-C++ code for native Stash Dialog.
-- **`Plugins/Android/`** - Java code for native Stash Dialog.
+- **`Plugins/iOS/`** - Objective-C/Objective-C++ code for the native Stash Dialog
+- **`Plugins/Android/`** - Java code for the native Stash Dialog
 
 ### Sample
-Start Here, Example implementation demonstrating API usage:
+Start here: Example implementation demonstrating API usage:
 - **`StashPaySample.cs`** - Shows `OpenCheckout()` and `OpenOptin()` with web request integration
-- **`StashPaySample.unity`** - Sample scene with buttons to try checkout.
+- **`StashPaySample.unity`** - Sample scene with buttons to try checkout
 
 ## Usage
 
@@ -110,7 +111,9 @@ void OnChannelSelected(string channel)
 
 ### Forcing Web View Mode
 
-Stash Popup can also force Web View Mode (SFSafariViewController on iOS, Chrome Custom Tabs on Android) instead of in-app WebView. You can either force this in code or later remotly via Stash Studio for specific segments.
+Stash Popup can also force Web View mode (SFSafariViewController on iOS, Chrome Custom Tabs on Android) instead of in-app WebView. You can either force this in code or later remotely via Stash Studio for specific segments.
+
+Keep in mind that callbacks do not work for the web view mode, and users are instead redirected back to the game via deeplinks after a successful purchase. 
 
 ```csharp
 void OpenInBrowser(string url)
