@@ -842,7 +842,7 @@ namespace Stash.Samples
             // This respects remote Flagsmith configuration while allowing local override
             StashPayCard.Instance.ForceWebBasedCheckout = useSafariWebView;
             
-            StashPayCard.Instance.OpenURL(url, () => OnBrowserClosed(), () => OnPaymentSuccessDetected(), () => OnPaymentFailureDetected());
+            StashPayCard.Instance.OpenCheckout(url, () => OnBrowserClosed(), () => OnPaymentSuccessDetected(), () => OnPaymentFailureDetected());
         }
         catch (Exception ex)
         {

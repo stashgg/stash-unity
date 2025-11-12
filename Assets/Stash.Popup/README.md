@@ -33,7 +33,7 @@ Start here: Example implementation demonstrating API usage:
 
 ### Opening a Checkout
 
-Use `OpenURL()` to display a Stash Pay checkout in a native card dialog:
+Use `OpenCheckout()` to display a Stash Pay checkout in a native card dialog:
 
 ```csharp
 using StashPopup;
@@ -43,7 +43,7 @@ public class MyStore : MonoBehaviour
     void PurchaseItem(string checkoutUrl)
     {
         // checkoutUrl is a Stash Pay URL generated on your game backend.
-        StashPayCard.Instance.OpenURL(
+        StashPayCard.Instance.OpenCheckout(
             checkoutUrl,
             dismissCallback: OnCheckoutDismissed,
             successCallback: OnPaymentSuccess,
@@ -122,7 +122,7 @@ void OpenInBrowser(string url)
     StashPayCard.Instance.ForceWebBasedCheckout = true;
     
     // Opens in Safari/Chrome instead of card
-    StashPayCard.Instance.OpenURL(url, OnDismiss, OnSuccess, OnFailure);
+    StashPayCard.Instance.OpenCheckout(url, OnDismiss, OnSuccess, OnFailure);
     
     // Restore default mode
     StashPayCard.Instance.ForceWebBasedCheckout = false;
@@ -155,7 +155,7 @@ Clean and rebuild Xcode project.
 
 ### Methods
 
-**`OpenURL(string url, Action onDismiss, Action onSuccess, Action onFailure)`**
+**`OpenCheckout(string url, Action onDismiss, Action onSuccess, Action onFailure)`**
 Opens Stash Pay checkout in a sliding card from the bottom of the screen.
 
 **`OpenPopup(string url, Action onDismiss, Action onSuccess, Action onFailure)`**

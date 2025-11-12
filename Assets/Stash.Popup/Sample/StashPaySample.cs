@@ -79,7 +79,7 @@ public class StashPaySample : MonoBehaviour
 
                 // Open the checkout URL in a Stash Pay card dialog.
                 // This will display the Stash Pay checkout page in a card dialog.
-                StashPayCard.Instance.OpenURL(
+                StashPayCard.Instance.OpenCheckout(
                     response.url,
                     dismissCallback: OnCheckoutDismissed,
                     successCallback: OnPaymentSuccess,

@@ -3,10 +3,6 @@
 #import <WebKit/WebKit.h>
 #import <objc/runtime.h>
 
-__attribute__((constructor))
-static void InitializeWebKit() {
-}
-
 // Unity callbacks
 typedef void (*SafariViewDismissedCallback)();
 typedef void (*PaymentSuccessCallback)();
@@ -109,7 +105,7 @@ BOOL isRunningOniPad();
 }
 
 - (UIInterfaceOrientationMask)supportedInterfaceOrientations {
-    // Enforce portrait for OpenURL on iPhone when requested
+    // Enforce portrait for OpenCheckout on iPhone when requested
     if (self.enforcePortrait && !isRunningOniPad()) {
         return UIInterfaceOrientationMaskPortrait;
     }
@@ -136,7 +132,6 @@ BOOL isRunningOniPad();
     __weak WKWebView* _webView;
     UIView* _loadingView;
     NSTimer* _timeoutTimer;
-    BOOL _hasStartedRendering;
 }
 
 - (instancetype)initWithWebView:(WKWebView*)webView loadingView:(UIView*)loadingView {
@@ -145,7 +140,6 @@ BOOL isRunningOniPad();
         _webView = webView;
         self.webView = webView; // Store weak reference for navigation bar functionality
         _loadingView = loadingView;
-        _hasStartedRendering = NO;
         
         // Create a fallback timer to handle cases where navigation events aren't fired
         _timeoutTimer = [NSTimer scheduledTimerWithTimeInterval:0.1  // Very fast timeout for first paint
@@ -254,8 +248,6 @@ BOOL isRunningOniPad();
 }
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
-    _hasStartedRendering = NO;
-    
     // Calculate and report page load time
     if (self.pageLoadStartTime > 0) {
         CFAbsoluteTime loadEndTime = CFAbsoluteTimeGetCurrent();
@@ -324,14 +316,8 @@ BOOL isRunningOniPad();
 
 - (void)webView:(WKWebView *)webView didCommitNavigation:(WKNavigation *)navigation {
     // Content has started rendering - show immediately at first paint!
-    _hasStartedRendering = YES;
-    
     // Show the WebView as soon as first paint happens (fastest possible display)
     [self showWebViewAndRemoveLoading];
-}
-
-- (void)webView:(WKWebView *)webView didStartProvisionalNavigation:(WKNavigation *)navigation {
-    _hasStartedRendering = NO;
 }
 
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
@@ -1885,8 +1871,8 @@ extern "C" {
         _isCardExpanded = NO;
     }
 
-    // Opens a URL in Safari View Controller with delegation
-    void _StashPayCardOpenURLInSafariVC(const char* urlString) {
+    // Opens a checkout URL in Safari View Controller with delegation
+    void _StashPayCardOpenCheckoutInSafariVC(const char* urlString) {
         if (urlString == NULL) {
             NSLog(@"Error: URL is null");
             return;
@@ -1957,7 +1943,7 @@ extern "C" {
             OrientationLockedViewController *containerVC = [[OrientationLockedViewController alloc] init];
             containerVC.modalPresentationStyle = UIModalPresentationOverFullScreen;
             
-            // Enforce portrait for OpenURL on iPhone (not popup)
+            // Enforce portrait for OpenCheckout on iPhone (not popup)
             containerVC.enforcePortrait = !_usePopupPresentation;
             
             // Set container background immediately to prevent black flash
@@ -2244,7 +2230,7 @@ extern "C" {
                 
                 CGRect screenBounds = [UIScreen mainScreen].bounds;
                 
-                // For portrait-locked OpenURL on iPhone, ensure we use portrait dimensions
+                // For portrait-locked OpenCheckout on iPhone, ensure we use portrait dimensions
                 // even if device is currently in landscape
                 if (!_usePopupPresentation && !isRunningOniPad()) {
                     // Ensure portrait orientation for sizing (narrower dimension = width)
@@ -2443,7 +2429,7 @@ extern "C" {
         _isCardExpanded = NO;
         _usePopupPresentation = YES;
         
-        _StashPayCardOpenURLInSafariVC(urlString);
+        _StashPayCardOpenCheckoutInSafariVC(urlString);
     }
 }
 

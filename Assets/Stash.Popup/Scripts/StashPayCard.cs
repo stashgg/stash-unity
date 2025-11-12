@@ -127,7 +127,7 @@ namespace StashPopup
         private delegate void PageLoadedCallback(double loadTimeMs);
         
         [DllImport("__Internal")]
-        private static extern void _StashPayCardOpenURLInSafariVC(string url);
+        private static extern void _StashPayCardOpenCheckoutInSafariVC(string url);
         
         [DllImport("__Internal")]
         private static extern void _StashPayCardOpenPopup(string url);
@@ -181,9 +181,9 @@ namespace StashPopup
         }
 
         /// <summary>
-        /// Opens a URL in a sliding card view from the bottom of the screen.
+        /// Opens a Stash Pay checkout URL in a sliding card view from the bottom of the screen.
         /// </summary>
-        public void OpenURL(string url, Action dismissCallback = null, Action successCallback = null, Action failureCallback = null)
+        public void OpenCheckout(string url, Action dismissCallback = null, Action successCallback = null, Action failureCallback = null)
         {
             StartCoroutine(OpenURLWithFlagsmithConfig(url, dismissCallback, successCallback, failureCallback, false));
         }
@@ -238,9 +238,9 @@ namespace StashPopup
                 }
                 else
                 {
-                    // Apply card configuration and call openURL for card presentation
+                    // Apply card configuration and call openCheckout for card presentation
                     androidPluginInstance.Call("setCardConfiguration", _cardHeightRatio, _cardVerticalPosition, _cardWidthRatio);
-                    androidPluginInstance.Call("openURL", url);
+                    androidPluginInstance.Call("openCheckout", url);
                 }
             }
             else
@@ -264,7 +264,7 @@ namespace StashPopup
             }
             else
             {
-            _StashPayCardOpenURLInSafariVC(url);
+            _StashPayCardOpenCheckoutInSafariVC(url);
             }
 #else
             Application.OpenURL(url);

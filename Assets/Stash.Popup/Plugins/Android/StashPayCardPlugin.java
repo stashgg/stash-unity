@@ -15,15 +15,7 @@ import android.webkit.*;
 import android.widget.*;
 import com.unity3d.player.UnityPlayer;
 
-/**
- * Android implementation of StashPayCard
- * 
- * Architecture:
- * - Cards on phones: Use portrait-locked Activity for proper keyboard orientation
- * - Cards on tablets: Use custom Dialog (tablets handle landscape better)
- * - Popups: Use centered Dialog in current orientation
- * - Fallback: Chrome Custom Tabs for forceSafariViewController mode
- */
+
 public class StashPayCardPlugin {
     private static final String TAG = "StashPayCard";
     private static StashPayCardPlugin instance;
@@ -135,9 +127,9 @@ public class StashPayCardPlugin {
     // ============================================================================
 
     /**
-     * Opens URL in card presentation (slides up from bottom in portrait)
+     * Opens checkout URL in card presentation (slides up from bottom in portrait)
      */
-    public void openURL(String url) {
+    public void openCheckout(String url) {
         usePopupPresentation = false;
         openURLInternal(url);
     }
@@ -227,25 +219,14 @@ public class StashPayCardPlugin {
         activity.runOnUiThread(() -> {
             if (forceSafariViewController) {
                 openWithChromeCustomTabs(finalUrl);
-            } else if (shouldUsePortraitActivity()) {
-                // Use portrait Activity for cards on phones (better keyboard handling)
-                launchPortraitActivity(finalUrl);
             } else if (usePopupPresentation) {
                 // Centered square popup
                 createAndShowPopupDialog(finalUrl);
-                } else {
-                // Fallback: custom card dialog for tablets or as fallback
-                    createAndShowCardStyleDialog(finalUrl);
+            } else {
+                // Use portrait Activity for cards (better keyboard handling)
+                launchPortraitActivity(finalUrl);
             }
         });
-    }
-    
-    private boolean shouldUsePortraitActivity() {
-        // Use portrait Activity for all card presentations (phones and tablets, not popups)
-        if (usePopupPresentation) {
-            return false;
-        }
-        return true; // Use Activity for all cards (phones and tablets)
     }
     
     private void launchPortraitActivity(String url) {
