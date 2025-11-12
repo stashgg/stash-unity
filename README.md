@@ -1,8 +1,6 @@
 # Stash SDK for Unity ![buildtest](https://github.com/stashgg/stash-unity/actions/workflows/main.yml/badge.svg)
 
-Unity SDK for integrating Stash Pay checkout flows and web shop functionality. The package is lightweight and wraps Stash API endpoints without external dependencies.
-
-To get started, import the latest package from the [releases](https://github.com/stashgg/stash-unity/releases) section and follow our [Unity guide](https://docs.stash.gg/docs/configure-unity-project).
+Unity package for integrating Stash Pay checkout flows and web shop functionality. The package is lightweight and wraps Stash API endpoints without external dependencies.
 
 ## Requirements
 
