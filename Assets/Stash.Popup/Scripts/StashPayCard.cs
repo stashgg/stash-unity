@@ -52,6 +52,7 @@ namespace StashPopup
         public event Action OnPaymentSuccess;
         public event Action OnPaymentFailure;
         public event Action<string> OnOptinResponse;
+        public event Action<double> OnPageLoaded;
         #endregion
 
         #region Private Fields
@@ -108,12 +109,22 @@ namespace StashPopup
         {
             OnOptinResponse?.Invoke(optinType);
         }
+        
+        // Android callback: page loaded
+        public void OnAndroidPageLoaded(string loadTimeMs)
+        {
+            if (double.TryParse(loadTimeMs, out double loadTime))
+            {
+                OnPageLoaded?.Invoke(loadTime);
+            }
+        }
 
 #elif UNITY_IOS && !UNITY_EDITOR
         private delegate void SafariViewDismissedCallback();
         private delegate void PaymentSuccessCallback();
         private delegate void PaymentFailureCallback();
         private delegate void OptinResponseCallback(string optinType);
+        private delegate void PageLoadedCallback(double loadTimeMs);
         
         [DllImport("__Internal")]
         private static extern void _StashPayCardOpenURLInSafariVC(string url);
@@ -132,6 +143,9 @@ namespace StashPopup
         
         [DllImport("__Internal")]
         private static extern void _StashPayCardSetOptinResponseCallback(OptinResponseCallback callback);
+        
+        [DllImport("__Internal")]
+        private static extern void _StashPayCardSetPageLoadedCallback(PageLoadedCallback callback);
         
         [DllImport("__Internal")]
         private static extern void _StashPayCardSetCardConfiguration(float heightRatio, float verticalPosition);
@@ -238,6 +252,7 @@ namespace StashPopup
             _StashPayCardSetPaymentSuccessCallback(OnIOSPaymentSuccess);
             _StashPayCardSetPaymentFailureCallback(OnIOSPaymentFailure);
             _StashPayCardSetOptinResponseCallback(OnIOSOptinResponse);
+            _StashPayCardSetPageLoadedCallback(OnIOSPageLoaded);
             
             if (isPopup)
             {
@@ -449,6 +464,13 @@ namespace StashPopup
         private static void OnIOSOptinResponse(string optinType)
         {
             Instance?.OnOptinResponse?.Invoke(optinType);
+        }
+        
+        // iOS callback: page loaded
+        [MonoPInvokeCallback(typeof(PageLoadedCallback))]
+        private static void OnIOSPageLoaded(double loadTimeMs)
+        {
+            Instance?.OnPageLoaded?.Invoke(loadTimeMs);
         }
 #endif
 

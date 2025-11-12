@@ -12,10 +12,12 @@ typedef void (*SafariViewDismissedCallback)();
 typedef void (*PaymentSuccessCallback)();
 typedef void (*PaymentFailureCallback)();
 typedef void (*OptinResponseCallback)(const char* optinType);
+typedef void (*PageLoadedCallback)(double loadTimeMs);
 SafariViewDismissedCallback _safariViewDismissedCallback = NULL;
 PaymentSuccessCallback _paymentSuccessCallback = NULL;
 PaymentFailureCallback _paymentFailureCallback = NULL;
 OptinResponseCallback _optinResponseCallback = NULL;
+PageLoadedCallback _pageLoadedCallback = NULL;
 
 // State flags
 BOOL _callbackWasCalled = NO;
@@ -78,6 +80,7 @@ static BOOL _isCardExpanded = NO;
 // WebView navigation delegate to handle loading states
 @interface WebViewLoadDelegate : NSObject <WKNavigationDelegate>
 @property (nonatomic, weak) WKWebView *webView;
+@property (nonatomic, assign) CFAbsoluteTime pageLoadStartTime;
 - (instancetype)initWithWebView:(WKWebView*)webView loadingView:(UIView*)loadingView;
 @end
 
@@ -253,8 +256,28 @@ BOOL isRunningOniPad();
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
     _hasStartedRendering = NO;
     
+    // Calculate and report page load time
+    if (self.pageLoadStartTime > 0) {
+        CFAbsoluteTime loadEndTime = CFAbsoluteTimeGetCurrent();
+        double loadTimeSeconds = loadEndTime - self.pageLoadStartTime;
+        double loadTimeMs = loadTimeSeconds * 1000.0;
+        
+        NSLog(@"[StashPayCard] Page loaded in %.2f ms", loadTimeMs);
+        
+        // Notify Unity of page load time
+        if (_pageLoadedCallback != NULL) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                _pageLoadedCallback(loadTimeMs);
+            });
+        }
+        
+        // Reset the start time
+        self.pageLoadStartTime = 0;
+    }
+    
     // Function to check if page is truly ready
-    void (^checkPageReady)(void) = ^{
+    __block void (^checkPageReady)(void);
+    checkPageReady = ^{
         NSString *readyCheck = @"(function() { \
             if (document.readyState !== 'complete') return false; \
             if (document.documentElement.style.display === 'none') return false; \
@@ -354,7 +377,7 @@ BOOL isRunningOniPad();
 }
 
 // Disable file upload (prevents image selection dialogs)
-- (void)webView:(WKWebView *)webView runOpenPanelWithParameters:(WKOpenPanelParameters *)parameters initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(NSArray<NSURL *> *))completionHandler {
+- (void)webView:(WKWebView *)webView runOpenPanelWithParameters:(id)parameters initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(NSArray<NSURL *> *))completionHandler {
     completionHandler(nil);
 }
 
@@ -416,6 +439,8 @@ BOOL isRunningOniPad();
         _callbackWasCalled = YES;
         _isCardCurrentlyPresented = NO; // Reset the presentation flag
         dispatch_async(dispatch_get_main_queue(), ^{
+            // Explicitly capture self - this is intentional
+            (void)self;
             _safariViewDismissedCallback();
         });
     }
@@ -489,6 +514,8 @@ BOOL isRunningOniPad();
     if (_forceSafariViewController) {
         if (_safariViewDismissedCallback != NULL) {
             dispatch_async(dispatch_get_main_queue(), ^{
+                // Explicitly capture self - this is intentional
+                (void)self;
                 _safariViewDismissedCallback();
             });
         }
@@ -1064,7 +1091,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
 
 - (void)updateButtonPositionsForProgress:(CGFloat)progress cardView:(UIView *)cardView safeAreaInsets:(UIEdgeInsets)safeAreaInsets {
     CGRect screenBounds = [UIScreen mainScreen].bounds;
-    CGFloat safeTop = safeAreaInsets.top;
+    // CGFloat safeTop = safeAreaInsets.top;  // Unused in this method
     
     // Calculate collapsed dimensions
     CGFloat collapsedWidth, expandedWidth;
@@ -1077,7 +1104,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     expandedWidth = screenBounds.size.width;
     
     // Interpolate current width
-    CGFloat currentWidth = collapsedWidth + (expandedWidth - collapsedWidth) * progress;
+    // CGFloat currentWidth = collapsedWidth + (expandedWidth - collapsedWidth) * progress;  // Unused in this method
     
     // Define button positions for collapsed and expanded states
     CGFloat collapsedTopOffset = 16 + 6; // 22px from top in collapsed state
@@ -1691,8 +1718,10 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
         NSString *optinType = [message.body isKindOfClass:[NSString class]] ? (NSString *)message.body : @"";
         
         if (_optinResponseCallback != NULL) {
-            const char *optinTypeCStr = [optinType UTF8String];
+            // Copy the string to ensure it remains valid in the async block
+            NSString *optinTypeCopy = [optinType copy];
             dispatch_async(dispatch_get_main_queue(), ^{
+                const char *optinTypeCStr = [optinTypeCopy UTF8String];
                 _optinResponseCallback(optinTypeCStr);
             });
         }
@@ -1831,6 +1860,10 @@ extern "C" {
     // Sets the callback function to be called when user opts in
     void _StashPayCardSetOptinResponseCallback(OptinResponseCallback callback) {
         _optinResponseCallback = callback;
+    }
+    
+    void _StashPayCardSetPageLoadedCallback(PageLoadedCallback callback) {
+        _pageLoadedCallback = callback;
     }
 
     void _StashPayCardSetCardConfiguration(float heightRatio, float verticalPosition) {
@@ -2203,6 +2236,9 @@ extern "C" {
                                                                 timeoutInterval:15.0];
                 [request setValue:@"Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1" forHTTPHeaderField:@"User-Agent"];
                 [request setValue:@"gzip, deflate, br" forHTTPHeaderField:@"Accept-Encoding"];
+                
+                // Record page load start time in the delegate
+                delegate.pageLoadStartTime = CFAbsoluteTimeGetCurrent();
                 
                 [webView loadRequest:request];
                 
