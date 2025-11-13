@@ -43,7 +43,6 @@ jobs:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     outputs:
       platforms: ${{ steps.set-platforms.outputs.platforms }}
-      build-matrix: ${{ steps.set-build-matrix.outputs.matrix }}
     steps:
       - id: set-platforms
         run: |
@@ -52,45 +51,14 @@ jobs:
           else
             echo "platforms=[\"${{ inputs.platform }}\"]" >> $GITHUB_OUTPUT
           fi
-      
-      - id: set-build-matrix
-        run: |
-          PLATFORMS="${{ steps.set-platforms.outputs.platforms }}"
-          # Parse platforms JSON and expand iOS into device and simulator
-          PLATFORMS="$PLATFORMS" python3 << 'PYTHON_SCRIPT' > matrix_output.json
-          import json
-          import sys
-          import os
-          
-          platforms_json = os.environ.get('PLATFORMS', '[]')
-          try:
-              # Parse the JSON string
-              platforms = json.loads(platforms_json)
-              items = []
-              for platform in platforms:
-                  if platform == 'iOS':
-                      items.append({'platform': 'iOS', 'ios_build_type': 'device'})
-                      items.append({'platform': 'iOS', 'ios_build_type': 'simulator'})
-                  else:
-                      items.append({'platform': platform, 'ios_build_type': ''})
-              result = {'include': items}
-              print(json.dumps(result))
-          except Exception as e:
-              print(f'Error parsing platforms: {e}', file=sys.stderr)
-              print(f'Input was: {platforms_json}', file=sys.stderr)
-              print('{"include": []}', file=sys.stderr)
-              sys.exit(1)
-          PYTHON_SCRIPT
-          cat matrix_output.json
-          MATRIX_JSON=$(cat matrix_output.json)
-          echo "matrix=$MATRIX_JSON" >> $GITHUB_OUTPUT
   
   build:
-    name: Build for ${{ matrix.platform }}${{ matrix.ios_build_type && format(' ({0})', matrix.ios_build_type) || '' }}
+    name: Build for ${{ matrix.platform }}
     needs: determine-platforms
     runs-on: ${{ (matrix.platform == 'iOS' || matrix.platform == 'StandaloneOSX') && 'macos-latest' || 'ubuntu-latest' }}
     strategy:
-      matrix: ${{ fromJSON(needs.determine-platforms.outputs.build-matrix) }}
+      matrix:
+        platform: ${{ fromJSON(needs.determine-platforms.outputs.platforms) }}
       fail-fast: false
     
     steps:
@@ -119,7 +87,7 @@ jobs:
       
       # iOS: Clean up any existing certificate/keychain state to avoid conflicts
       - name: Clean iOS certificate state
-        if: matrix.platform == 'iOS' && matrix.ios_build_type == 'device'
+        if: matrix.platform == 'iOS'
         run: |
           # Create App Store Connect API key for certificate management
           mkdir -p ~/.appstoreconnect/private_keys
@@ -138,7 +106,7 @@ jobs:
       
       # iOS: Setup certificates and keychain for code signing
       - name: Setup iOS certificates
-        if: matrix.platform == 'iOS' && matrix.ios_build_type == 'device'
+        if: matrix.platform == 'iOS'
         run: |
           # Create a unique keychain to avoid conflicts
           KEYCHAIN_NAME="build-$(date +%s).keychain"
@@ -207,7 +175,7 @@ jobs:
       
       # iOS: Download provisioning profiles from App Store Connect
       - name: Download iOS provisioning profiles
-        if: matrix.platform == 'iOS' && matrix.ios_build_type == 'device'
+        if: matrix.platform == 'iOS'
         uses: Apple-Actions/download-provisioning-profiles@v4
         with:
           bundle-id: 'com.stash.sdkdemo'
@@ -218,7 +186,7 @@ jobs:
       
       # iOS: Verify certificates and provisioning profiles are correctly installed
       - name: Verify iOS setup
-        if: matrix.platform == 'iOS' && matrix.ios_build_type == 'device'
+        if: matrix.platform == 'iOS'
         run: |
           echo "Available signing identities in default keychain:"
           security find-identity -v -p codesigning
@@ -289,6 +257,15 @@ jobs:
         run: |
           cd build/iOS/iOS/
           
+          # Create App Store Connect API key directory
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "${{ secrets.APPSTORE_PRIVATE_KEY }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8
+          chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8
+          
+          # Ensure our keychain is active and unlocked
+          security default-keychain -s "$KEYCHAIN_NAME"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
+          
           # Fix Unity framework issue: Set "Embedded Content Contains Swift Code" to NO
           # This prevents the "Invalid Bundle contains disallowed file 'Frameworks'" error
           # See: https://stackoverflow.com/questions/25880134/invalid-bundle-contains-disallowed-file-frameworks
@@ -300,31 +277,13 @@ jobs:
           # Also set EMBEDDED_CONTENT_CONTAINS_SWIFT to NO if present
           sed -i '' 's/EMBEDDED_CONTENT_CONTAINS_SWIFT = YES/EMBEDDED_CONTENT_CONTAINS_SWIFT = NO/g' Unity-iPhone.xcodeproj/project.pbxproj
           echo "Embedded Content Contains Swift Code configured to NO"
+           
+          # Force device-only builds by excluding simulator architectures
+          echo "Configuring for device-only build..."
+          # Set ONLY_ACTIVE_ARCH to NO for Release builds
+          sed -i '' 's/ONLY_ACTIVE_ARCH = YES/ONLY_ACTIVE_ARCH = NO/g' Unity-iPhone.xcodeproj/project.pbxproj
           
-          if [ "${{ matrix.ios_build_type }}" = "device" ]; then
-            # Create App Store Connect API key directory
-            mkdir -p ~/.appstoreconnect/private_keys
-            echo "${{ secrets.APPSTORE_PRIVATE_KEY }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8
-            chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8
-            
-            # Ensure our keychain is active and unlocked
-            security default-keychain -s "$KEYCHAIN_NAME"
-            security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
-            
-            # Force device-only builds by excluding simulator architectures
-            echo "Configuring for device-only build..."
-            # Set ONLY_ACTIVE_ARCH to NO for Release builds
-            sed -i '' 's/ONLY_ACTIVE_ARCH = YES/ONLY_ACTIVE_ARCH = NO/g' Unity-iPhone.xcodeproj/project.pbxproj
-            
-            echo "Build configuration updated for device-only build"
-          else
-            # For simulator builds, configure for simulator
-            echo "Configuring for simulator build..."
-            # Set ONLY_ACTIVE_ARCH to YES for simulator builds (builds faster)
-            sed -i '' 's/ONLY_ACTIVE_ARCH = NO/ONLY_ACTIVE_ARCH = YES/g' Unity-iPhone.xcodeproj/project.pbxproj
-            
-            echo "Build configuration updated for simulator build"
-          fi
+          echo "Build configuration updated for device-only build"
       
       # iOS: Verify build configuration
       - name: Verify build configuration
@@ -340,44 +299,25 @@ jobs:
           xcodebuild -project Unity-iPhone.xcodeproj -scheme Unity-iPhone -showdestinations | grep -i ios
           
           echo ""
-          if [ "${{ matrix.ios_build_type }}" = "device" ]; then
-            echo "Verifying we're building for device (iphoneos), not simulator..."
-            SDK_VERSION=$(xcodebuild -version -sdk iphoneos Path 2>/dev/null | head -1)
-            if [ -z "$SDK_VERSION" ]; then
-              echo "ERROR: iphoneos SDK not found!"
-              exit 1
-            fi
-            echo "✅ Using device SDK: $SDK_VERSION"
-          else
-            echo "Verifying we're building for simulator (iphonesimulator)..."
-            SDK_VERSION=$(xcodebuild -version -sdk iphonesimulator Path 2>/dev/null | head -1)
-            if [ -z "$SDK_VERSION" ]; then
-              echo "ERROR: iphonesimulator SDK not found!"
-              exit 1
-            fi
-            echo "✅ Using simulator SDK: $SDK_VERSION"
+          echo "Verifying we're building for device (iphoneos), not simulator..."
+          SDK_VERSION=$(xcodebuild -version -sdk iphoneos Path 2>/dev/null | head -1)
+          if [ -z "$SDK_VERSION" ]; then
+            echo "ERROR: iphoneos SDK not found!"
+            exit 1
           fi
+          echo "✅ Using device SDK: $SDK_VERSION"
       
       # iOS: Clean Xcode project
       - name: Clean Xcode project
         if: matrix.platform == 'iOS'
         run: |
           cd build/iOS/iOS/
-          if [ "${{ matrix.ios_build_type }}" = "device" ]; then
-            xcodebuild clean \
-              -project Unity-iPhone.xcodeproj \
-              -scheme Unity-iPhone \
-              -configuration Release \
-              -sdk iphoneos \
-              -destination 'generic/platform=iOS'
-          else
-            xcodebuild clean \
-              -project Unity-iPhone.xcodeproj \
-              -scheme Unity-iPhone \
-              -configuration Release \
-              -sdk iphonesimulator \
-              -destination 'generic/platform=iOS Simulator'
-          fi
+          xcodebuild clean \
+            -project Unity-iPhone.xcodeproj \
+            -scheme Unity-iPhone \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS'
       
       # iOS: Get version from git tag
       - name: Get version from git tag
@@ -468,7 +408,7 @@ jobs:
       
       # iOS: Build archive for device
       - name: Build & verify iOS archive
-        if: matrix.platform == 'iOS' && matrix.ios_build_type == 'device'
+        if: matrix.platform == 'iOS'
         env:
           APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
           APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
@@ -575,72 +515,9 @@ jobs:
             echo "Archive build: $ARCHIVE_BUILD (expected: $CURRENT_PROJECT_VERSION)"
           fi
       
-      # iOS: Build simulator version
-      - name: Build iOS simulator version
-        if: matrix.platform == 'iOS' && matrix.ios_build_type == 'simulator'
-        run: |
-          cd build/iOS/iOS/
-          
-          echo "Setting iOS app version:"
-          echo "  MARKETING_VERSION (version): $MARKETING_VERSION"
-          echo "  CURRENT_PROJECT_VERSION (build): $CURRENT_PROJECT_VERSION"
-          
-          # Build for simulator (not archive) - simulator builds don't need signing
-          xcodebuild build \
-            -project Unity-iPhone.xcodeproj \
-            -scheme Unity-iPhone \
-            -configuration Release \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
-            PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
-            MARKETING_VERSION="$MARKETING_VERSION" \
-            CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION" \
-            INFOPLIST_KEY_CFBundleShortVersionString="$MARKETING_VERSION" \
-            INFOPLIST_KEY_CFBundleVersion="$CURRENT_PROJECT_VERSION" \
-            INFOPLIST_KEY_ITSAppUsesNonExemptEncryption="NO" \
-            CODE_SIGNING_ALLOWED="NO" \
-            CODE_SIGNING_REQUIRED="NO" \
-            ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=NO \
-            ONLY_ACTIVE_ARCH=YES
-          
-          echo "Simulator build completed"
-          
-          # Find the built .app bundle
-          # xcodebuild outputs to DerivedData by default
-          # Look for the app in the standard DerivedData location
-          APP_BUNDLE=$(find ~/Library/Developer/Xcode/DerivedData -name "*.app" -type d -path "*/Build/Products/Release-iphonesimulator/*" 2>/dev/null | head -1)
-          
-          # Alternative: check if Unity outputs to a build directory
-          if [ -z "$APP_BUNDLE" ]; then
-            APP_BUNDLE=$(find build -name "*.app" -type d 2>/dev/null | head -1)
-          fi
-          
-          # Another fallback: check current directory
-          if [ -z "$APP_BUNDLE" ]; then
-            APP_BUNDLE=$(find . -name "*.app" -type d -maxdepth 3 2>/dev/null | head -1)
-          fi
-          
-          if [ -z "$APP_BUNDLE" ]; then
-            echo "ERROR: Could not find simulator .app bundle"
-            echo "Searched in:"
-            echo "  - ~/Library/Developer/Xcode/DerivedData"
-            echo "  - build/"
-            echo "  - current directory"
-            exit 1
-          fi
-          
-          echo "✅ Found simulator app bundle: $APP_BUNDLE"
-          ls -la "$APP_BUNDLE"
-          
-          # Store app bundle path for later steps (use absolute path)
-          if [[ "$APP_BUNDLE" != /* ]]; then
-            APP_BUNDLE="$(pwd)/$APP_BUNDLE"
-          fi
-          echo "SIMULATOR_APP_BUNDLE=$APP_BUNDLE" >> $GITHUB_ENV
-      
       # iOS: Fix UnityFramework bundle identifier in archive (post-archive fix)
       - name: Fix UnityFramework bundle identifier in archive
-        if: matrix.platform == 'iOS' && matrix.ios_build_type == 'device'
+        if: matrix.platform == 'iOS'
         run: |
           cd build/iOS/iOS/
           
@@ -774,7 +651,7 @@ jobs:
       
       # iOS: Create export options
       - name: Create export options plist
-        if: matrix.platform == 'iOS' && matrix.ios_build_type == 'device'
+        if: matrix.platform == 'iOS'
         run: |
           cd build/iOS/iOS/
           
@@ -811,7 +688,7 @@ jobs:
       
       # iOS: Export IPA
       - name: Export IPA
-        if: matrix.platform == 'iOS' && matrix.ios_build_type == 'device'
+        if: matrix.platform == 'iOS'
         env:
           APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
           APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
@@ -834,7 +711,7 @@ jobs:
       
       # iOS: Verify IPA
       - name: Verify IPA
-        if: matrix.platform == 'iOS' && matrix.ios_build_type == 'device'
+        if: matrix.platform == 'iOS'
         run: |
           echo "Contents of build/iOS/iOS/export:"
           ls -la build/iOS/iOS/export/
@@ -853,7 +730,7 @@ jobs:
       
       # iOS: Upload to TestFlight using Apple's recommended action
       - name: Upload to TestFlight
-        if: matrix.platform == 'iOS' && matrix.ios_build_type == 'device' && (github.event_name == 'push' || github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && inputs.upload_to_testflight == true))
+        if: matrix.platform == 'iOS' && (github.event_name == 'push' || github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && inputs.upload_to_testflight == true))
         uses: apple-actions/upload-testflight-build@v1
         with:
           app-path: 'build/iOS/iOS/export/StashDemo.ipa'
@@ -900,7 +777,7 @@ jobs:
       
       # iOS: Upload IPA to GCS latest/ directory for direct download
       - name: Upload latest iOS IPA to GCS
-        if: matrix.platform == 'iOS' && matrix.ios_build_type == 'device'
+        if: matrix.platform == 'iOS'
         uses: google-github-actions/upload-cloud-storage@v3
         with:
           path: build/iOS/iOS/export/StashDemo.ipa
@@ -909,47 +786,107 @@ jobs:
           gzip: false
           process_gcloudignore: false
       
-      # iOS: Package simulator build and upload to GCS
-      - name: Package and upload iOS simulator build
-        if: matrix.platform == 'iOS' && matrix.ios_build_type == 'simulator'
+      # iOS: Build simulator version
+      - name: Build iOS simulator version
+        if: matrix.platform == 'iOS'
         run: |
-          # Use the app bundle path from previous step, or find it again
-          if [ -n "$SIMULATOR_APP_BUNDLE" ] && [ -d "$SIMULATOR_APP_BUNDLE" ]; then
-            APP_BUNDLE="$SIMULATOR_APP_BUNDLE"
-          else
-            # Fallback: search for the app bundle
-            APP_BUNDLE=$(find ~/Library/Developer/Xcode/DerivedData -name "*.app" -type d -path "*/Build/Products/Release-iphonesimulator/*" 2>/dev/null | head -1)
-            if [ -z "$APP_BUNDLE" ]; then
-              APP_BUNDLE=$(find build -name "*.app" -type d 2>/dev/null | head -1)
-            fi
+          cd build/iOS/iOS/
+          
+          echo "Building iOS simulator version..."
+          echo "  MARKETING_VERSION (version): $MARKETING_VERSION"
+          echo "  CURRENT_PROJECT_VERSION (build): $CURRENT_PROJECT_VERSION"
+          
+          # Create a custom derived data path for easier access
+          DERIVED_DATA_PATH="$(pwd)/DerivedData"
+          mkdir -p "$DERIVED_DATA_PATH"
+          
+          # Clean previous simulator build
+          xcodebuild clean \
+            -project Unity-iPhone.xcodeproj \
+            -scheme Unity-iPhone \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$DERIVED_DATA_PATH" || true
+          
+          # Build for simulator (no signing needed for simulator builds)
+          xcodebuild build \
+            -project Unity-iPhone.xcodeproj \
+            -scheme Unity-iPhone \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
+            PRODUCT_BUNDLE_IDENTIFIER="com.stash.sdkdemo" \
+            MARKETING_VERSION="$MARKETING_VERSION" \
+            CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION" \
+            INFOPLIST_KEY_CFBundleShortVersionString="$MARKETING_VERSION" \
+            INFOPLIST_KEY_CFBundleVersion="$CURRENT_PROJECT_VERSION" \
+            INFOPLIST_KEY_ITSAppUsesNonExemptEncryption="NO" \
+            CODE_SIGNING_ALLOWED="NO" \
+            CODE_SIGNING_REQUIRED="NO" \
+            ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=NO \
+            ONLY_ACTIVE_ARCH=NO
+          
+          echo "Simulator build completed"
+          
+          # Find the built .app bundle in DerivedData
+          SIMULATOR_APP=$(find "$DERIVED_DATA_PATH" -name "*.app" -type d -path "*/Build/Products/Release-iphonesimulator/*" | head -1)
+          
+          if [ -z "$SIMULATOR_APP" ]; then
+            # Fallback: look in standard DerivedData location
+            SIMULATOR_APP=$(find ~/Library/Developer/Xcode/DerivedData -name "*.app" -type d -path "*/Build/Products/Release-iphonesimulator/*" | head -1)
           fi
           
-          if [ -z "$APP_BUNDLE" ] || [ ! -d "$APP_BUNDLE" ]; then
-            echo "ERROR: Could not find simulator .app bundle"
-            echo "SIMULATOR_APP_BUNDLE was: $SIMULATOR_APP_BUNDLE"
+          if [ -z "$SIMULATOR_APP" ]; then
+            echo "ERROR: Simulator .app bundle not found"
+            echo "Searching in DerivedData:"
+            find "$DERIVED_DATA_PATH" -name "*.app" -type d 2>/dev/null || echo "No .app found in custom DerivedData"
+            echo "Searching in standard DerivedData:"
+            find ~/Library/Developer/Xcode/DerivedData -name "*.app" -type d -path "*/Build/Products/*" 2>/dev/null | head -5 || echo "No .app found in standard DerivedData"
             exit 1
           fi
           
-          echo "Packaging simulator app: $APP_BUNDLE"
+          echo "Found simulator app: $SIMULATOR_APP"
           
-          # Create a zip archive of the .app bundle
-          ZIP_FILE="${{ github.workspace }}/StashDemo-simulator.zip"
+          # Create a directory for simulator build output
+          mkdir -p simulator-build
+          cp -R "$SIMULATOR_APP" simulator-build/
+          
+          echo "Simulator app copied to simulator-build/"
+          ls -la simulator-build/
+      
+      # iOS: Package simulator build as zip
+      - name: Package iOS simulator build
+        if: matrix.platform == 'iOS'
+        run: |
+          cd build/iOS/iOS/
+          
+          # Find the simulator app
+          SIMULATOR_APP=$(find simulator-build -name "*.app" -type d | head -1)
+          if [ -z "$SIMULATOR_APP" ]; then
+            echo "ERROR: Simulator .app bundle not found in simulator-build/"
+            exit 1
+          fi
+          
+          APP_NAME=$(basename "$SIMULATOR_APP")
+          ZIP_FILE="${{ github.workspace }}/iOS-Simulator-latest.zip"
           
           # Use ditto to create a proper macOS zip (preserves metadata, permissions, symlinks)
-          ditto -ck --sequesterRsrc --keepParent "$APP_BUNDLE" "$ZIP_FILE"
+          cd simulator-build
+          ditto -ck --sequesterRsrc --keepParent "$APP_NAME" "$ZIP_FILE"
           
-          echo "✅ Created simulator zip: $ZIP_FILE"
+          echo "Created simulator zip: $ZIP_FILE"
           ls -lh "$ZIP_FILE"
-          
-          echo "SIMULATOR_ZIP=$ZIP_FILE" >> $GITHUB_ENV
+          du -h "$ZIP_FILE"
       
       # iOS: Upload simulator build to GCS
       - name: Upload iOS simulator build to GCS
-        if: matrix.platform == 'iOS' && matrix.ios_build_type == 'simulator'
+        if: matrix.platform == 'iOS'
         uses: google-github-actions/upload-cloud-storage@v3
         with:
-          path: ${{ env.SIMULATOR_ZIP }}
-          destination: stash_sdk_demo/iOS/latest/StashDemo-simulator.zip
+          path: ${{ github.workspace }}/iOS-Simulator-latest.zip
+          destination: stash_sdk_demo/iOS/latest/StashDemo-Simulator.zip
           parent: false
           gzip: false
           process_gcloudignore: false
