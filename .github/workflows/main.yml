@@ -241,16 +241,25 @@ jobs:
         run: |
           echo "Configuring Unity project to build for iOS simulator..."
           # Modify ProjectSettings.asset to target simulator
-          # iOSSimulatorArchitecture: 0 = arm64 (device), 1 = x86_64 (simulator), 2 = arm64 (simulator for Apple Silicon)
-          # We'll use 1 (x86_64 simulator) for x64 simulator build
-          if ! sed -i '' 's/iOSSimulatorArchitecture: [0-9]*/iOSSimulatorArchitecture: 1/' ProjectSettings/ProjectSettings.asset; then
-            echo "ERROR: Failed to modify ProjectSettings.asset"
+          # iOSSimulatorArchitecture: 0 = x86_64 (simulator), 1 = x86_64 (simulator), 2 = arm64 (simulator for Apple Silicon)
+          # We'll use 0 (x86_64 simulator) for x64 simulator build
+          if ! sed -i '' 's/iOSSimulatorArchitecture: [0-9]*/iOSSimulatorArchitecture: 0/' ProjectSettings/ProjectSettings.asset; then
+            echo "ERROR: Failed to modify iOSSimulatorArchitecture"
             exit 1
           fi
-          echo "✅ Set iOSSimulatorArchitecture to 1 (x86_64 simulator)"
-          # Verify the change
-          echo "Current iOSSimulatorArchitecture setting:"
-          grep "iOSSimulatorArchitecture" ProjectSettings/ProjectSettings.asset
+          echo "✅ Set iOSSimulatorArchitecture to 0 (x86_64 simulator)"
+          
+          # Set iPhoneSdkVersion to simulator SDK version
+          # iPhoneSdkVersion: 989 = simulator, 988 = device
+          if ! sed -i '' 's/iPhoneSdkVersion: [0-9]*/iPhoneSdkVersion: 989/' ProjectSettings/ProjectSettings.asset; then
+            echo "ERROR: Failed to modify iPhoneSdkVersion"
+            exit 1
+          fi
+          echo "✅ Set iPhoneSdkVersion to 989 (simulator SDK)"
+          
+          # Verify the changes
+          echo "Current iOS simulator settings:"
+          grep "iOSSimulatorArchitecture\|iPhoneSdkVersion" ProjectSettings/ProjectSettings.asset
           
           # Tell git to ignore this change so Unity builder doesn't complain about dirty state
           git update-index --assume-unchanged ProjectSettings/ProjectSettings.asset
