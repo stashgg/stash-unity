@@ -893,28 +893,85 @@ jobs:
           
           echo "Building for iOS simulator..."
           
-          # Get available simulator destinations
-          echo "Available simulator destinations:"
-          xcodebuild -project Unity-iPhone.xcodeproj -scheme Unity-iPhone -showdestinations | grep -i simulator | head -3
+          # Boot a simulator if needed (GitHub Actions runners may not have simulators booted)
+          echo "Checking for available simulators..."
+          BOOTED_SIMULATOR=$(xcrun simctl list devices | grep -i "Booted" | grep -i "iPhone" | head -1 | sed -n 's/.*(\([^)]*\)).*/\1/p' || echo "")
           
-          # Build for simulator (using generic simulator destination)
-          # Use iphonesimulator SDK instead of iphoneos
-          # Specify build output directory to make it easier to find
-          xcodebuild build \
-            -project Unity-iPhone.xcodeproj \
-            -scheme Unity-iPhone \
-            -configuration Release \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath ./DerivedData \
-            MARKETING_VERSION="$MARKETING_VERSION" \
-            CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION" \
-            INFOPLIST_KEY_CFBundleShortVersionString="$MARKETING_VERSION" \
-            INFOPLIST_KEY_CFBundleVersion="$CURRENT_PROJECT_VERSION" \
-            INFOPLIST_KEY_ITSAppUsesNonExemptEncryption="NO" \
-            CODE_SIGNING_ALLOWED="NO" \
-            CODE_SIGNING_REQUIRED="NO" \
-            ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=NO
+          if [ -z "$BOOTED_SIMULATOR" ]; then
+            echo "No booted simulator found, attempting to boot one..."
+            # Find an available iPhone simulator
+            AVAILABLE_SIMULATOR=$(xcrun simctl list devices available | grep -i "iPhone" | grep -v "unavailable" | head -1 | sed -n 's/.*(\([^)]*\)).*/\1/p' || echo "")
+            
+            if [ -n "$AVAILABLE_SIMULATOR" ]; then
+              echo "Booting simulator: $AVAILABLE_SIMULATOR"
+              xcrun simctl boot "$AVAILABLE_SIMULATOR" 2>/dev/null || echo "Note: Simulator may already be booting or boot failed (continuing anyway)"
+              BOOTED_SIMULATOR="$AVAILABLE_SIMULATOR"
+            else
+              echo "⚠️  No available iPhone simulator found"
+            fi
+          else
+            echo "Found booted simulator: $BOOTED_SIMULATOR"
+          fi
+          
+          # Try to get simulator destinations from xcodebuild
+          echo "Getting available destinations from xcodebuild..."
+          AVAILABLE_DESTINATIONS=$(xcodebuild -project Unity-iPhone.xcodeproj -scheme Unity-iPhone -showdestinations 2>/dev/null | grep -i "platform:iOS Simulator" || echo "")
+          
+          SIMULATOR_DESTINATION=""
+          if [ -n "$AVAILABLE_DESTINATIONS" ]; then
+            echo "Available simulator destinations:"
+            echo "$AVAILABLE_DESTINATIONS" | head -3
+            # Extract the first available simulator ID
+            SIMULATOR_ID=$(echo "$AVAILABLE_DESTINATIONS" | head -1 | sed -n 's/.*id=\([^,}]*\).*/\1/p' | head -1)
+            if [ -n "$SIMULATOR_ID" ]; then
+              SIMULATOR_DESTINATION="platform=iOS Simulator,id=$SIMULATOR_ID"
+              echo "Using simulator destination: $SIMULATOR_DESTINATION"
+            fi
+          fi
+          
+          # If we have a booted simulator but xcodebuild didn't show it, use it directly
+          if [ -z "$SIMULATOR_DESTINATION" ] && [ -n "$BOOTED_SIMULATOR" ]; then
+            SIMULATOR_DESTINATION="platform=iOS Simulator,id=$BOOTED_SIMULATOR"
+            echo "Using booted simulator: $SIMULATOR_DESTINATION"
+          fi
+          
+          # Build for simulator
+          # Use iphonesimulator SDK - this is the key for simulator builds
+          if [ -n "$SIMULATOR_DESTINATION" ]; then
+            echo "Building with destination: $SIMULATOR_DESTINATION"
+            xcodebuild build \
+              -project Unity-iPhone.xcodeproj \
+              -scheme Unity-iPhone \
+              -configuration Release \
+              -sdk iphonesimulator \
+              -destination "$SIMULATOR_DESTINATION" \
+              -derivedDataPath ./DerivedData \
+              MARKETING_VERSION="$MARKETING_VERSION" \
+              CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION" \
+              INFOPLIST_KEY_CFBundleShortVersionString="$MARKETING_VERSION" \
+              INFOPLIST_KEY_CFBundleVersion="$CURRENT_PROJECT_VERSION" \
+              INFOPLIST_KEY_ITSAppUsesNonExemptEncryption="NO" \
+              CODE_SIGNING_ALLOWED="NO" \
+              CODE_SIGNING_REQUIRED="NO" \
+              ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=NO
+          else
+            # Fallback: build without destination (SDK specification should be enough for building)
+            echo "⚠️  No simulator destination available, building with SDK-only specification..."
+            xcodebuild build \
+              -project Unity-iPhone.xcodeproj \
+              -scheme Unity-iPhone \
+              -configuration Release \
+              -sdk iphonesimulator \
+              -derivedDataPath ./DerivedData \
+              MARKETING_VERSION="$MARKETING_VERSION" \
+              CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION" \
+              INFOPLIST_KEY_CFBundleShortVersionString="$MARKETING_VERSION" \
+              INFOPLIST_KEY_CFBundleVersion="$CURRENT_PROJECT_VERSION" \
+              INFOPLIST_KEY_ITSAppUsesNonExemptEncryption="NO" \
+              CODE_SIGNING_ALLOWED="NO" \
+              CODE_SIGNING_REQUIRED="NO" \
+              ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=NO
+          fi
           
           echo "✅ Simulator build completed"
           
