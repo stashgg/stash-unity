@@ -235,6 +235,25 @@ jobs:
             echo "---"
           done
       
+      # iOS-simulator: Configure Unity project for simulator build
+      - name: Configure Unity for simulator build
+        if: matrix.platform == 'iOS-simulator'
+        run: |
+          echo "Configuring Unity project to build for iOS simulator..."
+          # Modify ProjectSettings.asset to target simulator
+          # iOSSimulatorArchitecture: 0 = arm64 (device), 1 = x86_64 (simulator), 2 = arm64 (simulator for Apple Silicon)
+          # For GitHub Actions macOS runners (Apple Silicon), use 2 for arm64 simulator
+          # For Intel Macs, use 1 for x86_64 simulator
+          # We'll use 2 (arm64 simulator) since GitHub Actions uses Apple Silicon
+          if ! sed -i '' 's/iOSSimulatorArchitecture: [0-9]*/iOSSimulatorArchitecture: 2/' ProjectSettings/ProjectSettings.asset; then
+            echo "ERROR: Failed to modify ProjectSettings.asset"
+            exit 1
+          fi
+          echo "✅ Set iOSSimulatorArchitecture to 2 (arm64 simulator)"
+          # Verify the change
+          echo "Current iOSSimulatorArchitecture setting:"
+          grep "iOSSimulatorArchitecture" ProjectSettings/ProjectSettings.asset
+      
       # Build Unity project
       - name: Build Unity project
         uses: game-ci/unity-builder@v4
