@@ -253,6 +253,10 @@ jobs:
           # Verify the change
           echo "Current iOSSimulatorArchitecture setting:"
           grep "iOSSimulatorArchitecture" ProjectSettings/ProjectSettings.asset
+          
+          # Tell git to ignore this change so Unity builder doesn't complain about dirty state
+          git update-index --assume-unchanged ProjectSettings/ProjectSettings.asset
+          echo "✅ Told git to ignore changes to ProjectSettings.asset"
       
       # Build Unity project
       - name: Build Unity project
