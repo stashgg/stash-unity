@@ -895,19 +895,33 @@ jobs:
           
           # Boot a simulator if needed (GitHub Actions runners may not have simulators booted)
           echo "Checking for available simulators..."
-          BOOTED_SIMULATOR=$(xcrun simctl list devices | grep -i "Booted" | grep -i "iPhone" | head -1 | sed -n 's/.*(\([^)]*\)).*/\1/p' || echo "")
+          # Extract UUID (last set of parentheses, which is the device ID)
+          # Format: "iPhone 15 Pro (Shutdown) (A1B2C3D4-E5F6-7890-ABCD-EF1234567890)"
+          # Extract the last field that looks like a UUID (contains dashes and hex chars)
+          BOOTED_SIMULATOR=$(xcrun simctl list devices | grep -i "Booted" | grep -i "iPhone" | head -1 | grep -oE '\([A-F0-9-]{30,}\)' | tail -1 | tr -d '()' || echo "")
           
           if [ -z "$BOOTED_SIMULATOR" ]; then
             echo "No booted simulator found, attempting to boot one..."
-            # Find an available iPhone simulator
-            AVAILABLE_SIMULATOR=$(xcrun simctl list devices available | grep -i "iPhone" | grep -v "unavailable" | head -1 | sed -n 's/.*(\([^)]*\)).*/\1/p' || echo "")
+            # Find an available iPhone simulator (extract UUID from the line)
+            # Try "available" devices first
+            AVAILABLE_SIMULATOR=$(xcrun simctl list devices available | grep -i "iPhone" | grep -v "unavailable" | head -1 | grep -oE '\([A-F0-9-]{30,}\)' | tail -1 | tr -d '()' || echo "")
             
-            if [ -n "$AVAILABLE_SIMULATOR" ]; then
+            if [ -z "$AVAILABLE_SIMULATOR" ]; then
+              # Fallback: get any iPhone simulator (even if not explicitly "available")
+              # Look for lines with UUID pattern (has dashes and looks like a UUID)
+              AVAILABLE_SIMULATOR=$(xcrun simctl list devices | grep -i "iPhone" | grep -oE '\([A-F0-9-]{30,}\)' | tail -1 | tr -d '()' || echo "")
+            fi
+            
+            if [ -n "$AVAILABLE_SIMULATOR" ] && [ "$AVAILABLE_SIMULATOR" != "Shutdown" ] && [ "$AVAILABLE_SIMULATOR" != "Booted" ] && [ "$AVAILABLE_SIMULATOR" != "Shutting Down" ]; then
               echo "Booting simulator: $AVAILABLE_SIMULATOR"
               xcrun simctl boot "$AVAILABLE_SIMULATOR" 2>/dev/null || echo "Note: Simulator may already be booting or boot failed (continuing anyway)"
+              # Wait a moment for simulator to boot
+              sleep 2
               BOOTED_SIMULATOR="$AVAILABLE_SIMULATOR"
             else
-              echo "⚠️  No available iPhone simulator found"
+              echo "⚠️  No available iPhone simulator found or invalid ID extracted: '$AVAILABLE_SIMULATOR'"
+              echo "Debug: Listing all devices:"
+              xcrun simctl list devices | grep -i "iPhone" | head -5
             fi
           else
             echo "Found booted simulator: $BOOTED_SIMULATOR"
@@ -930,9 +944,15 @@ jobs:
           fi
           
           # If we have a booted simulator but xcodebuild didn't show it, use it directly
+          # But only if it looks like a valid UUID (not a status string)
           if [ -z "$SIMULATOR_DESTINATION" ] && [ -n "$BOOTED_SIMULATOR" ]; then
-            SIMULATOR_DESTINATION="platform=iOS Simulator,id=$BOOTED_SIMULATOR"
-            echo "Using booted simulator: $SIMULATOR_DESTINATION"
+            # Validate it's a UUID (contains dashes and is long enough)
+            if echo "$BOOTED_SIMULATOR" | grep -qE "^[A-F0-9-]{30,}$" && [ "$BOOTED_SIMULATOR" != "Shutdown" ] && [ "$BOOTED_SIMULATOR" != "Booted" ]; then
+              SIMULATOR_DESTINATION="platform=iOS Simulator,id=$BOOTED_SIMULATOR"
+              echo "Using booted simulator: $SIMULATOR_DESTINATION"
+            else
+              echo "⚠️  Booted simulator ID doesn't look valid: $BOOTED_SIMULATOR"
+            fi
           fi
           
           # Build for simulator
