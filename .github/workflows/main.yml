@@ -257,11 +257,35 @@ jobs:
         if: matrix.platform == 'iOS-simulator'
         run: |
           # Find the Xcode project (Unity may create different directory structures)
-          XCODE_PROJECT_DIR=$(find build/iOS-simulator -name "Unity-iPhone.xcodeproj" -type d | head -1 | xargs dirname)
+          # Unity builder might ignore buildName for iOS and always use build/iOS/
+          # Check multiple possible locations
+          echo "Searching for Unity-iPhone.xcodeproj..."
+          echo "Checking build/iOS-simulator/..."
+          XCODE_PROJECT_DIR=$(find build/iOS-simulator -name "Unity-iPhone.xcodeproj" -type d 2>/dev/null | head -1 | xargs dirname)
+          
           if [ -z "$XCODE_PROJECT_DIR" ]; then
-            echo "ERROR: Could not find Unity-iPhone.xcodeproj in build/iOS-simulator"
-            echo "Build directory contents:"
-            ls -la build/iOS-simulator/ || echo "build/iOS-simulator/ does not exist"
+            echo "Not found in build/iOS-simulator/, checking build/iOS/iOS-simulator/..."
+            XCODE_PROJECT_DIR=$(find build/iOS/iOS-simulator -name "Unity-iPhone.xcodeproj" -type d 2>/dev/null | head -1 | xargs dirname)
+          fi
+          
+          if [ -z "$XCODE_PROJECT_DIR" ]; then
+            echo "Not found in build/iOS/iOS-simulator/, checking build/iOS/iOS/..."
+            XCODE_PROJECT_DIR=$(find build/iOS/iOS -name "Unity-iPhone.xcodeproj" -type d 2>/dev/null | head -1 | xargs dirname)
+          fi
+          
+          if [ -z "$XCODE_PROJECT_DIR" ]; then
+            echo "Not found in build/iOS/iOS/, checking build/iOS/..."
+            XCODE_PROJECT_DIR=$(find build/iOS -name "Unity-iPhone.xcodeproj" -type d 2>/dev/null | head -1 | xargs dirname)
+          fi
+          
+          if [ -z "$XCODE_PROJECT_DIR" ]; then
+            echo "ERROR: Could not find Unity-iPhone.xcodeproj in any expected location"
+            echo "Build directory structure:"
+            ls -la build/ 2>/dev/null || echo "build/ does not exist"
+            if [ -d "build/iOS" ]; then
+              echo "build/iOS/ contents:"
+              ls -la build/iOS/ || true
+            fi
             exit 1
           fi
           
@@ -798,7 +822,21 @@ jobs:
         run: |
           # Use the XCODE_PROJECT_DIR from previous step, or find it
           if [ -z "$XCODE_PROJECT_DIR" ] || [ ! -d "$XCODE_PROJECT_DIR" ]; then
-            XCODE_PROJECT_DIR=$(find build/iOS-simulator -name "Unity-iPhone.xcodeproj" -type d | head -1 | xargs dirname)
+            # Check multiple possible locations (same as Prepare step)
+            XCODE_PROJECT_DIR=$(find build/iOS-simulator -name "Unity-iPhone.xcodeproj" -type d 2>/dev/null | head -1 | xargs dirname)
+            if [ -z "$XCODE_PROJECT_DIR" ]; then
+              XCODE_PROJECT_DIR=$(find build/iOS/iOS-simulator -name "Unity-iPhone.xcodeproj" -type d 2>/dev/null | head -1 | xargs dirname)
+            fi
+            if [ -z "$XCODE_PROJECT_DIR" ]; then
+              XCODE_PROJECT_DIR=$(find build/iOS/iOS -name "Unity-iPhone.xcodeproj" -type d 2>/dev/null | head -1 | xargs dirname)
+            fi
+            if [ -z "$XCODE_PROJECT_DIR" ]; then
+              XCODE_PROJECT_DIR=$(find build/iOS -name "Unity-iPhone.xcodeproj" -type d 2>/dev/null | head -1 | xargs dirname)
+            fi
+            if [ -z "$XCODE_PROJECT_DIR" ]; then
+              echo "ERROR: Could not find Unity-iPhone.xcodeproj"
+              exit 1
+            fi
           fi
           cd "$XCODE_PROJECT_DIR"
           
@@ -835,7 +873,21 @@ jobs:
         run: |
           # Use the XCODE_PROJECT_DIR from previous step, or find it
           if [ -z "$XCODE_PROJECT_DIR" ] || [ ! -d "$XCODE_PROJECT_DIR" ]; then
-            XCODE_PROJECT_DIR=$(find build/iOS-simulator -name "Unity-iPhone.xcodeproj" -type d | head -1 | xargs dirname)
+            # Check multiple possible locations (same as Prepare step)
+            XCODE_PROJECT_DIR=$(find build/iOS-simulator -name "Unity-iPhone.xcodeproj" -type d 2>/dev/null | head -1 | xargs dirname)
+            if [ -z "$XCODE_PROJECT_DIR" ]; then
+              XCODE_PROJECT_DIR=$(find build/iOS/iOS-simulator -name "Unity-iPhone.xcodeproj" -type d 2>/dev/null | head -1 | xargs dirname)
+            fi
+            if [ -z "$XCODE_PROJECT_DIR" ]; then
+              XCODE_PROJECT_DIR=$(find build/iOS/iOS -name "Unity-iPhone.xcodeproj" -type d 2>/dev/null | head -1 | xargs dirname)
+            fi
+            if [ -z "$XCODE_PROJECT_DIR" ]; then
+              XCODE_PROJECT_DIR=$(find build/iOS -name "Unity-iPhone.xcodeproj" -type d 2>/dev/null | head -1 | xargs dirname)
+            fi
+            if [ -z "$XCODE_PROJECT_DIR" ]; then
+              echo "ERROR: Could not find Unity-iPhone.xcodeproj"
+              exit 1
+            fi
           fi
           cd "$XCODE_PROJECT_DIR"
           
@@ -894,12 +946,27 @@ jobs:
             echo "APP_BUNDLE_PATH not set or invalid, searching..."
             # Use XCODE_PROJECT_DIR if available, otherwise find it
             if [ -z "$XCODE_PROJECT_DIR" ] || [ ! -d "$XCODE_PROJECT_DIR" ]; then
-              XCODE_PROJECT_DIR=$(find build/iOS-simulator -name "Unity-iPhone.xcodeproj" -type d | head -1 | xargs dirname)
+              # Check multiple possible locations (same as Prepare step)
+              XCODE_PROJECT_DIR=$(find build/iOS-simulator -name "Unity-iPhone.xcodeproj" -type d 2>/dev/null | head -1 | xargs dirname)
+              if [ -z "$XCODE_PROJECT_DIR" ]; then
+                XCODE_PROJECT_DIR=$(find build/iOS/iOS-simulator -name "Unity-iPhone.xcodeproj" -type d 2>/dev/null | head -1 | xargs dirname)
+              fi
+              if [ -z "$XCODE_PROJECT_DIR" ]; then
+                XCODE_PROJECT_DIR=$(find build/iOS/iOS -name "Unity-iPhone.xcodeproj" -type d 2>/dev/null | head -1 | xargs dirname)
+              fi
+              if [ -z "$XCODE_PROJECT_DIR" ]; then
+                XCODE_PROJECT_DIR=$(find build/iOS -name "Unity-iPhone.xcodeproj" -type d 2>/dev/null | head -1 | xargs dirname)
+              fi
             fi
-            cd "$XCODE_PROJECT_DIR"
-            APP_BUNDLE=$(find "$(pwd)/DerivedData" -name "*.app" -type d -path "*/Build/Products/Release-iphonesimulator/*" | head -1)
-            if [ -z "$APP_BUNDLE" ]; then
-              APP_BUNDLE=$(find "$(pwd)" -name "*.app" -type d | head -1)
+            if [ -n "$XCODE_PROJECT_DIR" ] && [ -d "$XCODE_PROJECT_DIR" ]; then
+              cd "$XCODE_PROJECT_DIR"
+              APP_BUNDLE=$(find "$(pwd)/DerivedData" -name "*.app" -type d -path "*/Build/Products/Release-iphonesimulator/*" | head -1)
+              if [ -z "$APP_BUNDLE" ]; then
+                APP_BUNDLE=$(find "$(pwd)" -name "*.app" -type d | head -1)
+              fi
+            else
+              # Last resort: search entire build directory
+              APP_BUNDLE=$(find build -name "*.app" -type d -path "*/Release-iphonesimulator/*" | head -1)
             fi
           else
             APP_BUNDLE="$APP_BUNDLE_PATH"
@@ -909,7 +976,10 @@ jobs:
             echo "ERROR: Could not find built .app bundle"
             echo "Searched in:"
             echo "  - $APP_BUNDLE_PATH (from previous step)"
-            echo "  - $XCODE_PROJECT_DIR/DerivedData/Build/Products/Release-iphonesimulator/"
+            if [ -n "$XCODE_PROJECT_DIR" ]; then
+              echo "  - $XCODE_PROJECT_DIR/DerivedData/Build/Products/Release-iphonesimulator/"
+            fi
+            echo "  - build/ (entire directory)"
             exit 1
           fi
           
