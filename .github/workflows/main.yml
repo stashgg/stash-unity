@@ -57,11 +57,15 @@ jobs:
         run: |
           PLATFORMS="${{ steps.set-platforms.outputs.platforms }}"
           # Parse platforms JSON and expand iOS into device and simulator
-          echo "$PLATFORMS" | python3 -c "
+          PLATFORMS="$PLATFORMS" python3 << 'PYTHON_SCRIPT' > matrix_output.json
           import json
           import sys
+          import os
+          
+          platforms_json = os.environ.get('PLATFORMS', '[]')
           try:
-              platforms = json.load(sys.stdin)
+              # Parse the JSON string
+              platforms = json.loads(platforms_json)
               items = []
               for platform in platforms:
                   if platform == 'iOS':
@@ -69,11 +73,14 @@ jobs:
                       items.append({'platform': 'iOS', 'ios_build_type': 'simulator'})
                   else:
                       items.append({'platform': platform, 'ios_build_type': ''})
-              print(json.dumps({'include': items}))
+              result = {'include': items}
+              print(json.dumps(result))
           except Exception as e:
-              print('{\"include\": []}', file=sys.stderr)
+              print(f'Error parsing platforms: {e}', file=sys.stderr)
+              print(f'Input was: {platforms_json}', file=sys.stderr)
+              print('{"include": []}', file=sys.stderr)
               sys.exit(1)
-          " > matrix_output.json
+          PYTHON_SCRIPT
           cat matrix_output.json
           MATRIX_JSON=$(cat matrix_output.json)
           echo "matrix=$MATRIX_JSON" >> $GITHUB_OUTPUT
