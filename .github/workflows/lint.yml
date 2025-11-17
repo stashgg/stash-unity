@@ -1,0 +1,72 @@
+name: Lint
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  lint:
+    name: Lint C# Code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Super-Linter
+        uses: super-linter/super-linter@v8.2.1
+        env:
+          DEFAULT_BRANCH: main
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VALIDATE_ALL_CODEBASE: false
+          # Only validate C# code
+          VALIDATE_CSHARP: true
+          VALIDATE_DOTNET_FORMAT: true
+          # Disable all other language validations for faster runs
+          VALIDATE_ANSIBLE: false
+          VALIDATE_BASH: false
+          VALIDATE_CLOJURE: false
+          VALIDATE_COFFEE: false
+          VALIDATE_CSS: false
+          VALIDATE_DOCKERFILE: false
+          VALIDATE_ENV: false
+          VALIDATE_GO: false
+          VALIDATE_GROOVY: false
+          VALIDATE_HTML: false
+          VALIDATE_JAVA: false
+          VALIDATE_JAVASCRIPT: false
+          VALIDATE_JSON: false
+          VALIDATE_JSX: false
+          VALIDATE_KOTLIN: false
+          VALIDATE_MARKDOWN: false
+          VALIDATE_OPENAPI: false
+          VALIDATE_PERL: false
+          VALIDATE_PHP: false
+          VALIDATE_POWERSHELL: false
+          VALIDATE_PYTHON: false
+          VALIDATE_R: false
+          VALIDATE_RAKU: false
+          VALIDATE_RUBY: false
+          VALIDATE_RUST: false
+          VALIDATE_SCSS: false
+          VALIDATE_SHELL_SHFMT: false
+          VALIDATE_SQL: false
+          VALIDATE_TERRAFORM: false
+          VALIDATE_TSX: false
+          VALIDATE_TYPESCRIPT: false
+          VALIDATE_XML: false
+          VALIDATE_YAML: false
+          # Focus on Assets directory where Unity C# code lives
+          FILTER_REGEX_INCLUDE: ^Assets/.*\.cs$
+          # Exclude generated files
+          FILTER_REGEX_EXCLUDE: (^Assets/Scripts/UnityPurchasing/generated/|^Assets/.*\.meta$)
+          # Ignore gitignored files
+          IGNORE_GITIGNORED_FILES: true
+          # Log level
+          LOG_LEVEL: INFO
+
