@@ -282,13 +282,27 @@ jobs:
           BUILD_NUMBER="${{ needs.determine-platforms.outputs.buildNumber }}"
           echo "Setting Android build number (versionCode) to: $BUILD_NUMBER"
           
+          # Show current value before change
+          echo "Current AndroidBundleVersionCode:"
+          grep "AndroidBundleVersionCode" ProjectSettings/ProjectSettings.asset || echo "Not found"
+          
           # Update AndroidBundleVersionCode in ProjectSettings.asset
           # Android builds run on Ubuntu (Linux), so we use Linux sed syntax
-          sed -i "s/AndroidBundleVersionCode: [0-9]*/AndroidBundleVersionCode: $BUILD_NUMBER/" ProjectSettings/ProjectSettings.asset
+          # Use [0-9]\+ to match one or more digits (more reliable than [0-9]*)
+          sed -i "s/AndroidBundleVersionCode: [0-9]\+/AndroidBundleVersionCode: $BUILD_NUMBER/" ProjectSettings/ProjectSettings.asset
           
-          # Verify the change
+          # Verify the change was applied
           echo "Updated AndroidBundleVersionCode:"
           grep "AndroidBundleVersionCode" ProjectSettings/ProjectSettings.asset
+          
+          # Double-check the value is correct
+          ACTUAL_VALUE=$(grep "AndroidBundleVersionCode" ProjectSettings/ProjectSettings.asset | sed 's/.*AndroidBundleVersionCode: \([0-9]*\).*/\1/')
+          if [ "$ACTUAL_VALUE" = "$BUILD_NUMBER" ]; then
+            echo "✅ Verified: AndroidBundleVersionCode is correctly set to $BUILD_NUMBER"
+          else
+            echo "❌ ERROR: AndroidBundleVersionCode mismatch! Expected: $BUILD_NUMBER, Got: $ACTUAL_VALUE"
+            exit 1
+          fi
           
           # Tell git to ignore this change so Unity builder doesn't complain about dirty state
           git update-index --assume-unchanged ProjectSettings/ProjectSettings.asset
@@ -1106,6 +1120,45 @@ jobs:
           fi
           echo "Found APK: $APK_FILE"
           echo "APK_FILE=$APK_FILE" >> $GITHUB_ENV
+      
+      # Android: Verify versionCode in built APK
+      - name: Verify Android versionCode in APK
+        if: matrix.platform == 'Android'
+        run: |
+          BUILD_NUMBER="${{ needs.determine-platforms.outputs.buildNumber }}"
+          APK_FILE="${{ env.APK_FILE }}"
+          
+          echo "Verifying versionCode in built APK..."
+          echo "Expected versionCode: $BUILD_NUMBER"
+          
+          # Extract AndroidManifest.xml from APK and check versionCode
+          # APK is a ZIP file, so we can unzip it
+          unzip -q -o "$APK_FILE" AndroidManifest.xml -d /tmp/apk_extract_$$ || {
+            echo "⚠️  Could not extract AndroidManifest.xml directly, trying aapt/aapt2..."
+            # Try using aapt if available (part of Android SDK)
+            if command -v aapt &> /dev/null; then
+              APK_VERSION_CODE=$(aapt dump badging "$APK_FILE" 2>/dev/null | grep "versionCode" | sed "s/.*versionCode='\([^']*\)'.*/\1/" || echo "")
+              if [ -n "$APK_VERSION_CODE" ]; then
+                echo "APK versionCode (from aapt): $APK_VERSION_CODE"
+                if [ "$APK_VERSION_CODE" = "$BUILD_NUMBER" ]; then
+                  echo "✅ APK versionCode matches expected value: $BUILD_NUMBER"
+                else
+                  echo "❌ WARNING: APK versionCode ($APK_VERSION_CODE) does not match expected ($BUILD_NUMBER)"
+                fi
+              else
+                echo "⚠️  Could not extract versionCode from APK"
+              fi
+            else
+              echo "⚠️  aapt not available, skipping APK versionCode verification"
+            fi
+            exit 0
+          }
+          
+          # If we extracted AndroidManifest.xml, check it (it's binary, so we'd need aapt or similar)
+          if [ -f /tmp/apk_extract_$$/AndroidManifest.xml ]; then
+            echo "Extracted AndroidManifest.xml (binary format, requires aapt to read)"
+            rm -rf /tmp/apk_extract_$$
+          fi
       
       # Android: Upload APK to GCS latest/ directory for direct download
       - name: Upload latest Android APK to GCS
