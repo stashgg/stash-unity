@@ -274,40 +274,6 @@ jobs:
           git update-index --assume-unchanged ProjectSettings/ProjectSettings.asset
           echo "✅ Told git to ignore changes to ProjectSettings.asset"
       
-      # Android: Set build number in ProjectSettings
-      - name: Set Android build number
-        if: matrix.platform == 'Android'
-        run: |
-          # Use the shared build number generated in determine-platforms job
-          BUILD_NUMBER="${{ needs.determine-platforms.outputs.buildNumber }}"
-          echo "Setting Android build number (versionCode) to: $BUILD_NUMBER"
-          
-          # Show current value before change
-          echo "Current AndroidBundleVersionCode:"
-          grep "AndroidBundleVersionCode" ProjectSettings/ProjectSettings.asset || echo "Not found"
-          
-          # Update AndroidBundleVersionCode in ProjectSettings.asset
-          # Android builds run on Ubuntu (Linux), so we use Linux sed syntax
-          # Use [0-9]\+ to match one or more digits (more reliable than [0-9]*)
-          sed -i "s/AndroidBundleVersionCode: [0-9]\+/AndroidBundleVersionCode: $BUILD_NUMBER/" ProjectSettings/ProjectSettings.asset
-          
-          # Verify the change was applied
-          echo "Updated AndroidBundleVersionCode:"
-          grep "AndroidBundleVersionCode" ProjectSettings/ProjectSettings.asset
-          
-          # Double-check the value is correct
-          ACTUAL_VALUE=$(grep "AndroidBundleVersionCode" ProjectSettings/ProjectSettings.asset | sed 's/.*AndroidBundleVersionCode: \([0-9]*\).*/\1/')
-          if [ "$ACTUAL_VALUE" = "$BUILD_NUMBER" ]; then
-            echo "✅ Verified: AndroidBundleVersionCode is correctly set to $BUILD_NUMBER"
-          else
-            echo "❌ ERROR: AndroidBundleVersionCode mismatch! Expected: $BUILD_NUMBER, Got: $ACTUAL_VALUE"
-            exit 1
-          fi
-          
-          # Tell git to ignore this change so Unity builder doesn't complain about dirty state
-          git update-index --assume-unchanged ProjectSettings/ProjectSettings.asset
-          echo "✅ Android build number set and git told to ignore changes"
-      
       # Build Unity project
       - name: Build Unity project
         uses: game-ci/unity-builder@v4
@@ -315,6 +281,7 @@ jobs:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_ANDROID_BUILD_NUMBER: ${{ matrix.platform == 'Android' && needs.determine-platforms.outputs.buildNumber || '' }}
         with:
           targetPlatform: ${{ (matrix.platform == 'iOS' || matrix.platform == 'iOS-simulator') && 'iOS' || matrix.platform }}
           buildName: ${{ matrix.platform == 'iOS' && 'iOS' || (matrix.platform == 'iOS-simulator' && 'iOS-simulator' || (matrix.platform == 'StandaloneOSX' && 'macOS' || matrix.platform)) }}
@@ -1120,78 +1087,6 @@ jobs:
           fi
           echo "Found APK: $APK_FILE"
           echo "APK_FILE=$APK_FILE" >> $GITHUB_ENV
-      
-      # Android: Setup aapt for APK verification
-      - name: Setup aapt for APK verification
-        if: matrix.platform == 'Android'
-        run: |
-          # Check if Unity's Android SDK has aapt available
-          UNITY_ANDROID_SDK_PATHS=(
-            "/opt/unity/Editor/Data/PlaybackEngines/AndroidPlayer/SDK"
-            "$UNITY_ANDROID_SDK_HOME"
-            "$HOME/.local/share/unity3d/PlaybackEngines/AndroidPlayer/SDK"
-          )
-          
-          AAPT_FOUND=false
-          for SDK_PATH in "${UNITY_ANDROID_SDK_PATHS[@]}"; do
-            if [ -d "$SDK_PATH/build-tools" ]; then
-              # Find aapt in any build-tools version
-              AAPT_PATH=$(find "$SDK_PATH/build-tools" -name "aapt" -type f 2>/dev/null | head -1)
-              if [ -n "$AAPT_PATH" ]; then
-                echo "Found aapt at: $AAPT_PATH"
-                echo "AAPT_PATH=$AAPT_PATH" >> $GITHUB_ENV
-                export PATH="$(dirname "$AAPT_PATH"):$PATH"
-                echo "$(dirname "$AAPT_PATH")" >> $GITHUB_PATH
-                AAPT_FOUND=true
-                break
-              fi
-            fi
-          done
-          
-          if [ "$AAPT_FOUND" = false ]; then
-            echo "⚠️  aapt not found in Unity Android SDK, will skip APK verification"
-            echo "AAPT_PATH=" >> $GITHUB_ENV
-          fi
-      
-      # Android: Verify versionCode in built APK
-      - name: Verify Android versionCode in APK
-        if: matrix.platform == 'Android'
-        run: |
-          BUILD_NUMBER="${{ needs.determine-platforms.outputs.buildNumber }}"
-          APK_FILE="${{ env.APK_FILE }}"
-          
-          echo "Verifying versionCode in built APK..."
-          echo "Expected versionCode: $BUILD_NUMBER"
-          
-          # Try to use aapt/aapt2 to read versionCode from APK
-          AAPT_CMD=""
-          if [ -n "$AAPT_PATH" ] && [ -f "$AAPT_PATH" ]; then
-            AAPT_CMD="$AAPT_PATH"
-          elif command -v aapt &> /dev/null; then
-            AAPT_CMD="aapt"
-          elif command -v aapt2 &> /dev/null; then
-            AAPT_CMD="aapt2"
-          fi
-          
-          if [ -n "$AAPT_CMD" ]; then
-            echo "Using $AAPT_CMD to read APK versionCode..."
-            APK_VERSION_CODE=$("$AAPT_CMD" dump badging "$APK_FILE" 2>/dev/null | grep "versionCode" | sed "s/.*versionCode='\([^']*\)'.*/\1/" || echo "")
-            
-            if [ -n "$APK_VERSION_CODE" ]; then
-              echo "APK versionCode (from APK): $APK_VERSION_CODE"
-              if [ "$APK_VERSION_CODE" = "$BUILD_NUMBER" ]; then
-                echo "✅ APK versionCode matches expected value: $BUILD_NUMBER"
-              else
-                echo "❌ ERROR: APK versionCode ($APK_VERSION_CODE) does not match expected ($BUILD_NUMBER)"
-                echo "This indicates Unity may have overridden the versionCode during build"
-                exit 1
-              fi
-            else
-              echo "⚠️  Could not extract versionCode from APK using $AAPT_CMD"
-            fi
-          else
-            echo "⚠️  aapt/aapt2 not available, skipping APK versionCode verification"
-          fi
       
       # Android: Upload APK to GCS latest/ directory for direct download
       - name: Upload latest Android APK to GCS
