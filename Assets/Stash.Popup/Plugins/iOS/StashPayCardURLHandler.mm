@@ -30,11 +30,12 @@ static CGFloat _originalCardVerticalPosition = 1.0;
 static CGFloat _originalCardWidthRatio = 1.0;
 
 // Custom popup size multipliers
+// iOS defaults: portrait +10% width/+10% height, landscape +15% width/+15% height
 static BOOL _useCustomPopupSize = NO;
-static CGFloat _customPortraitWidthMultiplier = 0.85;
-static CGFloat _customPortraitHeightMultiplier = 1.125;
-static CGFloat _customLandscapeWidthMultiplier = 1.27075;
-static CGFloat _customLandscapeHeightMultiplier = 0.9;
+static CGFloat _customPortraitWidthMultiplier = 1.0285;
+static CGFloat _customPortraitHeightMultiplier = 1.485;
+static CGFloat _customLandscapeWidthMultiplier = 1.753635;
+static CGFloat _customLandscapeHeightMultiplier = 1.1385;
 
 // Presentation modes
 static BOOL _forceSafariViewController = NO;
@@ -98,6 +99,7 @@ BOOL isRunningOniPad();
 @interface OrientationLockedViewController : UIViewController
 @property (nonatomic, assign) CGRect customFrame; // Custom frame to maintain
 @property (nonatomic, assign) BOOL enforcePortrait; // YES to enforce portrait on iPhone
+- (void)updateCornerRadiusMask; // Update corner radius mask layer
 @end
 
 @implementation OrientationLockedViewController
@@ -110,6 +112,18 @@ BOOL isRunningOniPad();
         CGRect screenBounds = [UIScreen mainScreen].bounds;
         BOOL isLandscape = UIInterfaceOrientationIsLandscape([[UIApplication sharedApplication] statusBarOrientation]);
         
+        // Update window frame to match new screen bounds
+        UIWindow *cardWindow = self.view.window;
+        if (cardWindow && !CGRectEqualToRect(cardWindow.frame, screenBounds)) {
+            cardWindow.frame = screenBounds;
+        }
+        
+        // Update overlay/backdrop frame to match new screen bounds
+        UIView *overlayView = objc_getAssociatedObject(self, "overlayView");
+        if (overlayView && !CGRectEqualToRect(overlayView.frame, screenBounds)) {
+            overlayView.frame = screenBounds;
+        }
+        
         // Calculate base size
         CGFloat smallerDimension = fmin(screenBounds.size.width, screenBounds.size.height);
         CGFloat percentage = isRunningOniPad() ? 0.5 : 0.75;
@@ -118,11 +132,11 @@ BOOL isRunningOniPad();
             fmin(isRunningOniPad() ? 500.0 : 500.0, smallerDimension * percentage)
         );
         
-        // Use custom multipliers if provided, otherwise use defaults
-        CGFloat portraitWidthMultiplier = _useCustomPopupSize ? _customPortraitWidthMultiplier : 0.85;
-        CGFloat portraitHeightMultiplier = _useCustomPopupSize ? _customPortraitHeightMultiplier : 1.125;
-        CGFloat landscapeWidthMultiplier = _useCustomPopupSize ? _customLandscapeWidthMultiplier : 1.27075;
-        CGFloat landscapeHeightMultiplier = _useCustomPopupSize ? _customLandscapeHeightMultiplier : 0.9;
+        // Use custom multipliers if provided, otherwise use iOS defaults
+        CGFloat portraitWidthMultiplier = _useCustomPopupSize ? _customPortraitWidthMultiplier : 1.0285;
+        CGFloat portraitHeightMultiplier = _useCustomPopupSize ? _customPortraitHeightMultiplier : 1.485;
+        CGFloat landscapeWidthMultiplier = _useCustomPopupSize ? _customLandscapeWidthMultiplier : 1.753635;
+        CGFloat landscapeHeightMultiplier = _useCustomPopupSize ? _customLandscapeHeightMultiplier : 1.1385;
         
         CGFloat popupWidth = baseSize * (isLandscape ? landscapeWidthMultiplier : portraitWidthMultiplier);
         CGFloat popupHeight = baseSize * (isLandscape ? landscapeHeightMultiplier : portraitHeightMultiplier);
@@ -139,10 +153,15 @@ BOOL isRunningOniPad();
             [UIView animateWithDuration:0.3 animations:^{
                 self.view.frame = newFrame;
                 self.customFrame = newFrame;
+            } completion:^(BOOL finished) {
+                // Update mask layer after frame change to ensure correct bounds
+                [self updateCornerRadiusMask];
             }];
         } else {
             self.customFrame = newFrame;
             self.view.frame = newFrame;
+            // Update mask layer immediately if frame didn't change
+            [self updateCornerRadiusMask];
         }
     } else {
         // Maintain custom frame instead of filling window
@@ -150,6 +169,24 @@ BOOL isRunningOniPad();
             self.view.frame = self.customFrame;
         }
     }
+}
+
+- (void)updateCornerRadiusMask {
+    // Always update mask layer for corner radius (needed for orientation changes)
+    CAShapeLayer *maskLayer = (CAShapeLayer *)self.view.layer.mask;
+    if (!maskLayer) {
+        // Create mask layer if it doesn't exist
+        maskLayer = [[CAShapeLayer alloc] init];
+        self.view.layer.mask = maskLayer;
+    }
+    
+    // Use view's actual bounds for mask layer
+    CGRect viewBounds = self.view.bounds;
+    UIBezierPath *maskPath = [UIBezierPath bezierPathWithRoundedRect:viewBounds
+                                                  byRoundingCorners:UIRectCornerAllCorners
+                                                        cornerRadii:CGSizeMake(12.0, 12.0)];
+    maskLayer.frame = viewBounds;
+    maskLayer.path = maskPath.CGPath;
 }
 
 - (UIInterfaceOrientationMask)supportedInterfaceOrientations {
@@ -2072,6 +2109,26 @@ extern "C" {
                                                                     forMainFrameOnly:YES];
                 [userContentController addUserScript:viewportInjection];
                 
+                // For popup mode, disable scrolling
+                if (_usePopupPresentation) {
+                    NSString *disableScrollScript = @"(function() { \
+                        document.body.style.overflow = 'hidden'; \
+                        document.documentElement.style.overflow = 'hidden'; \
+                        document.body.style.position = 'fixed'; \
+                        document.body.style.width = '100%'; \
+                        document.body.style.height = '100%'; \
+                        if (document.body) { \
+                            document.body.addEventListener('touchmove', function(e) { e.preventDefault(); }, { passive: false }); \
+                            document.body.addEventListener('wheel', function(e) { e.preventDefault(); }, { passive: false }); \
+                        } \
+                    })();";
+                    
+                    WKUserScript *disableScrollInjection = [[WKUserScript alloc] initWithSource:disableScrollScript
+                                                                               injectionTime:WKUserScriptInjectionTimeAtDocumentEnd
+                                                                            forMainFrameOnly:YES];
+                    [userContentController addUserScript:disableScrollInjection];
+                }
+                
                 // Add transparent background styles
                 NSString *transparencyStyles = @"body, html { background-color: transparent !important; } \
                     :root { background-color: transparent !important; }";
@@ -2219,6 +2276,13 @@ extern "C" {
                     webView.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
                     webView.scrollView.contentInset = UIEdgeInsetsZero;
                     webView.scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
+                }
+                
+                // For popup mode, disable scrolling and hide scrollbars
+                if (_usePopupPresentation) {
+                    webView.scrollView.scrollEnabled = NO;
+                    webView.scrollView.showsVerticalScrollIndicator = NO;
+                    webView.scrollView.showsHorizontalScrollIndicator = NO;
                 }
                 
                 // Use the proper public API for iOS 9.0+
@@ -2464,19 +2528,20 @@ extern "C" {
         return _forceSafariViewController;
     }
 
-    void _StashPayCardOpenPopup(const char* urlString) {
-        // Use default multipliers
-        _useCustomPopupSize = NO;
-        _StashPayCardOpenPopupWithSize(urlString, 0.85, 1.125, 1.27075, 0.9);
-    }
+    // Forward declaration
+    void _StashPayCardOpenPopupWithSize(const char* urlString, float portraitWidth, float portraitHeight, float landscapeWidth, float landscapeHeight);
     
-    void _StashPayCardOpenPopupWithSize(const char* urlString, float portraitWidth, float portraitHeight, float landscapeWidth, float landscapeHeight) {
-        // Store custom multipliers
-        _useCustomPopupSize = YES;
-        _customPortraitWidthMultiplier = portraitWidth;
-        _customPortraitHeightMultiplier = portraitHeight;
-        _customLandscapeWidthMultiplier = landscapeWidth;
-        _customLandscapeHeightMultiplier = landscapeHeight;
+    // Helper function to open popup with given multipliers
+    static void OpenPopupWithMultipliers(const char* urlString, BOOL useCustomSize, float portraitWidth, float portraitHeight, float landscapeWidth, float landscapeHeight) {
+        if (useCustomSize) {
+            _useCustomPopupSize = YES;
+            _customPortraitWidthMultiplier = portraitWidth;
+            _customPortraitHeightMultiplier = portraitHeight;
+            _customLandscapeWidthMultiplier = landscapeWidth;
+            _customLandscapeHeightMultiplier = landscapeHeight;
+        } else {
+            _useCustomPopupSize = NO;
+        }
         
         CGRect screenBounds = [UIScreen mainScreen].bounds;
         BOOL isLandscape = UIInterfaceOrientationIsLandscape([[UIApplication sharedApplication] statusBarOrientation]);
@@ -2489,11 +2554,20 @@ extern "C" {
             fmin(isRunningOniPad() ? 500.0 : 500.0, smallerDimension * percentage)
         );
         
-        // Use custom multipliers
-        CGFloat portraitWidthMultiplier = _customPortraitWidthMultiplier;
-        CGFloat portraitHeightMultiplier = _customPortraitHeightMultiplier;
-        CGFloat landscapeWidthMultiplier = _customLandscapeWidthMultiplier;
-        CGFloat landscapeHeightMultiplier = _customLandscapeHeightMultiplier;
+        // Use multipliers based on whether custom size is set
+        CGFloat portraitWidthMultiplier, portraitHeightMultiplier, landscapeWidthMultiplier, landscapeHeightMultiplier;
+        if (_useCustomPopupSize) {
+            portraitWidthMultiplier = _customPortraitWidthMultiplier;
+            portraitHeightMultiplier = _customPortraitHeightMultiplier;
+            landscapeWidthMultiplier = _customLandscapeWidthMultiplier;
+            landscapeHeightMultiplier = _customLandscapeHeightMultiplier;
+        } else {
+            // iOS defaults
+            portraitWidthMultiplier = 1.0285;  // 10% wider than previous default
+            portraitHeightMultiplier = 1.485;  // 10% taller than previous default
+            landscapeWidthMultiplier = 1.753635; // 15% wider than previous default
+            landscapeHeightMultiplier = 1.1385;  // 15% taller than previous default
+        }
         
         CGFloat popupWidth = baseSize * (isLandscape ? landscapeWidthMultiplier : portraitWidthMultiplier);
         CGFloat popupHeight = baseSize * (isLandscape ? landscapeHeightMultiplier : portraitHeightMultiplier);
@@ -2509,6 +2583,17 @@ extern "C" {
         _usePopupPresentation = YES;
         
         _StashPayCardOpenCheckoutInSafariVC(urlString);
+    }
+    
+    void _StashPayCardOpenPopup(const char* urlString) {
+        // Use iOS default multipliers (no custom size - use platform defaults)
+        // iOS defaults: portrait +10% width/+10% height, landscape +15% width/+15% height
+        OpenPopupWithMultipliers(urlString, NO, 0, 0, 0, 0);
+    }
+    
+    void _StashPayCardOpenPopupWithSize(const char* urlString, float portraitWidth, float portraitHeight, float landscapeWidth, float landscapeHeight) {
+        // Store custom multipliers (passed from C# when preset or custom size is specified)
+        OpenPopupWithMultipliers(urlString, YES, portraitWidth, portraitHeight, landscapeWidth, landscapeHeight);
     }
 }
 

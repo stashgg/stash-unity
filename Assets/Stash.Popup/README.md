@@ -110,33 +110,7 @@ void OnChannelSelected(string channel)
 
 ### Configuring Popup Size
 
-`OpenPopup()` supports optional size configuration. By default, it uses the Medium preset. You can customize the size using presets or custom multipliers:
-
-#### Using Size Presets
-
-```csharp
-// Small popup (70% width, 100% height in portrait)
-StashPayCard.Instance.OpenPopup(
-    url,
-    size: PopupSize.Small
-);
-
-// Medium popup - default (85% width, 112.5% height in portrait)
-StashPayCard.Instance.OpenPopup(
-    url,
-    size: PopupSize.Medium  // or omit for default
-);
-
-// Large popup (100% width, 125% height in portrait)
-StashPayCard.Instance.OpenPopup(
-    url,
-    size: PopupSize.Large
-);
-```
-
-#### Using Custom Size Configuration
-
-For fine-grained control, use `PopupSizeConfig` to specify exact multipliers:
+`OpenPopup()` supports optional custom size configuration. By default, it uses platform-specific default sizing. You can customize the size using `PopupSizeConfig`:
 
 ```csharp
 var customSize = new PopupSizeConfig
@@ -205,8 +179,8 @@ Clean and rebuild Xcode project.
 **`OpenCheckout(string url, Action onDismiss, Action onSuccess, Action onFailure)`**
 Opens Stash Pay checkout in a sliding card from the bottom of the screen.
 
-**`OpenPopup(string url, Action onDismiss = null, Action onSuccess = null, Action onFailure = null, PopupSize? size = null, PopupSizeConfig? customSize = null)`**
-Opens Stash opt-in and other remote Stash dialogs in a centered modal popup. Size can be customized using presets (`PopupSize.Small`, `Medium`, `Large`) or custom multipliers (`PopupSizeConfig`). Defaults to `Medium` size if not specified.
+**`OpenPopup(string url, Action onDismiss = null, Action onSuccess = null, Action onFailure = null, PopupSizeConfig? customSize = null)`**
+Opens Stash opt-in and other remote Stash dialogs in a centered modal popup. Size can be customized using `PopupSizeConfig`. If not provided, uses platform-specific default sizing.
 
 **`ResetPresentationState()`**
 Dismisses current dialog and resets state.
@@ -222,17 +196,13 @@ Dismisses current dialog and resets state.
 
 ### Types
 
-**`PopupSize`** (enum)
-- `Small` - 70% width, 100% height (portrait)
-- `Medium` - 85% width, 112.5% height (portrait) - default
-- `Large` - 100% width, 125% height (portrait)
-
 **`PopupSizeConfig`** (struct)
-- `portraitWidthMultiplier` (float) - Width multiplier for portrait orientation (default: 0.85)
-- `portraitHeightMultiplier` (float) - Height multiplier for portrait orientation (default: 1.125)
-- `landscapeWidthMultiplier` (float) - Width multiplier for landscape orientation (default: 1.27075)
-- `landscapeHeightMultiplier` (float) - Height multiplier for landscape orientation (default: 0.9)
-- `Default` (static property) - Returns the default Medium size configuration
+- `portraitWidthMultiplier` (float) - Width multiplier for portrait orientation
+- `portraitHeightMultiplier` (float) - Height multiplier for portrait orientation
+- `landscapeWidthMultiplier` (float) - Width multiplier for landscape orientation
+- `landscapeHeightMultiplier` (float) - Height multiplier for landscape orientation
+
+**Note:** Each platform (iOS and Android) has its own default sizing. When `customSize` is not provided, the platform-specific defaults are used.
 
 ## Support
 

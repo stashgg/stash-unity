@@ -834,6 +834,10 @@ public class StashPayCardPlugin {
         webView.setWebChromeClient(new WebChromeClient());
         webView.addJavascriptInterface(new StashJavaScriptInterface(), "StashAndroid");
         
+        // Disable scrolling and scrollbars for popup mode
+        webView.setVerticalScrollBarEnabled(false);
+        webView.setHorizontalScrollBarEnabled(false);
+        
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT);
         webView.setLayoutParams(params);
@@ -941,6 +945,22 @@ public class StashPayCardPlugin {
     
     private void injectStashSDKFunctions() {
         if (webView == null) return;
+        
+        // For popup mode, inject script to disable scrolling
+        if (usePopupPresentation) {
+            String disableScrollScript = "(function() {" +
+                "  document.body.style.overflow = 'hidden';" +
+                "  document.documentElement.style.overflow = 'hidden';" +
+                "  document.body.style.position = 'fixed';" +
+                "  document.body.style.width = '100%';" +
+                "  document.body.style.height = '100%';" +
+                "  if (document.body) {" +
+                "    document.body.addEventListener('touchmove', function(e) { e.preventDefault(); }, { passive: false });" +
+                "    document.body.addEventListener('wheel', function(e) { e.preventDefault(); }, { passive: false });" +
+                "  }" +
+                "})();";
+            webView.evaluateJavascript(disableScrollScript, null);
+        }
         
         String script = "(function() {" +
             "  window.stash_sdk = window.stash_sdk || {};" +
