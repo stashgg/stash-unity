@@ -274,6 +274,15 @@ jobs:
           git update-index --assume-unchanged ProjectSettings/ProjectSettings.asset
           echo "✅ Told git to ignore changes to ProjectSettings.asset"
       
+      # Android: Verify build number before Unity build
+      - name: Verify Android build number environment variable
+        if: matrix.platform == 'Android'
+        run: |
+          BUILD_NUMBER="${{ needs.determine-platforms.outputs.buildNumber }}"
+          echo "Setting UNITY_ANDROID_BUILD_NUMBER=$BUILD_NUMBER"
+          echo "UNITY_ANDROID_BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_ENV
+          echo "✅ Environment variable set for Unity builder"
+      
       # Build Unity project
       - name: Build Unity project
         uses: game-ci/unity-builder@v4
