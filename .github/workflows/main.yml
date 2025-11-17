@@ -1389,3 +1389,60 @@ jobs:
             --platform=windows `
             --channel=2b9989ec-c4dd-43cd-833d-ad0478148e5e
           echo "✅ Build uploaded to Stash Studio"
+  
+  # Upload builds to Appetize after Android and/or iOS-simulator builds complete
+  upload-to-appetize:
+    name: Upload builds to Appetize
+    needs: [determine-platforms, build]
+    if: always() && (contains(needs.determine-platforms.outputs.platforms, 'Android') || contains(needs.determine-platforms.outputs.platforms, 'iOS-simulator'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Upload Android build to Appetize
+        if: contains(needs.determine-platforms.outputs.platforms, 'Android')
+        run: |
+          echo "Uploading Android build to Appetize..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST https://api.appetize.io/v1/apps/b_e7zfxgltohxm2rd5aw4zplzmwq \
+            -H "X-API-KEY: ${{ secrets.APPETIZE_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "url": "https://storage.googleapis.com/stash_sdk_demo/Android/latest/StashDemo.apk/Android.apk",
+              "platform": "android"
+            }')
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          
+          echo "Response status: $HTTP_CODE"
+          echo "Response body: $BODY"
+          
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            echo "✅ Android build uploaded successfully to Appetize"
+          else
+            echo "❌ Failed to upload Android build to Appetize (HTTP $HTTP_CODE)"
+            exit 1
+          fi
+      
+      - name: Upload iOS Simulator build to Appetize
+        if: contains(needs.determine-platforms.outputs.platforms, 'iOS-simulator')
+        run: |
+          echo "Uploading iOS Simulator build to Appetize..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST https://api.appetize.io/v1/apps/b_eyszozcrmyt2zifoh5bjyiifha \
+            -H "X-API-KEY: ${{ secrets.APPETIZE_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "url": "https://storage.googleapis.com/stash_sdk_demo/iOS-simulator/latest/iOS-simulator-latest.zip/iOS-simulator-latest.zip",
+              "platform": "ios"
+            }')
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          
+          echo "Response status: $HTTP_CODE"
+          echo "Response body: $BODY"
+          
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            echo "✅ iOS Simulator build uploaded successfully to Appetize"
+          else
+            echo "❌ Failed to upload iOS Simulator build to Appetize (HTTP $HTTP_CODE)"
+            exit 1
+          fi
