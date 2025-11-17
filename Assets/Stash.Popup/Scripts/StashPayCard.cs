@@ -8,6 +8,35 @@ using AOT;
 namespace StashPopup
 {
     /// <summary>
+    /// Popup size presets for OpenPopup
+    /// </summary>
+    public enum PopupSize
+    {
+        Small,      // 70% width, 100% height (portrait)
+        Medium,     // 85% width, 112.5% height (portrait) - default
+        Large       // 100% width, 125% height (portrait)
+    }
+
+    /// <summary>
+    /// Custom popup size configuration for fine-grained control
+    /// </summary>
+    public struct PopupSizeConfig
+    {
+        public float portraitWidthMultiplier;   // Default: 0.85f
+        public float portraitHeightMultiplier;  // Default: 1.125f
+        public float landscapeWidthMultiplier;  // Default: 1.27075f
+        public float landscapeHeightMultiplier; // Default: 0.9f
+
+        public static PopupSizeConfig Default => new PopupSizeConfig
+        {
+            portraitWidthMultiplier = 0.85f,
+            portraitHeightMultiplier = 1.125f,
+            landscapeWidthMultiplier = 1.27075f,
+            landscapeHeightMultiplier = 0.9f
+        };
+    }
+
+    /// <summary>
     /// Cross-platform wrapper for Stash Pay checkout.
     /// </summary>
     public class StashPayCard : MonoBehaviour
@@ -133,6 +162,9 @@ namespace StashPopup
         private static extern void _StashPayCardOpenPopup(string url);
         
         [DllImport("__Internal")]
+        private static extern void _StashPayCardOpenPopupWithSize(string url, float portraitWidth, float portraitHeight, float landscapeWidth, float landscapeHeight);
+        
+        [DllImport("__Internal")]
         private static extern void _StashPayCardSetSafariViewDismissedCallback(SafariViewDismissedCallback callback);
         
         [DllImport("__Internal")]
@@ -189,7 +221,7 @@ namespace StashPopup
         }
         
         // Internal handler: waits for Flagsmith config then opens URL or popup
-        private IEnumerator OpenURLWithFlagsmithConfig(string url, Action dismissCallback, Action successCallback, Action failureCallback, bool isPopup)
+        private IEnumerator OpenURLWithFlagsmithConfig(string url, Action dismissCallback, Action successCallback, Action failureCallback, bool isPopup, PopupSize? size = null, PopupSizeConfig? customSize = null)
         {
             if (string.IsNullOrEmpty(url)) yield break;
 
@@ -233,8 +265,16 @@ namespace StashPopup
             {
                 if (isPopup)
                 {
-                    // Call openPopup for popup presentation
-                    androidPluginInstance.Call("openPopup", url);
+                    // Get size multipliers based on preset or custom config
+                    PopupSizeConfig sizeConfig = GetPopupSizeConfig(size, customSize);
+                    
+                    // Call openPopup with size configuration
+                    androidPluginInstance.Call("openPopupWithSize", 
+                        url,
+                        sizeConfig.portraitWidthMultiplier,
+                        sizeConfig.portraitHeightMultiplier,
+                        sizeConfig.landscapeWidthMultiplier,
+                        sizeConfig.landscapeHeightMultiplier);
                 }
                 else
                 {
@@ -260,7 +300,16 @@ namespace StashPopup
             
             if (isPopup)
             {
-                _StashPayCardOpenPopup(url);
+                // Get size multipliers based on preset or custom config
+                PopupSizeConfig sizeConfig = GetPopupSizeConfig(size, customSize);
+                
+                // Call openPopup with size configuration
+                _StashPayCardOpenPopupWithSize(
+                    url,
+                    sizeConfig.portraitWidthMultiplier,
+                    sizeConfig.portraitHeightMultiplier,
+                    sizeConfig.landscapeWidthMultiplier,
+                    sizeConfig.landscapeHeightMultiplier);
             }
             else
             {
@@ -278,13 +327,19 @@ namespace StashPopup
         }
 
         /// <summary>
-        /// Opens a URL in a centered modal square popup.
-        /// Perfect square (75% of smaller screen dimension), centered, with fade animation.
+        /// Opens a URL in a centered modal popup.
+        /// By default uses Medium size (85% width, 112.5% height in portrait).
         /// Modal behavior: close button only, no drag gestures or tap-outside-to-dismiss.
         /// </summary>
-        public void OpenPopup(string url, Action dismissCallback = null, Action successCallback = null, Action failureCallback = null)
+        /// <param name="url">The URL to open in the popup</param>
+        /// <param name="dismissCallback">Called when the popup is dismissed</param>
+        /// <param name="successCallback">Called when payment succeeds (if applicable)</param>
+        /// <param name="failureCallback">Called when payment fails (if applicable)</param>
+        /// <param name="size">Popup size preset (Small, Medium, Large). Defaults to Medium.</param>
+        /// <param name="customSize">Custom size configuration. Only used if size is not specified or you want to override preset values.</param>
+        public void OpenPopup(string url, Action dismissCallback = null, Action successCallback = null, Action failureCallback = null, PopupSize? size = null, PopupSizeConfig? customSize = null)
         {
-            StartCoroutine(OpenURLWithFlagsmithConfig(url, dismissCallback, successCallback, failureCallback, true));
+            StartCoroutine(OpenURLWithFlagsmithConfig(url, dismissCallback, successCallback, failureCallback, true, size, customSize));
         }
 
         // Resets and dismisses any currently presented card
@@ -369,6 +424,45 @@ namespace StashPopup
         #endregion
 
         #region Private Methods
+
+        /// <summary>
+        /// Gets popup size configuration based on preset or custom values
+        /// </summary>
+        private PopupSizeConfig GetPopupSizeConfig(PopupSize? size, PopupSizeConfig? customSize)
+        {
+            // If custom size is provided, use it
+            if (customSize.HasValue)
+            {
+                return customSize.Value;
+            }
+
+            // Otherwise, use preset or default (Medium)
+            PopupSize preset = size ?? PopupSize.Medium;
+
+            switch (preset)
+            {
+                case PopupSize.Small:
+                    return new PopupSizeConfig
+                    {
+                        portraitWidthMultiplier = 0.7f,
+                        portraitHeightMultiplier = 1.0f,
+                        landscapeWidthMultiplier = 1.07f, // 0.7 * 1.3 * 1.15
+                        landscapeHeightMultiplier = 0.8f  // 1.0 * 0.8
+                    };
+                case PopupSize.Medium:
+                    return PopupSizeConfig.Default;
+                case PopupSize.Large:
+                    return new PopupSizeConfig
+                    {
+                        portraitWidthMultiplier = 1.0f,
+                        portraitHeightMultiplier = 1.25f,
+                        landscapeWidthMultiplier = 1.495f, // 1.0 * 1.3 * 1.15
+                        landscapeHeightMultiplier = 1.0f   // 1.25 * 0.8
+                    };
+                default:
+                    return PopupSizeConfig.Default;
+            }
+        }
 
         // Fetches remote feature flags from Flagsmith API with device traits
         private IEnumerator FetchFlagsmithConfiguration()

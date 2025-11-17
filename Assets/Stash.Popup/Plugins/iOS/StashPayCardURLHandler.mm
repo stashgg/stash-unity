@@ -29,6 +29,13 @@ static CGFloat _originalCardHeightRatio = 0.4;
 static CGFloat _originalCardVerticalPosition = 1.0;
 static CGFloat _originalCardWidthRatio = 1.0;
 
+// Custom popup size multipliers
+static BOOL _useCustomPopupSize = NO;
+static CGFloat _customPortraitWidthMultiplier = 0.85;
+static CGFloat _customPortraitHeightMultiplier = 1.125;
+static CGFloat _customLandscapeWidthMultiplier = 1.27075;
+static CGFloat _customLandscapeHeightMultiplier = 0.9;
+
 // Presentation modes
 static BOOL _forceSafariViewController = NO;
 static BOOL _usePopupPresentation = NO;
@@ -98,9 +105,50 @@ BOOL isRunningOniPad();
 - (void)viewWillLayoutSubviews {
     [super viewWillLayoutSubviews];
     
-    // Maintain custom frame instead of filling window
-    if (!CGRectIsEmpty(self.customFrame)) {
-        self.view.frame = self.customFrame;
+    // For popup mode, recalculate dimensions on orientation change
+    if (_usePopupPresentation) {
+        CGRect screenBounds = [UIScreen mainScreen].bounds;
+        BOOL isLandscape = UIInterfaceOrientationIsLandscape([[UIApplication sharedApplication] statusBarOrientation]);
+        
+        // Calculate base size
+        CGFloat smallerDimension = fmin(screenBounds.size.width, screenBounds.size.height);
+        CGFloat percentage = isRunningOniPad() ? 0.5 : 0.75;
+        CGFloat baseSize = fmax(
+            isRunningOniPad() ? 400.0 : 300.0,
+            fmin(isRunningOniPad() ? 500.0 : 500.0, smallerDimension * percentage)
+        );
+        
+        // Use custom multipliers if provided, otherwise use defaults
+        CGFloat portraitWidthMultiplier = _useCustomPopupSize ? _customPortraitWidthMultiplier : 0.85;
+        CGFloat portraitHeightMultiplier = _useCustomPopupSize ? _customPortraitHeightMultiplier : 1.125;
+        CGFloat landscapeWidthMultiplier = _useCustomPopupSize ? _customLandscapeWidthMultiplier : 1.27075;
+        CGFloat landscapeHeightMultiplier = _useCustomPopupSize ? _customLandscapeHeightMultiplier : 0.9;
+        
+        CGFloat popupWidth = baseSize * (isLandscape ? landscapeWidthMultiplier : portraitWidthMultiplier);
+        CGFloat popupHeight = baseSize * (isLandscape ? landscapeHeightMultiplier : portraitHeightMultiplier);
+        
+        CGRect newFrame = CGRectMake(
+            (screenBounds.size.width - popupWidth) / 2,
+            (screenBounds.size.height - popupHeight) / 2,
+            popupWidth,
+            popupHeight
+        );
+        
+        // Animate resize if frame changed
+        if (!CGRectEqualToRect(self.view.frame, newFrame)) {
+            [UIView animateWithDuration:0.3 animations:^{
+                self.view.frame = newFrame;
+                self.customFrame = newFrame;
+            }];
+        } else {
+            self.customFrame = newFrame;
+            self.view.frame = newFrame;
+        }
+    } else {
+        // Maintain custom frame instead of filling window
+        if (!CGRectIsEmpty(self.customFrame)) {
+            self.view.frame = self.customFrame;
+        }
     }
 }
 
@@ -110,12 +158,21 @@ BOOL isRunningOniPad();
         return UIInterfaceOrientationMaskPortrait;
     }
     
+    // For popup mode, allow all orientations for fluid rotation
+    if (_usePopupPresentation) {
+        return UIInterfaceOrientationMaskAll;
+    }
+    
     // Otherwise allow current orientation only (no rotation while presented)
     UIInterfaceOrientation currentOrientation = [[UIApplication sharedApplication] statusBarOrientation];
     return (1 << currentOrientation);
 }
 
 - (BOOL)shouldAutorotate {
+    // Allow rotation for popup mode
+    if (_usePopupPresentation) {
+        return YES;
+    }
     return NO; // Never auto-rotate while window is presented
 }
 
@@ -491,6 +548,7 @@ BOOL isRunningOniPad();
     _isCardExpanded = NO;
     _isCardCurrentlyPresented = NO;
     _usePopupPresentation = NO;
+    _useCustomPopupSize = NO;
     _callbackWasCalled = NO;
     _paymentSuccessHandled = NO;
     _paymentSuccessCallbackCalled = NO;
@@ -2407,25 +2465,46 @@ extern "C" {
     }
 
     void _StashPayCardOpenPopup(const char* urlString) {
+        // Use default multipliers
+        _useCustomPopupSize = NO;
+        _StashPayCardOpenPopupWithSize(urlString, 0.85, 1.125, 1.27075, 0.9);
+    }
+    
+    void _StashPayCardOpenPopupWithSize(const char* urlString, float portraitWidth, float portraitHeight, float landscapeWidth, float landscapeHeight) {
+        // Store custom multipliers
+        _useCustomPopupSize = YES;
+        _customPortraitWidthMultiplier = portraitWidth;
+        _customPortraitHeightMultiplier = portraitHeight;
+        _customLandscapeWidthMultiplier = landscapeWidth;
+        _customLandscapeHeightMultiplier = landscapeHeight;
+        
         CGRect screenBounds = [UIScreen mainScreen].bounds;
+        BOOL isLandscape = UIInterfaceOrientationIsLandscape([[UIApplication sharedApplication] statusBarOrientation]);
+        
+        // Calculate base size
         CGFloat smallerDimension = fmin(screenBounds.size.width, screenBounds.size.height);
+        CGFloat percentage = isRunningOniPad() ? 0.5 : 0.75;
+        CGFloat baseSize = fmax(
+            isRunningOniPad() ? 400.0 : 300.0,
+            fmin(isRunningOniPad() ? 500.0 : 500.0, smallerDimension * percentage)
+        );
         
-        // iPad gets compact popup (50% smaller for modal dialogs)
-        CGFloat minSize = isRunningOniPad() ? 400.0 : 300.0;
-        CGFloat maxSize = isRunningOniPad() ? 500.0 : 500.0;
-        CGFloat percentage = isRunningOniPad() ? 0.5 : 0.75; // iPad uses 50%, iPhone uses 75%
-        CGFloat squareSize = fmax(minSize, fmin(maxSize, smallerDimension * percentage));
+        // Use custom multipliers
+        CGFloat portraitWidthMultiplier = _customPortraitWidthMultiplier;
+        CGFloat portraitHeightMultiplier = _customPortraitHeightMultiplier;
+        CGFloat landscapeWidthMultiplier = _customLandscapeWidthMultiplier;
+        CGFloat landscapeHeightMultiplier = _customLandscapeHeightMultiplier;
         
-        CGFloat squareRatioWidth = squareSize / screenBounds.size.width;
-        CGFloat squareRatioHeight = squareSize / screenBounds.size.height;
-        CGFloat centerPosition = 0.5 + (squareRatioHeight / 2.0);
+        CGFloat popupWidth = baseSize * (isLandscape ? landscapeWidthMultiplier : portraitWidthMultiplier);
+        CGFloat popupHeight = baseSize * (isLandscape ? landscapeHeightMultiplier : portraitHeightMultiplier);
         
-        _cardWidthRatio = squareRatioWidth;
-        _cardHeightRatio = squareRatioHeight;
-        _cardVerticalPosition = centerPosition;
-        _originalCardWidthRatio = squareRatioWidth;
-        _originalCardHeightRatio = squareRatioHeight;
-        _originalCardVerticalPosition = centerPosition;
+        _cardWidthRatio = popupWidth / screenBounds.size.width;
+        _cardHeightRatio = popupHeight / screenBounds.size.height;
+        _cardVerticalPosition = 0.5 + (_cardHeightRatio / 2.0);
+        
+        _originalCardWidthRatio = _cardWidthRatio;
+        _originalCardHeightRatio = _cardHeightRatio;
+        _originalCardVerticalPosition = _cardVerticalPosition;
         _isCardExpanded = NO;
         _usePopupPresentation = YES;
         
