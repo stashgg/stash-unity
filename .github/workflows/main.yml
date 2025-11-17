@@ -1406,7 +1406,8 @@ jobs:
             -H "Content-Type: application/json" \
             -d '{
               "url": "https://storage.googleapis.com/stash_sdk_demo/Android/latest/StashDemo.apk/Android.apk",
-              "platform": "android"
+              "platform": "android",
+              "note": "Commit: ${{ github.sha }}"
             }')
           
           HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
@@ -1431,7 +1432,8 @@ jobs:
             -H "Content-Type: application/json" \
             -d '{
               "url": "https://storage.googleapis.com/stash_sdk_demo/iOS-simulator/latest/iOS-simulator-latest.zip/iOS-simulator-latest.zip",
-              "platform": "ios"
+              "platform": "ios",
+              "note": "Commit: ${{ github.sha }}"
             }')
           
           HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
