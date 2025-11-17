@@ -17,6 +17,8 @@ public class SetAndroidVersionCode : IPreprocessBuildWithReport
     
     static void SetVersionCode()
     {
+        // Read Unix timestamp build number from environment variable (set by GitHub Actions workflow)
+        // This ensures Android versionCode matches iOS build number
         string buildNumberEnv = System.Environment.GetEnvironmentVariable("UNITY_ANDROID_BUILD_NUMBER");
         
         if (string.IsNullOrEmpty(buildNumberEnv))
@@ -25,12 +27,13 @@ public class SetAndroidVersionCode : IPreprocessBuildWithReport
             return;
         }
         
+        // Parse Unix timestamp (epoch seconds) as integer for Android versionCode
         if (int.TryParse(buildNumberEnv, out int buildNumber))
         {
             int oldValue = PlayerSettings.Android.bundleVersionCode;
             PlayerSettings.Android.bundleVersionCode = buildNumber;
             AssetDatabase.SaveAssets();
-            Debug.Log($"SetAndroidVersionCode: Changed Android bundleVersionCode from {oldValue} to {buildNumber}");
+            Debug.Log($"SetAndroidVersionCode: Changed Android bundleVersionCode from {oldValue} to {buildNumber} (Unix timestamp)");
         }
         else
         {
