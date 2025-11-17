@@ -58,8 +58,22 @@ namespace Stash.Core
             // Build the item JSON object
             string itemJson = $"{{\"id\":\"{item.id}\",\"pricePerItem\":\"{item.pricePerItem}\",\"quantity\":{item.quantity},\"imageUrl\":\"{item.imageUrl}\",\"name\":\"{item.name}\",\"description\":\"{item.description}\"}}";
 
+            // Determine the platform string for the request ("IOS", "ANDROID", "UNKNOWN")
+            string platformString;
+            switch (Application.platform)
+            {
+                case RuntimePlatform.IPhonePlayer:
+                    platformString = "IOS";
+                    break;
+                case RuntimePlatform.Android:
+                    platformString = "ANDROID";
+                    break;
+                default:
+                    platformString = "UNKNOWN";
+                    break;
+            }
             // Create the request body JSON string with the user and item objects
-            string requestBody = $"{{\"user\":{{\"platform\":\"IOS\",\"id\":\"{userId}\",\"validatedEmail\":\"{validatedEmail}\",\"displayName\":\"user_name\",\"avatarIconUrl\":\"https://storage.googleapis.com/stash-demo-f9550.firebasestorage.app/avatars/6564ced3-c163-4b0d-aa4e-c1a19e42aa65.png\",\"profileUrl\":\"https://storage.googleapis.com/stash-demo-f9550.firebasestorage.app/avatars/6564ced3-c163-4b0d-aa4e-c1a19e42aa65.png\"}},\"currency\":\"USD\",\"item\":{itemJson}}}";
+            string requestBody = $"{{\"user\":{{\"platform\":\"{platformString}\",\"id\":\"{userId}\",\"validatedEmail\":\"{validatedEmail}\",\"displayName\":\"user_name\",\"avatarIconUrl\":\"https://storage.googleapis.com/stash-demo-f9550.firebasestorage.app/avatars/6564ced3-c163-4b0d-aa4e-c1a19e42aa65.png\",\"profileUrl\":\"https://storage.googleapis.com/stash-demo-f9550.firebasestorage.app/avatars/6564ced3-c163-4b0d-aa4e-c1a19e42aa65.png\"}},\"currency\":\"USD\",\"item\":{itemJson}}}";
 
             // Set the URL for the checkout link creation endpoint
             string requestUrl = environment.GetRootUrl() + StashConstants.CheckoutLinks;
