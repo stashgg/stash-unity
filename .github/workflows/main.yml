@@ -44,6 +44,7 @@ jobs:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     outputs:
       platforms: ${{ steps.set-platforms.outputs.platforms }}
+      buildNumber: ${{ steps.generate-build-number.outputs.buildNumber }}
     steps:
       - id: set-platforms
         run: |
@@ -52,6 +53,14 @@ jobs:
           else
             echo "platforms=[\"${{ github.event.inputs.platform }}\"]" >> $GITHUB_OUTPUT
           fi
+      
+      - id: generate-build-number
+        run: |
+          # Generate build number from Unix epoch seconds
+          # This ensures all platforms get the exact same timestamp
+          BUILD_NUMBER=$(date +%s)
+          echo "Build number (epoch seconds): $BUILD_NUMBER"
+          echo "buildNumber=$BUILD_NUMBER" >> $GITHUB_OUTPUT
   
   build:
     name: Build for ${{ matrix.platform }}
@@ -265,6 +274,26 @@ jobs:
           git update-index --assume-unchanged ProjectSettings/ProjectSettings.asset
           echo "✅ Told git to ignore changes to ProjectSettings.asset"
       
+      # Android: Set build number in ProjectSettings
+      - name: Set Android build number
+        if: matrix.platform == 'Android'
+        run: |
+          # Use the shared build number generated in determine-platforms job
+          BUILD_NUMBER="${{ needs.determine-platforms.outputs.buildNumber }}"
+          echo "Setting Android build number (versionCode) to: $BUILD_NUMBER"
+          
+          # Update AndroidBundleVersionCode in ProjectSettings.asset
+          # Android builds run on Ubuntu (Linux), so we use Linux sed syntax
+          sed -i "s/AndroidBundleVersionCode: [0-9]*/AndroidBundleVersionCode: $BUILD_NUMBER/" ProjectSettings/ProjectSettings.asset
+          
+          # Verify the change
+          echo "Updated AndroidBundleVersionCode:"
+          grep "AndroidBundleVersionCode" ProjectSettings/ProjectSettings.asset
+          
+          # Tell git to ignore this change so Unity builder doesn't complain about dirty state
+          git update-index --assume-unchanged ProjectSettings/ProjectSettings.asset
+          echo "✅ Android build number set and git told to ignore changes"
+      
       # Build Unity project
       - name: Build Unity project
         uses: game-ci/unity-builder@v4
@@ -432,13 +461,12 @@ jobs:
           echo "MARKETING_VERSION=$LATEST_TAG" >> $GITHUB_ENV
           echo "✅ MARKETING_VERSION set to: $LATEST_TAG"
       
-      # iOS: Generate build number
-      - name: Generate build number
+      # iOS: Set build number from shared value
+      - name: Set build number
         if: matrix.platform == 'iOS'
         run: |
-          # Generate build number from Unix epoch seconds
-          # This ensures it's always higher than previous versions
-          BUILD_NUMBER=$(date +%s)
+          # Use the shared build number generated in determine-platforms job
+          BUILD_NUMBER="${{ needs.determine-platforms.outputs.buildNumber }}"
           echo "Build number (epoch seconds): $BUILD_NUMBER"
           
           # Store as environment variable for later steps
@@ -837,11 +865,12 @@ jobs:
           echo "MARKETING_VERSION=$LATEST_TAG" >> $GITHUB_ENV
           echo "✅ MARKETING_VERSION set to: $LATEST_TAG"
       
-      # iOS-simulator: Generate build number
-      - name: Generate build number (simulator)
+      # iOS-simulator: Set build number from shared value
+      - name: Set build number (simulator)
         if: matrix.platform == 'iOS-simulator'
         run: |
-          BUILD_NUMBER=$(date +%s)
+          # Use the shared build number generated in determine-platforms job
+          BUILD_NUMBER="${{ needs.determine-platforms.outputs.buildNumber }}"
           echo "Build number (epoch seconds): $BUILD_NUMBER"
           echo "CURRENT_PROJECT_VERSION=$BUILD_NUMBER" >> $GITHUB_ENV
           echo "✅ CURRENT_PROJECT_VERSION set to: $BUILD_NUMBER"
