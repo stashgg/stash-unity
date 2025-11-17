@@ -1121,13 +1121,37 @@ jobs:
           echo "Found APK: $APK_FILE"
           echo "APK_FILE=$APK_FILE" >> $GITHUB_ENV
       
-      # Android: Install Android SDK build-tools for aapt
-      - name: Setup Android SDK build-tools
+      # Android: Setup aapt for APK verification
+      - name: Setup aapt for APK verification
         if: matrix.platform == 'Android'
-        uses: android-actions/setup-android@v3
-        with:
-          api-level: 34
-          build-tools: 34.0.0
+        run: |
+          # Check if Unity's Android SDK has aapt available
+          UNITY_ANDROID_SDK_PATHS=(
+            "/opt/unity/Editor/Data/PlaybackEngines/AndroidPlayer/SDK"
+            "$UNITY_ANDROID_SDK_HOME"
+            "$HOME/.local/share/unity3d/PlaybackEngines/AndroidPlayer/SDK"
+          )
+          
+          AAPT_FOUND=false
+          for SDK_PATH in "${UNITY_ANDROID_SDK_PATHS[@]}"; do
+            if [ -d "$SDK_PATH/build-tools" ]; then
+              # Find aapt in any build-tools version
+              AAPT_PATH=$(find "$SDK_PATH/build-tools" -name "aapt" -type f 2>/dev/null | head -1)
+              if [ -n "$AAPT_PATH" ]; then
+                echo "Found aapt at: $AAPT_PATH"
+                echo "AAPT_PATH=$AAPT_PATH" >> $GITHUB_ENV
+                export PATH="$(dirname "$AAPT_PATH"):$PATH"
+                echo "$(dirname "$AAPT_PATH")" >> $GITHUB_PATH
+                AAPT_FOUND=true
+                break
+              fi
+            fi
+          done
+          
+          if [ "$AAPT_FOUND" = false ]; then
+            echo "⚠️  aapt not found in Unity Android SDK, will skip APK verification"
+            echo "AAPT_PATH=" >> $GITHUB_ENV
+          fi
       
       # Android: Verify versionCode in built APK
       - name: Verify Android versionCode in APK
@@ -1141,16 +1165,12 @@ jobs:
           
           # Try to use aapt/aapt2 to read versionCode from APK
           AAPT_CMD=""
-          if command -v aapt &> /dev/null; then
+          if [ -n "$AAPT_PATH" ] && [ -f "$AAPT_PATH" ]; then
+            AAPT_CMD="$AAPT_PATH"
+          elif command -v aapt &> /dev/null; then
             AAPT_CMD="aapt"
           elif command -v aapt2 &> /dev/null; then
             AAPT_CMD="aapt2"
-          elif [ -d "$ANDROID_HOME/build-tools" ]; then
-            # Find the latest build-tools version
-            BUILD_TOOLS_DIR=$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -type d | sort -V | tail -1)
-            if [ -n "$BUILD_TOOLS_DIR" ] && [ -f "$BUILD_TOOLS_DIR/aapt" ]; then
-              AAPT_CMD="$BUILD_TOOLS_DIR/aapt"
-            fi
           fi
           
           if [ -n "$AAPT_CMD" ]; then
