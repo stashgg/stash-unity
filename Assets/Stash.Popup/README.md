@@ -108,6 +108,27 @@ void OnChannelSelected(string channel)
 
 **Use `OpenPopup()` exclusively for:** Payment channel selection opt-in flows.
 
+### Configuring Popup Size
+
+`OpenPopup()` supports optional custom size configuration. By default, it uses platform-specific default sizing. You can customize the size using `PopupSizeConfig`:
+
+```csharp
+var customSize = new PopupSizeConfig
+{
+    portraitWidthMultiplier = 0.9f,      // 90% of base width in portrait
+    portraitHeightMultiplier = 1.2f,      // 120% of base height in portrait
+    landscapeWidthMultiplier = 1.4f,     // 140% of base width in landscape
+    landscapeHeightMultiplier = 0.85f    // 85% of base height in landscape
+};
+
+StashPayCard.Instance.OpenPopup(
+    url,
+    customSize: customSize
+);
+```
+
+**Note:** The popup automatically adjusts its size when the device rotates between portrait and landscape orientations. Custom multipliers are applied relative to the calculated base size (which depends on device type and screen dimensions).
+
 
 ### Forcing Web View Mode
 
@@ -158,8 +179,8 @@ Clean and rebuild Xcode project.
 **`OpenCheckout(string url, Action onDismiss, Action onSuccess, Action onFailure)`**
 Opens Stash Pay checkout in a sliding card from the bottom of the screen.
 
-**`OpenPopup(string url, Action onDismiss, Action onSuccess, Action onFailure)`**
-Opens Stash opt-in and other remote Stash dialogs in a centered modal popup.
+**`OpenPopup(string url, Action onDismiss = null, Action onSuccess = null, Action onFailure = null, PopupSizeConfig? customSize = null)`**
+Opens Stash opt-in and other remote Stash dialogs in a centered modal popup. Size can be customized using `PopupSizeConfig`. If not provided, uses platform-specific default sizing.
 
 **`ResetPresentationState()`**
 Dismisses current dialog and resets state.
@@ -172,6 +193,16 @@ Dismisses current dialog and resets state.
 
 **`IsCurrentlyPresented`** (bool, read-only)
 - Returns whether a dialog is currently open.
+
+### Types
+
+**`PopupSizeConfig`** (struct)
+- `portraitWidthMultiplier` (float) - Width multiplier for portrait orientation
+- `portraitHeightMultiplier` (float) - Height multiplier for portrait orientation
+- `landscapeWidthMultiplier` (float) - Width multiplier for landscape orientation
+- `landscapeHeightMultiplier` (float) - Height multiplier for landscape orientation
+
+**Note:** Each platform (iOS and Android) has its own default sizing. When `customSize` is not provided, the platform-specific defaults are used.
 
 ## Support
 

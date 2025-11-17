@@ -11,6 +11,7 @@ import android.net.Uri;
 import android.os.*;
 import android.util.*;
 import android.view.*;
+import android.view.ViewTreeObserver;
 import android.webkit.*;
 import android.widget.*;
 import com.unity3d.player.UnityPlayer;
@@ -31,6 +32,7 @@ public class StashPayCardPlugin {
     private FrameLayout currentContainer;
     private Button currentHomeButton;
     private ProgressBar loadingIndicator;
+    private ViewTreeObserver.OnGlobalLayoutListener orientationChangeListener;
     
     // Configuration
     private String initialURL;
@@ -45,6 +47,14 @@ public class StashPayCardPlugin {
     private boolean usePopupPresentation = false;
     private boolean forceSafariViewController = false;
     private boolean isExpanded = false;
+    private int lastOrientation = Configuration.ORIENTATION_UNDEFINED;
+    
+    // Custom popup size multipliers
+    private boolean useCustomSize = false;
+    private float customPortraitWidthMultiplier = 0.85f;
+    private float customPortraitHeightMultiplier = 1.125f;
+    private float customLandscapeWidthMultiplier = 1.27075f;
+    private float customLandscapeHeightMultiplier = 0.9f;
     
     // Page load tracking
     private long pageLoadStartTime = 0;
@@ -135,10 +145,25 @@ public class StashPayCardPlugin {
     }
     
     /**
-     * Opens URL in centered square popup with fade animation
+     * Opens URL in centered square popup with fade animation (default size)
      */
     public void openPopup(String url) {
         usePopupPresentation = true;
+        useCustomSize = false; // Reset to use default multipliers
+        openURLInternal(url);
+    }
+    
+    /**
+     * Opens URL in centered popup with custom size multipliers
+     */
+    public void openPopupWithSize(String url, float portraitWidthMultiplier, float portraitHeightMultiplier, float landscapeWidthMultiplier, float landscapeHeightMultiplier) {
+        usePopupPresentation = true;
+        // Store custom multipliers for use in calculatePopupDimensions
+        customPortraitWidthMultiplier = portraitWidthMultiplier;
+        customPortraitHeightMultiplier = portraitHeightMultiplier;
+        customLandscapeWidthMultiplier = landscapeWidthMultiplier;
+        customLandscapeHeightMultiplier = landscapeHeightMultiplier;
+        useCustomSize = true;
         openURLInternal(url);
     }
     
@@ -267,20 +292,64 @@ public class StashPayCardPlugin {
             FrameLayout mainFrame = new FrameLayout(activity);
             mainFrame.setBackgroundColor(Color.parseColor("#20000000"));
             
-            // Calculate square popup size
-            DisplayMetrics metrics = activity.getResources().getDisplayMetrics();
-            int smallerDimension = Math.min(metrics.widthPixels, metrics.heightPixels);
-            boolean isTablet = smallerDimension > 600;
-            int minSize = isTablet ? dpToPx(400) : dpToPx(300);
-            int maxSize = isTablet ? dpToPx(500) : dpToPx(500);
-            float percentage = isTablet ? 0.5f : 0.75f;
-            int squareSize = Math.max(minSize, Math.min(maxSize, (int)(smallerDimension * percentage)));
+            // Calculate initial popup size based on current orientation
+            int[] dimensions = calculatePopupDimensions();
+            int popupWidth = dimensions[0];
+            int popupHeight = dimensions[1];
             
-            // Create square container
+            // Create container with narrower, taller dimensions
             currentContainer = new FrameLayout(activity);
-            FrameLayout.LayoutParams containerParams = new FrameLayout.LayoutParams(squareSize, squareSize);
+            FrameLayout.LayoutParams containerParams = new FrameLayout.LayoutParams(popupWidth, popupHeight);
             containerParams.gravity = Gravity.CENTER;
             currentContainer.setLayoutParams(containerParams);
+            
+            // Store initial orientation
+            lastOrientation = activity.getResources().getConfiguration().orientation;
+            
+            // Add orientation change listener to resize popup fluidly
+            orientationChangeListener = new ViewTreeObserver.OnGlobalLayoutListener() {
+                @Override
+                public void onGlobalLayout() {
+                    if (currentContainer != null && currentDialog != null && currentDialog.isShowing()) {
+                        int currentOrientation = activity.getResources().getConfiguration().orientation;
+                        
+                        // Only resize if orientation actually changed
+                        if (currentOrientation != lastOrientation && currentOrientation != Configuration.ORIENTATION_UNDEFINED) {
+                            lastOrientation = currentOrientation;
+                            
+                            int[] newDimensions = calculatePopupDimensions();
+                            int newWidth = newDimensions[0];
+                            int newHeight = newDimensions[1];
+                            
+                            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) currentContainer.getLayoutParams();
+                            
+                            // Animate resize
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
+                                currentContainer.animate()
+                                    .scaleX(0.95f)
+                                    .scaleY(0.95f)
+                                    .setDuration(100)
+                                    .withEndAction(() -> {
+                                        params.width = newWidth;
+                                        params.height = newHeight;
+                                        currentContainer.setLayoutParams(params);
+                                        currentContainer.animate()
+                                            .scaleX(1.0f)
+                                            .scaleY(1.0f)
+                                            .setDuration(200)
+                                            .start();
+                                    })
+                                    .start();
+                            } else {
+                                params.width = newWidth;
+                                params.height = newHeight;
+                                currentContainer.setLayoutParams(params);
+                            }
+                        }
+                    }
+                }
+            };
+            mainFrame.getViewTreeObserver().addOnGlobalLayoutListener(orientationChangeListener);
             
             GradientDrawable popupBg = new GradientDrawable();
             popupBg.setColor(getThemeBackgroundColor());
@@ -765,6 +834,10 @@ public class StashPayCardPlugin {
         webView.setWebChromeClient(new WebChromeClient());
         webView.addJavascriptInterface(new StashJavaScriptInterface(), "StashAndroid");
         
+        // Disable scrolling and scrollbars for popup mode
+        webView.setVerticalScrollBarEnabled(false);
+        webView.setHorizontalScrollBarEnabled(false);
+        
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT);
         webView.setLayoutParams(params);
@@ -872,6 +945,22 @@ public class StashPayCardPlugin {
     
     private void injectStashSDKFunctions() {
         if (webView == null) return;
+        
+        // For popup mode, inject script to disable scrolling
+        if (usePopupPresentation) {
+            String disableScrollScript = "(function() {" +
+                "  document.body.style.overflow = 'hidden';" +
+                "  document.documentElement.style.overflow = 'hidden';" +
+                "  document.body.style.position = 'fixed';" +
+                "  document.body.style.width = '100%';" +
+                "  document.body.style.height = '100%';" +
+                "  if (document.body) {" +
+                "    document.body.addEventListener('touchmove', function(e) { e.preventDefault(); }, { passive: false });" +
+                "    document.body.addEventListener('wheel', function(e) { e.preventDefault(); }, { passive: false });" +
+                "  }" +
+                "})();";
+            webView.evaluateJavascript(disableScrollScript, null);
+        }
         
         String script = "(function() {" +
             "  window.stash_sdk = window.stash_sdk || {};" +
@@ -1150,6 +1239,13 @@ public class StashPayCardPlugin {
             // Clean up container
             if (currentContainer != null) {
                 try {
+                    // Remove orientation change listener
+                    if (orientationChangeListener != null && currentContainer.getParent() != null) {
+                        View parent = (View) currentContainer.getParent();
+                        if (parent.getViewTreeObserver().isAlive()) {
+                            parent.getViewTreeObserver().removeOnGlobalLayoutListener(orientationChangeListener);
+                        }
+                    }
                     if (currentContainer.getParent() != null) {
                         ((ViewGroup)currentContainer.getParent()).removeView(currentContainer);
                     }
@@ -1159,6 +1255,9 @@ public class StashPayCardPlugin {
                 }
                 currentContainer = null;
             }
+            
+            // Clean up orientation change listener
+            orientationChangeListener = null;
         } catch (Exception e) {
             Log.e(TAG, "Error during cleanup: " + e.getMessage());
         }
@@ -1167,12 +1266,42 @@ public class StashPayCardPlugin {
         isExpanded = false;
         isPurchaseProcessing = false;
         usePopupPresentation = false;
+        useCustomSize = false;
         initialURL = null;
     }
     
     // ============================================================================
     // MARK: - Helper Methods
     // ============================================================================
+    
+    /**
+     * Calculates popup dimensions based on current orientation
+     * Portrait: narrower (85% of base) and taller (112.5% of base)
+     * Landscape: wider (~127% of base) and shorter (90% of base)
+     * @return int array with [width, height]
+     */
+    private int[] calculatePopupDimensions() {
+        DisplayMetrics metrics = activity.getResources().getDisplayMetrics();
+        boolean isLandscape = activity.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        
+        int smallerDimension = Math.min(metrics.widthPixels, metrics.heightPixels);
+        boolean isTablet = smallerDimension > 600;
+        int baseSize = Math.max(
+            isTablet ? dpToPx(400) : dpToPx(300),
+            Math.min(isTablet ? dpToPx(500) : dpToPx(500), (int)(smallerDimension * (isTablet ? 0.5f : 0.75f)))
+        );
+        
+        // Use custom multipliers if provided, otherwise use defaults
+        float portraitWidthMultiplier = useCustomSize ? customPortraitWidthMultiplier : 0.85f;
+        float portraitHeightMultiplier = useCustomSize ? customPortraitHeightMultiplier : 1.125f;
+        float landscapeWidthMultiplier = useCustomSize ? customLandscapeWidthMultiplier : 1.27075f;
+        float landscapeHeightMultiplier = useCustomSize ? customLandscapeHeightMultiplier : 0.9f;
+        
+        int popupWidth = (int)(baseSize * (isLandscape ? landscapeWidthMultiplier : portraitWidthMultiplier));
+        int popupHeight = (int)(baseSize * (isLandscape ? landscapeHeightMultiplier : portraitHeightMultiplier));
+        
+        return new int[]{popupWidth, popupHeight};
+    }
     
     private boolean isTablet() {
         DisplayMetrics metrics = activity.getResources().getDisplayMetrics();

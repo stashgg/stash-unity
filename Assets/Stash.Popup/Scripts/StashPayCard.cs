@@ -8,6 +8,17 @@ using AOT;
 namespace StashPopup
 {
     /// <summary>
+    /// Custom popup size configuration for fine-grained control
+    /// </summary>
+    public struct PopupSizeConfig
+    {
+        public float portraitWidthMultiplier;
+        public float portraitHeightMultiplier;
+        public float landscapeWidthMultiplier;
+        public float landscapeHeightMultiplier;
+    }
+
+    /// <summary>
     /// Cross-platform wrapper for Stash Pay checkout.
     /// </summary>
     public class StashPayCard : MonoBehaviour
@@ -133,6 +144,9 @@ namespace StashPopup
         private static extern void _StashPayCardOpenPopup(string url);
         
         [DllImport("__Internal")]
+        private static extern void _StashPayCardOpenPopupWithSize(string url, float portraitWidth, float portraitHeight, float landscapeWidth, float landscapeHeight);
+        
+        [DllImport("__Internal")]
         private static extern void _StashPayCardSetSafariViewDismissedCallback(SafariViewDismissedCallback callback);
         
         [DllImport("__Internal")]
@@ -189,7 +203,7 @@ namespace StashPopup
         }
         
         // Internal handler: waits for Flagsmith config then opens URL or popup
-        private IEnumerator OpenURLWithFlagsmithConfig(string url, Action dismissCallback, Action successCallback, Action failureCallback, bool isPopup)
+        private IEnumerator OpenURLWithFlagsmithConfig(string url, Action dismissCallback, Action successCallback, Action failureCallback, bool isPopup, PopupSizeConfig? customSize = null)
         {
             if (string.IsNullOrEmpty(url)) yield break;
 
@@ -233,8 +247,22 @@ namespace StashPopup
             {
                 if (isPopup)
                 {
-                    // Call openPopup for popup presentation
-                    androidPluginInstance.Call("openPopup", url);
+                    // Only pass size if custom size is explicitly specified
+                    if (customSize.HasValue)
+                    {
+                        PopupSizeConfig sizeConfig = customSize.Value;
+                        androidPluginInstance.Call("openPopupWithSize", 
+                            url,
+                            sizeConfig.portraitWidthMultiplier,
+                            sizeConfig.portraitHeightMultiplier,
+                            sizeConfig.landscapeWidthMultiplier,
+                            sizeConfig.landscapeHeightMultiplier);
+                    }
+                    else
+                    {
+                        // Use platform default (no custom size specified)
+                        androidPluginInstance.Call("openPopup", url);
+                    }
                 }
                 else
                 {
@@ -260,7 +288,22 @@ namespace StashPopup
             
             if (isPopup)
             {
-                _StashPayCardOpenPopup(url);
+                // Only pass size if custom size is explicitly specified
+                if (customSize.HasValue)
+                {
+                    PopupSizeConfig sizeConfig = customSize.Value;
+                    _StashPayCardOpenPopupWithSize(
+                        url,
+                        sizeConfig.portraitWidthMultiplier,
+                        sizeConfig.portraitHeightMultiplier,
+                        sizeConfig.landscapeWidthMultiplier,
+                        sizeConfig.landscapeHeightMultiplier);
+                }
+                else
+                {
+                    // Use iOS default (no custom size specified)
+                    _StashPayCardOpenPopup(url);
+                }
             }
             else
             {
@@ -278,13 +321,18 @@ namespace StashPopup
         }
 
         /// <summary>
-        /// Opens a URL in a centered modal square popup.
-        /// Perfect square (75% of smaller screen dimension), centered, with fade animation.
+        /// Opens a URL in a centered modal popup.
+        /// Uses platform-specific default sizing if no custom size is provided.
         /// Modal behavior: close button only, no drag gestures or tap-outside-to-dismiss.
         /// </summary>
-        public void OpenPopup(string url, Action dismissCallback = null, Action successCallback = null, Action failureCallback = null)
+        /// <param name="url">The URL to open in the popup</param>
+        /// <param name="dismissCallback">Called when the popup is dismissed</param>
+        /// <param name="successCallback">Called when payment succeeds (if applicable)</param>
+        /// <param name="failureCallback">Called when payment fails (if applicable)</param>
+        /// <param name="customSize">Optional custom size configuration. If not provided, uses platform-specific defaults.</param>
+        public void OpenPopup(string url, Action dismissCallback = null, Action successCallback = null, Action failureCallback = null, PopupSizeConfig? customSize = null)
         {
-            StartCoroutine(OpenURLWithFlagsmithConfig(url, dismissCallback, successCallback, failureCallback, true));
+            StartCoroutine(OpenURLWithFlagsmithConfig(url, dismissCallback, successCallback, failureCallback, true, customSize));
         }
 
         // Resets and dismisses any currently presented card
