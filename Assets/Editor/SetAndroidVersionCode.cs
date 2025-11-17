@@ -44,8 +44,7 @@ public class SetAndroidVersionCode : IPreprocessBuildWithReport
             int oldValue = PlayerSettings.Android.bundleVersionCode;
             PlayerSettings.Android.bundleVersionCode = buildNumber;
             
-            // Force save and verify it was set
-            EditorUtility.SetDirty(PlayerSettings.GetSerializedObject().targetObject);
+            // Save the changes
             AssetDatabase.SaveAssets();
             
             // Verify the value was actually set
