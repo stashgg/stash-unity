@@ -274,35 +274,6 @@ jobs:
           git update-index --assume-unchanged ProjectSettings/ProjectSettings.asset
           echo "✅ Told git to ignore changes to ProjectSettings.asset"
       
-      # Android: Set build number in ProjectSettings.asset
-      - name: Set Android build number in ProjectSettings
-        if: matrix.platform == 'Android'
-        run: |
-          BUILD_NUMBER="${{ needs.determine-platforms.outputs.buildNumber }}"
-          echo "Setting Android build number (versionCode) to: $BUILD_NUMBER"
-          
-          # Show current value
-          echo "Current AndroidBundleVersionCode:"
-          grep "AndroidBundleVersionCode" ProjectSettings/ProjectSettings.asset || echo "Not found"
-          
-          # Update AndroidBundleVersionCode in ProjectSettings.asset
-          sed -i "s/AndroidBundleVersionCode: [0-9]\+/AndroidBundleVersionCode: $BUILD_NUMBER/" ProjectSettings/ProjectSettings.asset
-          
-          # Verify the change
-          echo "Updated AndroidBundleVersionCode:"
-          grep "AndroidBundleVersionCode" ProjectSettings/ProjectSettings.asset
-          
-          ACTUAL_VALUE=$(grep "AndroidBundleVersionCode" ProjectSettings/ProjectSettings.asset | sed 's/.*AndroidBundleVersionCode: \([0-9]*\).*/\1/')
-          if [ "$ACTUAL_VALUE" = "$BUILD_NUMBER" ]; then
-            echo "✅ Verified: AndroidBundleVersionCode is correctly set to $BUILD_NUMBER"
-          else
-            echo "❌ ERROR: AndroidBundleVersionCode mismatch! Expected: $BUILD_NUMBER, Got: $ACTUAL_VALUE"
-            exit 1
-          fi
-          
-          # Tell git to ignore this change so Unity builder doesn't complain about dirty state
-          git update-index --assume-unchanged ProjectSettings/ProjectSettings.asset
-      
       # Build Unity project
       - name: Build Unity project
         uses: game-ci/unity-builder@v4
