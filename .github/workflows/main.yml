@@ -274,14 +274,39 @@ jobs:
           git update-index --assume-unchanged ProjectSettings/ProjectSettings.asset
           echo "✅ Told git to ignore changes to ProjectSettings.asset"
       
-      # Android: Set build number environment variable for Unity Editor script
-      - name: Set Android build number environment variable
+      # Android: Set build number in ProjectSettings
+      - name: Set Android build number
         if: matrix.platform == 'Android'
         run: |
           # Use the shared build number generated in determine-platforms job
           BUILD_NUMBER="${{ needs.determine-platforms.outputs.buildNumber }}"
-          echo "Setting UNITY_ANDROID_BUILD_NUMBER environment variable to: $BUILD_NUMBER"
-          echo "UNITY_ANDROID_BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_ENV
+          echo "Setting Android build number (versionCode) to: $BUILD_NUMBER"
+          
+          # Show current value before change
+          echo "Current AndroidBundleVersionCode:"
+          grep "AndroidBundleVersionCode" ProjectSettings/ProjectSettings.asset || echo "Not found"
+          
+          # Update AndroidBundleVersionCode in ProjectSettings.asset
+          # Android builds run on Ubuntu (Linux), so we use Linux sed syntax
+          # Use [0-9]\+ to match one or more digits (more reliable than [0-9]*)
+          sed -i "s/AndroidBundleVersionCode: [0-9]\+/AndroidBundleVersionCode: $BUILD_NUMBER/" ProjectSettings/ProjectSettings.asset
+          
+          # Verify the change was applied
+          echo "Updated AndroidBundleVersionCode:"
+          grep "AndroidBundleVersionCode" ProjectSettings/ProjectSettings.asset
+          
+          # Double-check the value is correct
+          ACTUAL_VALUE=$(grep "AndroidBundleVersionCode" ProjectSettings/ProjectSettings.asset | sed 's/.*AndroidBundleVersionCode: \([0-9]*\).*/\1/')
+          if [ "$ACTUAL_VALUE" = "$BUILD_NUMBER" ]; then
+            echo "✅ Verified: AndroidBundleVersionCode is correctly set to $BUILD_NUMBER"
+          else
+            echo "❌ ERROR: AndroidBundleVersionCode mismatch! Expected: $BUILD_NUMBER, Got: $ACTUAL_VALUE"
+            exit 1
+          fi
+          
+          # Tell git to ignore this change so Unity builder doesn't complain about dirty state
+          git update-index --assume-unchanged ProjectSettings/ProjectSettings.asset
+          echo "✅ Android build number set and git told to ignore changes"
       
       # Build Unity project
       - name: Build Unity project
@@ -290,7 +315,6 @@ jobs:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-          UNITY_ANDROID_BUILD_NUMBER: ${{ matrix.platform == 'Android' && needs.determine-platforms.outputs.buildNumber || '' }}
         with:
           targetPlatform: ${{ (matrix.platform == 'iOS' || matrix.platform == 'iOS-simulator') && 'iOS' || matrix.platform }}
           buildName: ${{ matrix.platform == 'iOS' && 'iOS' || (matrix.platform == 'iOS-simulator' && 'iOS-simulator' || (matrix.platform == 'StandaloneOSX' && 'macOS' || matrix.platform)) }}
