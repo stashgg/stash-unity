@@ -334,7 +334,10 @@ public class StashPayCardPlugin {
                 isCurrentlyPresented = false;
             });
             
-        isCurrentlyPresented = true;
+            // Show dialog immediately
+            currentDialog.show();
+            animateFadeIn();
+            isCurrentlyPresented = true;
         } catch (Exception e) {
             Log.e(TAG, "Error creating popup: " + e.getMessage());
         }
@@ -731,25 +734,11 @@ public class StashPayCardPlugin {
                 
                 injectStashSDKFunctions();
                 
-                // Show the dialog now that the page has finished loading
-                if (currentDialog != null && !currentDialog.isShowing()) {
-                    activity.runOnUiThread(() -> {
-                        try {
-                            currentDialog.show();
-                            animateFadeIn();
-                            view.setVisibility(View.VISIBLE);
-                            hideLoadingIndicator();
-                        } catch (Exception e) {
-                            android.util.Log.e(TAG, "Error showing dialog after page load: " + e.getMessage());
-                        }
-                    });
-                } else {
-                    // Dialog already showing, just make WebView visible
-                    view.postDelayed(() -> {
-                        hideLoadingIndicator();
-                        view.setVisibility(View.VISIBLE);
-                    }, 300);
-                }
+                // Show webview and hide loading indicator
+                view.postDelayed(() -> {
+                    hideLoadingIndicator();
+                    view.setVisibility(View.VISIBLE);
+                }, 300);
             }
         });
         
