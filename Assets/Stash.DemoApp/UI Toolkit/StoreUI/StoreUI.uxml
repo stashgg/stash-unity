@@ -147,6 +147,32 @@
                         <ui:Label text="Show Metrics" class="settings-option-label" />
                         <ui:Toggle name="show-metrics-toggle" class="settings-option-toggle" />
                     </ui:VisualElement>
+                    <ui:VisualElement class="settings-option-row-column popup-size-container">
+                        <ui:Label text="Popup Size - Portrait" class="settings-option-label" />
+                        <ui:VisualElement class="popup-size-inputs-row">
+                            <ui:VisualElement class="popup-size-input-group">
+                                <ui:Label text="Width" class="popup-size-input-label" />
+                                <ui:TextField name="popup-portrait-width-input" class="settings-option-textfield popup-size-textfield" />
+                            </ui:VisualElement>
+                            <ui:VisualElement class="popup-size-input-group">
+                                <ui:Label text="Height" class="popup-size-input-label" />
+                                <ui:TextField name="popup-portrait-height-input" class="settings-option-textfield popup-size-textfield" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                    <ui:VisualElement class="settings-option-row-column popup-size-container">
+                        <ui:Label text="Popup Size - Landscape" class="settings-option-label" />
+                        <ui:VisualElement class="popup-size-inputs-row">
+                            <ui:VisualElement class="popup-size-input-group">
+                                <ui:Label text="Width" class="popup-size-input-label" />
+                                <ui:TextField name="popup-landscape-width-input" class="settings-option-textfield popup-size-textfield" />
+                            </ui:VisualElement>
+                            <ui:VisualElement class="popup-size-input-group">
+                                <ui:Label text="Height" class="popup-size-input-label" />
+                                <ui:TextField name="popup-landscape-height-input" class="settings-option-textfield popup-size-textfield" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                    </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>

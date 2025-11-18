@@ -61,8 +61,15 @@ namespace Stash.Samples
     private TextField channelSelectionUrlInput;
     private Toggle safariWebViewToggle;
     private Toggle showMetricsToggle;
+    private TextField popupPortraitWidthInput;
+    private TextField popupPortraitHeightInput;
+    private TextField popupLandscapeWidthInput;
+    private TextField popupLandscapeHeightInput;
     private Button stashSdkSettingsCloseButton;
     private Label stashLogoLabel;
+    
+    // Popup size configuration (defaults to null to use platform defaults)
+    private PopupSizeConfig? customPopupSize = null;
     
     // Orientation lock state (default: locked to portrait)
     private bool isOrientationLocked = true;
@@ -102,6 +109,9 @@ namespace Stash.Samples
         
         // Load show metrics preference (default: false)
         showMetrics = PlayerPrefs.GetInt("ShowMetrics", 0) == 1;
+        
+        // Load popup size configuration from PlayerPrefs
+        LoadPopupSizeConfig();
         
         // Apply orientation setting
         ApplyOrientationSetting();
@@ -221,6 +231,10 @@ namespace Stash.Samples
         channelSelectionUrlInput = root.Q<TextField>("channel-selection-url-input");
         safariWebViewToggle = root.Q<Toggle>("safari-webview-toggle");
         showMetricsToggle = root.Q<Toggle>("show-metrics-toggle");
+        popupPortraitWidthInput = root.Q<TextField>("popup-portrait-width-input");
+        popupPortraitHeightInput = root.Q<TextField>("popup-portrait-height-input");
+        popupLandscapeWidthInput = root.Q<TextField>("popup-landscape-width-input");
+        popupLandscapeHeightInput = root.Q<TextField>("popup-landscape-height-input");
         stashSdkSettingsCloseButton = root.Q<Button>("stash-sdk-settings-close-button");
         
         if (stashSdkSettingsPopup != null)
@@ -281,6 +295,31 @@ namespace Stash.Samples
         else
         {
             Debug.LogWarning("[StoreUI] Could not find stash-sdk-settings-close-button");
+        }
+        
+        // Setup popup size input fields
+        if (popupPortraitWidthInput != null)
+        {
+            popupPortraitWidthInput.value = customPopupSize.HasValue ? customPopupSize.Value.portraitWidthMultiplier.ToString("F3") : "";
+            popupPortraitWidthInput.RegisterCallback<FocusOutEvent>(evt => OnPopupSizeChanged());
+        }
+        
+        if (popupPortraitHeightInput != null)
+        {
+            popupPortraitHeightInput.value = customPopupSize.HasValue ? customPopupSize.Value.portraitHeightMultiplier.ToString("F3") : "";
+            popupPortraitHeightInput.RegisterCallback<FocusOutEvent>(evt => OnPopupSizeChanged());
+        }
+        
+        if (popupLandscapeWidthInput != null)
+        {
+            popupLandscapeWidthInput.value = customPopupSize.HasValue ? customPopupSize.Value.landscapeWidthMultiplier.ToString("F3") : "";
+            popupLandscapeWidthInput.RegisterCallback<FocusOutEvent>(evt => OnPopupSizeChanged());
+        }
+        
+        if (popupLandscapeHeightInput != null)
+        {
+            popupLandscapeHeightInput.value = customPopupSize.HasValue ? customPopupSize.Value.landscapeHeightMultiplier.ToString("F3") : "";
+            popupLandscapeHeightInput.RegisterCallback<FocusOutEvent>(evt => OnPopupSizeChanged());
         }
     }
     
@@ -399,6 +438,139 @@ namespace Stash.Samples
         PlayerPrefs.Save();
         
         Debug.Log($"[StoreUI] Show metrics changed to: {showMetrics}");
+    }
+    
+    private float ParseFloatValue(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return 0f;
+        
+        // Remove whitespace and 'f' suffix if present
+        value = value.Trim().TrimEnd('f', 'F');
+        
+        if (float.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float result))
+        {
+            return result;
+        }
+        
+        return float.NaN; // Return NaN to indicate parse failure
+    }
+    
+    private void OnPopupSizeChanged()
+    {
+        // Try to parse all four values
+        bool allValid = true;
+        float portraitWidth = 0f;
+        float portraitHeight = 0f;
+        float landscapeWidth = 0f;
+        float landscapeHeight = 0f;
+        
+        if (popupPortraitWidthInput != null && !string.IsNullOrEmpty(popupPortraitWidthInput.value))
+        {
+            portraitWidth = ParseFloatValue(popupPortraitWidthInput.value);
+            if (float.IsNaN(portraitWidth))
+            {
+                allValid = false;
+            }
+        }
+        else
+        {
+            allValid = false;
+        }
+        
+        if (popupPortraitHeightInput != null && !string.IsNullOrEmpty(popupPortraitHeightInput.value))
+        {
+            portraitHeight = ParseFloatValue(popupPortraitHeightInput.value);
+            if (float.IsNaN(portraitHeight))
+            {
+                allValid = false;
+            }
+        }
+        else
+        {
+            allValid = false;
+        }
+        
+        if (popupLandscapeWidthInput != null && !string.IsNullOrEmpty(popupLandscapeWidthInput.value))
+        {
+            landscapeWidth = ParseFloatValue(popupLandscapeWidthInput.value);
+            if (float.IsNaN(landscapeWidth))
+            {
+                allValid = false;
+            }
+        }
+        else
+        {
+            allValid = false;
+        }
+        
+        if (popupLandscapeHeightInput != null && !string.IsNullOrEmpty(popupLandscapeHeightInput.value))
+        {
+            landscapeHeight = ParseFloatValue(popupLandscapeHeightInput.value);
+            if (float.IsNaN(landscapeHeight))
+            {
+                allValid = false;
+            }
+        }
+        else
+        {
+            allValid = false;
+        }
+        
+        if (allValid)
+        {
+            customPopupSize = new PopupSizeConfig
+            {
+                portraitWidthMultiplier = portraitWidth,
+                portraitHeightMultiplier = portraitHeight,
+                landscapeWidthMultiplier = landscapeWidth,
+                landscapeHeightMultiplier = landscapeHeight
+            };
+            
+            // Save to PlayerPrefs
+            PlayerPrefs.SetFloat("PopupPortraitWidth", portraitWidth);
+            PlayerPrefs.SetFloat("PopupPortraitHeight", portraitHeight);
+            PlayerPrefs.SetFloat("PopupLandscapeWidth", landscapeWidth);
+            PlayerPrefs.SetFloat("PopupLandscapeHeight", landscapeHeight);
+            PlayerPrefs.SetInt("UseCustomPopupSize", 1);
+            PlayerPrefs.Save();
+            
+            Debug.Log($"[StoreUI] Popup size updated: Portrait({portraitWidth}, {portraitHeight}), Landscape({landscapeWidth}, {landscapeHeight})");
+        }
+        else
+        {
+            // If any field is empty or invalid, clear the custom size (use platform defaults)
+            customPopupSize = null;
+            PlayerPrefs.SetInt("UseCustomPopupSize", 0);
+            PlayerPrefs.Save();
+            Debug.Log("[StoreUI] Popup size cleared - using platform defaults");
+        }
+    }
+    
+    private void LoadPopupSizeConfig()
+    {
+        // Check if custom popup size is enabled
+        bool useCustomSize = PlayerPrefs.GetInt("UseCustomPopupSize", 0) == 1;
+        
+        if (useCustomSize)
+        {
+            float portraitWidth = PlayerPrefs.GetFloat("PopupPortraitWidth", 0.85f);
+            float portraitHeight = PlayerPrefs.GetFloat("PopupPortraitHeight", 1.125f);
+            float landscapeWidth = PlayerPrefs.GetFloat("PopupLandscapeWidth", 1.27075f);
+            float landscapeHeight = PlayerPrefs.GetFloat("PopupLandscapeHeight", 0.9f);
+            
+            customPopupSize = new PopupSizeConfig
+            {
+                portraitWidthMultiplier = portraitWidth,
+                portraitHeightMultiplier = portraitHeight,
+                landscapeWidthMultiplier = landscapeWidth,
+                landscapeHeightMultiplier = landscapeHeight
+            };
+        }
+        else
+        {
+            customPopupSize = null;
+        }
     }
     
     private void OnOrientationToggleChanged(ChangeEvent<bool> evt)
@@ -590,20 +762,68 @@ namespace Stash.Samples
     {
         try
         {
+            // Ensure we have the latest values from input fields before opening
+            PopupSizeConfig? sizeToUse = GetCurrentPopupSizeFromInputs();
+            
             // Register opt-in response callback
             StashPayCard.Instance.OnOptinResponse += OnChannelSelectionOptinResponse;
             
             // Open the payment channel selection URL in a centered popup (using configured URL)
             StashPayCard.Instance.OpenPopup(channelSelectionUrl,
                 dismissCallback: () => {
+                    // Show toast when popup is dismissed
+                    // ShowToast("Popup dismissed", "The payment channel selection dialog was closed.");
                     // Unregister callback when popup closes
                     StashPayCard.Instance.OnOptinResponse -= OnChannelSelectionOptinResponse;
-                });
+                },
+                customSize: sizeToUse);
         }
         catch (System.Exception ex)
         {
             Debug.LogError($"[StoreUI] Exception opening payment channel selection: {ex.Message}\nStackTrace: {ex.StackTrace}");
         }
+    }
+    
+    private PopupSizeConfig? GetCurrentPopupSizeFromInputs()
+    {
+        // Try to read current values from input fields
+        string portraitWidthStr = popupPortraitWidthInput?.value ?? "";
+        string portraitHeightStr = popupPortraitHeightInput?.value ?? "";
+        string landscapeWidthStr = popupLandscapeWidthInput?.value ?? "";
+        string landscapeHeightStr = popupLandscapeHeightInput?.value ?? "";
+        
+        float portraitWidth = ParseFloatValue(portraitWidthStr);
+        float portraitHeight = ParseFloatValue(portraitHeightStr);
+        float landscapeWidth = ParseFloatValue(landscapeWidthStr);
+        float landscapeHeight = ParseFloatValue(landscapeHeightStr);
+        
+        Debug.Log($"[StoreUI] Reading popup size from inputs: Portrait({portraitWidthStr}->{portraitWidth}), Landscape({landscapeWidthStr}->{landscapeWidth})");
+        
+        // Check if all values are valid (not NaN and not empty)
+        bool allValid = !float.IsNaN(portraitWidth) && !float.IsNaN(portraitHeight) && 
+                       !float.IsNaN(landscapeWidth) && !float.IsNaN(landscapeHeight) &&
+                       !string.IsNullOrWhiteSpace(portraitWidthStr) &&
+                       !string.IsNullOrWhiteSpace(portraitHeightStr) &&
+                       !string.IsNullOrWhiteSpace(landscapeWidthStr) &&
+                       !string.IsNullOrWhiteSpace(landscapeHeightStr);
+        
+        if (allValid)
+        {
+            PopupSizeConfig config = new PopupSizeConfig
+            {
+                portraitWidthMultiplier = portraitWidth,
+                portraitHeightMultiplier = portraitHeight,
+                landscapeWidthMultiplier = landscapeWidth,
+                landscapeHeightMultiplier = landscapeHeight
+            };
+            
+            Debug.Log($"[StoreUI] Using custom popup size: Portrait({config.portraitWidthMultiplier}, {config.portraitHeightMultiplier}), Landscape({config.landscapeWidthMultiplier}, {config.landscapeHeightMultiplier})");
+            return config;
+        }
+        
+        // If inputs are not valid, use the saved customPopupSize (or null for platform defaults)
+        Debug.Log($"[StoreUI] Inputs not valid, using saved customPopupSize: {customPopupSize.HasValue}");
+        return customPopupSize;
     }
 
     private void OnChannelSelectionOptinResponse(string optinType)
@@ -628,11 +848,38 @@ namespace Stash.Samples
                 paymentMethodDropdown.value = paymentMethod == "NATIVE_IAP" ? "Native IAP" : "Stash Pay";
             }
             
+            // Show toast notification
+            string displayName = paymentMethod == "NATIVE_IAP" ? "Native IAP" : "Stash Pay";
+            ShowToast("Payment Method Selected", $"You selected: {displayName}");
+            
             Debug.Log($"[StoreUI] Payment method updated to: {paymentMethod}");
         }
         else
         {
             Debug.LogWarning($"[StoreUI] Unknown payment method selected: {optinType} (normalized: {normalizedType})");
+            ShowToast("Unknown Selection", $"Received unknown payment method: {optinType}");
+        }
+    }
+    
+    private void ShowToast(string title, string message)
+    {
+        try
+        {
+            // Create toast notification
+            var toastGO = new GameObject("PopupCallbackToast");
+            var toastScript = toastGO.AddComponent<SimpleToast>();
+            
+            // Set the root element
+            if (root != null)
+            {
+                toastScript.SetRootElement(root);
+            }
+            
+            toastScript.Show(title, message);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[StoreUI] Error showing toast: {ex.Message}");
         }
     }
 
@@ -2009,6 +2256,176 @@ public class LoadTimeToast : MonoBehaviour
             {
                 toastContainer.style.opacity = 1 - t;
                 toastContainer.style.top = Mathf.Lerp(60, 50, t);
+            }
+            
+            yield return null;
+        }
+        
+        if (toastContainer != null && toastContainer.parent != null)
+        {
+            toastContainer.RemoveFromHierarchy();
+        }
+    }
+    
+    private void OnDestroy()
+    {
+        if (toastContainer != null && toastContainer.parent != null)
+        {
+            toastContainer.RemoveFromHierarchy();
+        }
+    }
+}
+
+/// <summary>
+/// Simple toast notification for showing popup callback messages
+/// </summary>
+public class SimpleToast : MonoBehaviour
+{
+    private VisualElement toastContainer;
+    private VisualElement rootElement;
+    private float showDuration = 3f;
+    
+    public void SetRootElement(VisualElement root)
+    {
+        rootElement = root;
+    }
+    
+    public void Show(string title, string message)
+    {
+        if (rootElement == null)
+        {
+            // Try to find root element
+            var storeUIController = FindObjectOfType<StashStoreUIController>();
+            if (storeUIController != null)
+            {
+                var uiDocument = storeUIController.GetComponent<UIDocument>();
+                if (uiDocument != null)
+                {
+                    rootElement = uiDocument.rootVisualElement;
+                }
+            }
+        }
+        
+        if (rootElement == null)
+        {
+            Debug.LogError("[SimpleToast] No root element set");
+            Destroy(gameObject);
+            return;
+        }
+        
+        CreateToast(title, message);
+        
+        // Auto destroy after duration
+        Destroy(gameObject, showDuration);
+    }
+    
+    private void CreateToast(string title, string message)
+    {
+        // Create toast container at the bottom center of screen
+        toastContainer = new VisualElement();
+        toastContainer.name = "SimpleToast";
+        toastContainer.style.position = Position.Absolute;
+        toastContainer.style.bottom = 100;
+        toastContainer.style.left = Length.Percent(50);
+        toastContainer.style.translate = new Translate(Length.Percent(-50), 0);
+        toastContainer.style.backgroundColor = new Color(0.2f, 0.2f, 0.2f, 0.95f);
+        toastContainer.style.borderTopLeftRadius = 8;
+        toastContainer.style.borderTopRightRadius = 8;
+        toastContainer.style.borderBottomLeftRadius = 8;
+        toastContainer.style.borderBottomRightRadius = 8;
+        toastContainer.style.paddingLeft = 16;
+        toastContainer.style.paddingRight = 16;
+        toastContainer.style.paddingTop = 12;
+        toastContainer.style.paddingBottom = 12;
+        toastContainer.style.minWidth = 200;
+        toastContainer.style.maxWidth = 300;
+        toastContainer.style.alignItems = Align.Center;
+        toastContainer.style.flexDirection = FlexDirection.Column;
+        toastContainer.pickingMode = PickingMode.Ignore;
+        
+        // Add border
+        toastContainer.style.borderLeftWidth = 2;
+        toastContainer.style.borderRightWidth = 2;
+        toastContainer.style.borderTopWidth = 2;
+        toastContainer.style.borderBottomWidth = 2;
+        Color grayBorderColor = new Color(0.6f, 0.6f, 0.6f, 0.8f);
+        toastContainer.style.borderLeftColor = grayBorderColor;
+        toastContainer.style.borderRightColor = grayBorderColor;
+        toastContainer.style.borderTopColor = grayBorderColor;
+        toastContainer.style.borderBottomColor = grayBorderColor;
+        
+        // Create title label
+        Label titleLabel = new Label(title);
+        titleLabel.style.color = new Color(0.8f, 0.8f, 0.8f, 1f);
+        titleLabel.style.fontSize = 14;
+        titleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        titleLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+        titleLabel.style.marginBottom = 4;
+        
+        // Create message label
+        Label messageLabel = new Label(message);
+        messageLabel.style.color = Color.white;
+        messageLabel.style.fontSize = 12;
+        messageLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+        messageLabel.style.whiteSpace = WhiteSpace.Normal;
+        messageLabel.style.flexWrap = Wrap.Wrap;
+        
+        toastContainer.Add(titleLabel);
+        toastContainer.Add(messageLabel);
+        rootElement.Add(toastContainer);
+        
+        // Start with slight offset and fade in
+        toastContainer.style.opacity = 0;
+        toastContainer.style.bottom = 80;
+        
+        // Animate in
+        StartCoroutine(AnimateToastIn());
+    }
+    
+    private System.Collections.IEnumerator AnimateToastIn()
+    {
+        float elapsed = 0f;
+        float duration = 0.3f;
+        
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / duration;
+            
+            if (toastContainer != null)
+            {
+                toastContainer.style.opacity = t;
+                toastContainer.style.bottom = Mathf.Lerp(80, 100, t);
+            }
+            
+            yield return null;
+        }
+        
+        if (toastContainer != null)
+        {
+            toastContainer.style.opacity = 1;
+            toastContainer.style.bottom = 100;
+        }
+        
+        // Hold for a moment, then fade out
+        yield return new WaitForSeconds(showDuration - 0.6f);
+        StartCoroutine(AnimateToastOut());
+    }
+    
+    private System.Collections.IEnumerator AnimateToastOut()
+    {
+        float elapsed = 0f;
+        float duration = 0.3f;
+        
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / duration;
+            
+            if (toastContainer != null)
+            {
+                toastContainer.style.opacity = 1 - t;
+                toastContainer.style.bottom = Mathf.Lerp(100, 80, t);
             }
             
             yield return null;
