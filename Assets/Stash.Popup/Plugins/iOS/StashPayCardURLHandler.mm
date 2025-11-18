@@ -4,25 +4,23 @@
 #import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
 
-// Unity callbacks
 typedef void (*SafariViewDismissedCallback)();
 typedef void (*PaymentSuccessCallback)();
 typedef void (*PaymentFailureCallback)();
 typedef void (*OptinResponseCallback)(const char* optinType);
 typedef void (*PageLoadedCallback)(double loadTimeMs);
+
 SafariViewDismissedCallback _safariViewDismissedCallback = NULL;
 PaymentSuccessCallback _paymentSuccessCallback = NULL;
 PaymentFailureCallback _paymentFailureCallback = NULL;
 OptinResponseCallback _optinResponseCallback = NULL;
 PageLoadedCallback _pageLoadedCallback = NULL;
 
-// State flags
 BOOL _callbackWasCalled = NO;
 BOOL _isCardCurrentlyPresented = NO;
 BOOL _paymentSuccessHandled = NO;
 BOOL _paymentSuccessCallbackCalled = NO;
 
-// Card configuration
 static CGFloat _cardHeightRatio = 0.4;
 static CGFloat _cardVerticalPosition = 1.0;
 static CGFloat _cardWidthRatio = 1.0;
@@ -30,29 +28,24 @@ static CGFloat _originalCardHeightRatio = 0.4;
 static CGFloat _originalCardVerticalPosition = 1.0;
 static CGFloat _originalCardWidthRatio = 1.0;
 
-// Custom popup size multipliers
-// iOS defaults: portrait +10% width/+10% height, landscape +15% width/+15% height
 static BOOL _useCustomPopupSize = NO;
 static CGFloat _customPortraitWidthMultiplier = 1.0285;
 static CGFloat _customPortraitHeightMultiplier = 1.485;
 static CGFloat _customLandscapeWidthMultiplier = 1.753635;
 static CGFloat _customLandscapeHeightMultiplier = 1.1385;
 
-// Presentation modes
 static BOOL _forceSafariViewController = NO;
 static BOOL _usePopupPresentation = NO;
 static BOOL _isCardExpanded = NO;
 
 #define ENABLE_IPAD_SUPPORT 1
 
-// Define a delegate class to handle Safari View Controller callbacks
 @interface StashPayCardSafariDelegate : NSObject <SFSafariViewControllerDelegate, UIGestureRecognizerDelegate, WKScriptMessageHandler>
 + (instancetype)sharedInstance;
 @property (nonatomic, copy) void (^safariViewDismissedCallback)(void);
 @property (nonatomic, strong) UIViewController *currentPresentedVC;
-@property (nonatomic, strong) UIWindow *portraitWindow;  // Separate window for iPhone portrait mode
-@property (nonatomic, strong) UIWindow *previousKeyWindow;  // Store previous window to restore
-@property (nonatomic, strong) UIPanGestureRecognizer *panGestureRecognizer;
+@property (nonatomic, strong) UIWindow *portraitWindow;
+@property (nonatomic, strong) UIWindow *previousKeyWindow;
 @property (nonatomic, strong) UIView *dragTrayView;
 @property (nonatomic, strong) UIView *navigationBarView;
 @property (nonatomic, strong) NSURL *initialURL;
@@ -60,10 +53,8 @@ static BOOL _isCardExpanded = NO;
 @property (nonatomic, assign) BOOL isObservingKeyboard;
 @property (nonatomic, assign) BOOL isNavigationBarVisible;
 @property (nonatomic, assign) BOOL isPurchaseProcessing;
-- (void)handleDismiss:(UITapGestureRecognizer *)gesture;
 - (void)dismissButtonTapped:(UIButton *)button;
 - (void)dismissWithAnimation:(void (^)(void))completion;
-- (void)handlePanGesture:(UIPanGestureRecognizer *)gesture;
 - (void)handleDragTrayPanGesture:(UIPanGestureRecognizer *)gesture;
 - (void)callUnityCallbackOnce;
 - (void)cleanupCardInstance;
@@ -82,35 +73,31 @@ static BOOL _isCardExpanded = NO;
 - (void)keyboardWillHide:(NSNotification *)notification;
 @end
 
-// WebView navigation delegate to handle loading states
 @interface WebViewLoadDelegate : NSObject <WKNavigationDelegate>
 @property (nonatomic, weak) WKWebView *webView;
 @property (nonatomic, assign) CFAbsoluteTime pageLoadStartTime;
 - (instancetype)initWithWebView:(WKWebView*)webView loadingView:(UIView*)loadingView;
 @end
 
-// WebView UI delegate to disable context menus and text selection
 @interface WebViewUIDelegate : NSObject <WKUIDelegate>
 @end
 
-// Forward declarations
 BOOL isRunningOniPad();
 CGSize calculateiPadCardSize(CGRect screenBounds);
 
-// Custom view controller to maintain custom frame and enforce orientation for window root VC
 @interface OrientationLockedViewController : UIViewController
-@property (nonatomic, assign) CGRect customFrame; // Custom frame to maintain
-@property (nonatomic, assign) BOOL enforcePortrait; // YES to enforce portrait on iPhone
-@property (nonatomic, assign) BOOL skipLayoutDuringInitialSetup; // Skip layout updates during initial popup setup
-- (void)updateCornerRadiusMask; // Update corner radius mask layer
+@property (nonatomic, assign) CGRect customFrame;
+@property (nonatomic, assign) BOOL enforcePortrait;
+@property (nonatomic, assign) BOOL skipLayoutDuringInitialSetup;
+- (void)updateCornerRadiusMask;
 @end
 
 @implementation OrientationLockedViewController
 
+// NOTE: Prevents layout interference during animations - critical for smooth card slide-up on iPhone
 - (void)viewWillLayoutSubviews {
     [super viewWillLayoutSubviews];
     
-    // Skip layout updates during initial setup to prevent interfering with animations
     if (self.skipLayoutDuringInitialSetup) {
         return;
     }
@@ -118,7 +105,6 @@ CGSize calculateiPadCardSize(CGRect screenBounds);
     CGRect screenBounds = [UIScreen mainScreen].bounds;
     UIWindow *cardWindow = self.view.window;
     
-    // Update window and overlay frames on orientation change
     if (cardWindow && !CGRectEqualToRect(cardWindow.frame, screenBounds)) {
         cardWindow.frame = screenBounds;
     }
@@ -129,8 +115,6 @@ CGSize calculateiPadCardSize(CGRect screenBounds);
     }
     
     if (_usePopupPresentation) {
-        // Popup mode: unified behavior for iPhone and iPad
-        // Only update layout if frame actually changed (orientation change), not during initial setup
         BOOL isLandscape = UIInterfaceOrientationIsLandscape([[UIApplication sharedApplication] statusBarOrientation]);
         
         CGFloat smallerDimension = fmin(screenBounds.size.width, screenBounds.size.height);
@@ -155,16 +139,13 @@ CGSize calculateiPadCardSize(CGRect screenBounds);
             popupHeight
         );
         
-        // Only animate if frame actually changed (orientation change), and use instant update if frame is close
         if (!CGRectEqualToRect(self.view.frame, newFrame)) {
-            // Check if this is a significant change (orientation) or just a minor adjustment
             CGFloat frameDifference = fabs(self.view.frame.origin.x - newFrame.origin.x) + 
                                      fabs(self.view.frame.origin.y - newFrame.origin.y) +
                                      fabs(self.view.frame.size.width - newFrame.size.width) +
                                      fabs(self.view.frame.size.height - newFrame.size.height);
             
             if (frameDifference > 50.0) {
-                // Significant change (orientation) - animate smoothly
                 [UIView animateWithDuration:0.3 animations:^{
                     self.view.frame = newFrame;
                     self.customFrame = newFrame;
@@ -172,7 +153,6 @@ CGSize calculateiPadCardSize(CGRect screenBounds);
                     [self updateCornerRadiusMask];
                 }];
             } else {
-                // Minor adjustment - update instantly without animation to prevent sliding
                 [CATransaction begin];
                 [CATransaction setDisableActions:YES];
                 self.view.frame = newFrame;
@@ -185,29 +165,21 @@ CGSize calculateiPadCardSize(CGRect screenBounds);
             [self updateCornerRadiusMask];
         }
     } else {
-        // Card mode: split implementation for iPhone and iPad
-        // CRITICAL: Skip layout updates during initial setup to prevent interference with animation
+        // NOTE: Card mode - skip layout during gestures to prevent interference
         if (self.skipLayoutDuringInitialSetup) {
-            return; // Don't touch anything during animation
-        }
-        
-        // iPhone card mode: also skip if we're in the middle of a gesture
-        if (!isRunningOniPad()) {
-            // For iPhone, be extra careful - only update if frame actually needs to change
-            // Don't interfere with gestures or animations
+            return;
         }
         
         CGFloat width, height, x, y;
         
         if (isRunningOniPad()) {
-            // iPad: phone-like aspect ratio, centered vertically, supports rotation
+            // NOTE: iPad card mode - only update layout on orientation changes, not during gestures
             CGFloat phoneLikeWidth = fmin(400.0, screenBounds.size.width * 0.9);
             width = phoneLikeWidth;
             height = screenBounds.size.height * _cardHeightRatio;
             x = (screenBounds.size.width - width) / 2;
             y = (screenBounds.size.height - height) / 2;
         } else {
-            // iPhone: forced portrait, use ratios, slides up from bottom
             // Ensure portrait orientation (narrower dimension = width)
             if (screenBounds.size.width > screenBounds.size.height) {
                 CGFloat temp = screenBounds.size.width;
@@ -611,23 +583,19 @@ CGSize calculateiPadCardSize(CGRect screenBounds);
     return sharedInstance;
 }
 
-// Helper function to get the global callback (avoids instance variable shadowing)
 static SafariViewDismissedCallback GetGlobalSafariViewDismissedCallback() {
     extern SafariViewDismissedCallback _safariViewDismissedCallback;
     return _safariViewDismissedCallback;
 }
 
-// Method to ensure callback is only called once
+// NOTE: Ensures Unity callback is only called once, prevents retain cycles by clearing block property
 - (void)callUnityCallbackOnce {
     if (!_callbackWasCalled) {
-        // Get the global callback through helper function to avoid instance variable shadowing
         SafariViewDismissedCallback globalCallback = GetGlobalSafariViewDismissedCallback();
         
         if (globalCallback != NULL) {
             _callbackWasCalled = YES;
-            _isCardCurrentlyPresented = NO; // Reset the presentation flag
-            
-            // Clear the block property to break retain cycles (it wraps the C callback)
+            _isCardCurrentlyPresented = NO;
             self.safariViewDismissedCallback = nil;
             
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -637,6 +605,7 @@ static SafariViewDismissedCallback GetGlobalSafariViewDismissedCallback() {
     }
 }
 
+// NOTE: Comprehensive cleanup to prevent memory leaks - removes all delegates, associated objects, and view hierarchy
 - (void)cleanupCardInstance {
     [self stopKeyboardObserving];
     
@@ -650,14 +619,7 @@ static SafariViewDismissedCallback GetGlobalSafariViewDismissedCallback() {
         self.navigationBarView = nil;
     }
     
-    if (self.panGestureRecognizer && self.currentPresentedVC) {
-        [self.currentPresentedVC.view removeGestureRecognizer:self.panGestureRecognizer];
-        self.panGestureRecognizer.delegate = nil;
-        self.panGestureRecognizer = nil;
-    }
-    
     if (self.currentPresentedVC) {
-        // Clean up all associated objects first
         objc_setAssociatedObject(self.currentPresentedVC, "webViewDelegate", nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(self.currentPresentedVC, "webViewUIDelegate", nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(self.currentPresentedVC, "overlayView", nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -666,7 +628,6 @@ static SafariViewDismissedCallback GetGlobalSafariViewDismissedCallback() {
         objc_setAssociatedObject(self.currentPresentedVC, "overlayOpacity", nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(self.currentPresentedVC, "setupCompletionBlock", nil, OBJC_ASSOCIATION_COPY_NONATOMIC);
         
-        // Clean up WebView and remove from superview
         for (UIView *subview in [self.currentPresentedVC.view.subviews copy]) {
             if ([subview isKindOfClass:NSClassFromString(@"WKWebView")]) {
                 WKWebView *webView = (WKWebView *)subview;
@@ -682,7 +643,6 @@ static SafariViewDismissedCallback GetGlobalSafariViewDismissedCallback() {
             }
         }
         
-        // Clean up overlay view and any dismiss buttons
         UIView *overlayView = objc_getAssociatedObject(self.currentPresentedVC, "overlayView");
         if (overlayView) {
             for (UIView *subview in [overlayView.subviews copy]) {
@@ -692,9 +652,7 @@ static SafariViewDismissedCallback GetGlobalSafariViewDismissedCallback() {
         }
     }
     
-    // Clean up portrait window if it exists
     if (self.portraitWindow) {
-        // Dismiss any presented view controllers first
         if (self.portraitWindow.rootViewController) {
             [self.portraitWindow.rootViewController dismissViewControllerAnimated:NO completion:nil];
         }
@@ -702,7 +660,6 @@ static SafariViewDismissedCallback GetGlobalSafariViewDismissedCallback() {
         self.portraitWindow.hidden = YES;
         self.portraitWindow.rootViewController = nil;
         
-        // Restore previous key window
         if (self.previousKeyWindow) {
             [self.previousKeyWindow makeKeyAndVisible];
             self.previousKeyWindow = nil;
@@ -710,9 +667,6 @@ static SafariViewDismissedCallback GetGlobalSafariViewDismissedCallback() {
         
         self.portraitWindow = nil;
     }
-    
-    // Don't clear safariViewDismissedCallback here - it's needed for callUnityCallbackOnce
-    // It will be cleared after the callback is called
     
     self.currentPresentedVC = nil;
     self.initialURL = nil;
@@ -743,15 +697,6 @@ static SafariViewDismissedCallback GetGlobalSafariViewDismissedCallback() {
     }
 }
 
-- (void)handleDismiss:(UITapGestureRecognizer *)gesture {
-    if (self.currentPresentedVC) {
-        [self dismissWithAnimation:^{
-            [self cleanupCardInstance];
-            [self callUnityCallbackOnce];
-        }];
-    }
-}
-
 - (void)dismissButtonTapped:(UIButton *)button {
     if (self.isPurchaseProcessing) return;
     
@@ -769,205 +714,34 @@ static SafariViewDismissedCallback GetGlobalSafariViewDismissedCallback() {
         return;
     }
     
-    // All presentations now use window-based approach
     CGRect screenBounds = [UIScreen mainScreen].bounds;
     CGFloat dismissY = screenBounds.size.height;
     
     OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
     UIView *overlayView = objc_getAssociatedObject(containerVC, "overlayView");
     
-    // Disable layout updates during dismissal to prevent glitching
     containerVC.skipLayoutDuringInitialSetup = YES;
     
     CGFloat animationDuration = _usePopupPresentation ? 0.2 : 0.3;
     
     [UIView animateWithDuration:animationDuration delay:0 options:UIViewAnimationOptionCurveEaseInOut animations:^{
         if (_usePopupPresentation) {
-            // Popup: fade out and scale down
             containerVC.view.alpha = 0.0;
             containerVC.view.transform = CGAffineTransformMakeScale(0.9, 0.9);
         } else {
-            // Card: slide down off screen
             CGRect frame = containerVC.view.frame;
             frame.origin.y = dismissY;
             containerVC.customFrame = frame;
             containerVC.view.frame = frame;
         }
         
-        // Fade out overlay
         if (overlayView) {
             overlayView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.0];
         }
     } completion:^(BOOL finished) {
-        // Re-enable layout updates after dismissal completes
         containerVC.skipLayoutDuringInitialSetup = NO;
         if (completion) completion();
     }];
-}
-
-- (void)handlePanGesture:(UIPanGestureRecognizer *)gesture {
-    if (!self.currentPresentedVC) return;
-    if (self.isPurchaseProcessing) return;
-    
-    // iPhone only - iPad doesn't use pan gesture on card
-    if (isRunningOniPad()) return;
-    
-    UIView *view = self.currentPresentedVC.view;
-    CGFloat height = view.frame.size.height;
-    
-    // Use window as reference view for accurate gesture tracking
-    UIView *referenceView = self.portraitWindow ? self.portraitWindow : view.superview;
-    CGPoint translation = [gesture translationInView:referenceView];
-    CGPoint velocity = [gesture velocityInView:referenceView];
-    
-    // iPhone dismiss gesture: slide-down to dismiss, slide-up if near top
-    BOOL isNearTop = _cardVerticalPosition < 0.1;
-    BOOL allowUpward = isNearTop;
-    BOOL allowDownward = YES;
-    
-    switch (gesture.state) {
-        case UIGestureRecognizerStateBegan: {
-            // CRITICAL: Store initial position and disable layout updates
-            self.initialY = view.frame.origin.y;
-            if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
-                OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
-                containerVC.skipLayoutDuringInitialSetup = YES;
-            }
-            break;
-        }
-            
-        case UIGestureRecognizerStateChanged: {
-            // Calculate new Y position based on allowed direction
-            CGFloat newY = self.initialY;
-            
-            if (allowUpward && translation.y < 0) {
-                // Allow upward movement
-                newY = self.initialY + translation.y;
-            } else if (allowDownward && translation.y > 0) {
-                // Allow downward movement
-                newY = self.initialY + translation.y;
-                // Prevent going below screen bottom
-                CGFloat maxY = referenceView.bounds.size.height;
-                if (newY > maxY) newY = maxY;
-            } else {
-                // Movement not allowed in this direction
-                return;
-            }
-            
-            // CRITICAL: Update frame directly with CATransaction to prevent layout interference
-            [CATransaction begin];
-            [CATransaction setDisableActions:YES];
-            view.frame = CGRectMake(view.frame.origin.x, newY, view.frame.size.width, height);
-            [CATransaction commit];
-            
-            // Update customFrame to match
-            if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
-                OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
-                containerVC.customFrame = view.frame;
-            }
-            
-            // Adjust background opacity based on position
-            CGFloat maxTravel = height;
-            CGFloat currentTravel = fabs(newY - self.initialY);
-            CGFloat ratio = 1.0 - (currentTravel / maxTravel);
-            if (ratio < 0) ratio = 0;
-            
-            // Update overlay opacity
-            UIView *overlayView = objc_getAssociatedObject(self.currentPresentedVC, "overlayView");
-            if (overlayView) {
-                CGFloat baseOpacity = isRunningOniPad() ? 0.25 : 0.4;
-                overlayView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:baseOpacity * ratio];
-            }
-            break;
-        }
-            
-        case UIGestureRecognizerStateEnded:
-        case UIGestureRecognizerStateCancelled: {
-            // Get the velocity of the gesture (already retrieved above)
-            CGFloat currentY = view.frame.origin.y;
-            CGFloat dismissThreshold = height * 0.3;
-            CGFloat screenHeight = referenceView.bounds.size.height;
-            
-            // Determine if we should dismiss based on position and velocity
-            BOOL shouldDismiss = NO;
-            CGFloat finalY = 0;
-            
-            // Check for downward dismissal
-            if (allowDownward && (velocity.y > 300 || currentY > (self.initialY + dismissThreshold))) {
-                shouldDismiss = YES;
-                finalY = screenHeight;
-            }
-            // Check for upward dismissal (iPhone top-positioned cards only)
-            else if (allowUpward && (velocity.y < -300 || currentY < (self.initialY - dismissThreshold))) {
-                shouldDismiss = YES;
-                finalY = -height;
-            }
-            
-            if (shouldDismiss) {
-                // Animate the rest of the way out, then dismiss
-                [UIView animateWithDuration:0.15 animations:^{
-                    view.frame = CGRectMake(view.frame.origin.x, finalY, view.frame.size.width, height);
-                    
-                    // Update customFrame
-                    if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
-                        OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
-                        containerVC.customFrame = view.frame;
-                    }
-                    
-                    // Fade out overlay
-                    UIView *overlayView = objc_getAssociatedObject(self.currentPresentedVC, "overlayView");
-                    if (overlayView) {
-                        overlayView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.0];
-                    }
-                } completion:^(BOOL finished) {
-                    // Re-enable layout updates
-                    if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
-                        OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
-                        containerVC.skipLayoutDuringInitialSetup = NO;
-                    }
-                    
-                    [self.currentPresentedVC dismissViewControllerAnimated:NO completion:^{
-                        [self cleanupCardInstance];
-                        [self callUnityCallbackOnce];
-                    }];
-                }];
-            } else {
-                // Animate back to original position with spring animation
-                [UIView animateWithDuration:0.2
-                                     delay:0
-                        usingSpringWithDamping:0.7
-                         initialSpringVelocity:0
-                                       options:UIViewAnimationOptionCurveEaseOut
-                                    animations:^{
-                    view.frame = CGRectMake(view.frame.origin.x, self.initialY, view.frame.size.width, height);
-                    
-                    // Update customFrame
-                    if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
-                        OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
-                        containerVC.customFrame = view.frame;
-                    }
-                    
-                    CGFloat baseOpacity = _isCardExpanded ? 0.6 : 0.4;
-                    
-                    // Update overlay opacity
-                    UIView *overlayView = objc_getAssociatedObject(self.currentPresentedVC, "overlayView");
-                    if (overlayView) {
-                        overlayView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:baseOpacity];
-                    }
-                } completion:^(BOOL finished) {
-                    // Re-enable layout updates after gesture completes
-                    if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
-                        OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
-                        containerVC.skipLayoutDuringInitialSetup = NO;
-                    }
-                }];
-            }
-            break;
-        }
-            
-        default:
-            break;
-    }
 }
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
@@ -978,22 +752,29 @@ static SafariViewDismissedCallback GetGlobalSafariViewDismissedCallback() {
 }
 
 - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer {
+    // NOTE: On iPad drag tray, completely disable upward gestures - only allow downward drag
+    if (isRunningOniPad() && [gestureRecognizer isKindOfClass:[UIPanGestureRecognizer class]]) {
+        UIPanGestureRecognizer *panGesture = (UIPanGestureRecognizer *)gestureRecognizer;
+        // Check if this is the drag tray gesture
+        if ([panGesture.view isEqual:self.dragTrayView]) {
+            UIView *referenceView = self.portraitWindow ? self.portraitWindow : panGesture.view.superview;
+            CGPoint translation = [panGesture translationInView:referenceView];
+            CGPoint velocity = [panGesture velocityInView:referenceView];
+            // Completely block any upward movement - only allow downward or neutral
+            if (translation.y < 0 || velocity.y < 0) {
+                return NO;
+            }
+        }
+    }
     return YES;
 }
 
-// Note: Rotation locking is now naturally handled by the window's rootViewController
-// No explicit lock/unlock functions needed
-
-// Helper function to detect if we're running on iPad
 BOOL isRunningOniPad() {
-    // Check compile-time flag first
     #if !ENABLE_IPAD_SUPPORT
     return NO;
     #endif
     
-    // Safety check: ensure we're in a UI context and UIDevice is available
     if (![NSThread isMainThread]) {
-        // If not on main thread, dispatch to main thread synchronously
         __block BOOL result = NO;
         dispatch_sync(dispatch_get_main_queue(), ^{
             result = isRunningOniPad();
@@ -1001,23 +782,19 @@ BOOL isRunningOniPad() {
         return result;
     }
     
-    // Additional safety check for UIDevice availability
     Class UIDeviceClass = NSClassFromString(@"UIDevice");
     if (!UIDeviceClass) {
         return NO;
     }
     
-    // Safe access to current device
     UIDevice *currentDevice = [UIDevice currentDevice];
     if (!currentDevice) {
         return NO;
     }
     
-    BOOL isPad = (currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad);
-    return isPad;
+    return (currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad);
 }
 
-// Helper function to calculate card dimensions for iPad (more squared for better UX)
 CGSize calculateiPadCardSize(CGRect screenBounds) {
     if (screenBounds.size.width <= 0 || screenBounds.size.height <= 0) {
         return CGSizeMake(600, 700);
@@ -1648,9 +1425,18 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     
     switch (gesture.state) {
         case UIGestureRecognizerStateBegan: {
+            // NOTE: On iPad, completely block upward gestures - cancel immediately
+            if (isRunningOniPad() && translation.y < 0) {
+                gesture.enabled = NO;
+                gesture.enabled = YES;
+                return;
+            }
+            
+            // NOTE: Store initial Y position - for iPad this is the centered position
             self.initialY = cardView.frame.origin.y;
-            // iPhone: Disable layout updates during gesture to prevent interference
-            if (!isRunningOniPad() && [self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
+            
+            // NOTE: Disable layout updates during gesture to prevent interference (both iPhone and iPad)
+            if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
                 OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
                 containerVC.skipLayoutDuringInitialSetup = YES;
             }
@@ -1661,97 +1447,98 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
             CGFloat currentTravel = translation.y;
             CGFloat screenHeight = self.portraitWindow ? self.portraitWindow.bounds.size.height : cardView.superview.bounds.size.height;
             
-            if (currentTravel < 0 && !_isCardExpanded && !isRunningOniPad()) {
-                // Dragging up to expand - linear progress that directly follows finger (disabled on iPad)
-                CGFloat expandDistance = height * 0.4;
-                CGFloat expandProgress = MIN(1.0, fabs(currentTravel) / expandDistance);
+            if (isRunningOniPad()) {
+                // NOTE: iPad - completely block upward drags, do absolutely nothing
+                if (currentTravel <= 0) {
+                    return; // Exit immediately, don't process upward drags at all
+                }
                 
-                [self updateCardExpansionProgress:expandProgress cardView:cardView];
-                
-            } else if (currentTravel > 0) {
-                // Dragging down - handle dismiss or collapse with direct linear following
-                
-                if (_isCardExpanded) {
-                    // When expanded, collapse follows finger linearly with no easing
-                    CGFloat collapseDistance = height * 0.5;
-                    CGFloat collapseProgress = MIN(1.0, currentTravel / collapseDistance);
+                // NOTE: iPad - fixed size card, only drag down to dismiss, follows finger smoothly all the way to bottom
+                if (currentTravel > 0) {
+                    // Direct linear following - no thresholds, no jumps, just smooth following
+                    CGFloat newY = self.initialY + currentTravel;
+                    CGFloat maxY = screenHeight;
+                    newY = MIN(maxY, newY);
                     
-                    // Direct linear progress - no easing during drag for iOS-native feel
-                    [self updateCardExpansionProgress:1.0 - collapseProgress cardView:cardView];
+                    // NOTE: Use CATransaction to prevent layout interference and ensure smooth following
+                    [CATransaction begin];
+                    [CATransaction setDisableActions:YES];
+                    cardView.frame = CGRectMake(cardView.frame.origin.x, newY, cardView.frame.size.width, height);
+                    [CATransaction commit];
                     
-                    // If dragged beyond collapse distance, continue with dismiss motion
-                    if (collapseProgress >= 1.0) {
-                        // Calculate how much we've dragged past the collapse point
-                        CGFloat extraTravel = currentTravel - collapseDistance;
+                    if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
+                        OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
+                        containerVC.customFrame = cardView.frame;
+                    }
+                    
+                    // Update overlay opacity smoothly based on distance dragged
+                    CGFloat maxTravel = screenHeight * 0.5; // Use screen height for smoother fade
+                    CGFloat ratio = 1.0 - (currentTravel / maxTravel);
+                    ratio = MAX(0.0, MIN(1.0, ratio)); // Allow full fade to 0
+                    
+                    if (overlayView) {
+                        overlayView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.25 * ratio];
+                    }
+                }
+                // NOTE: iPad completely ignores upward drags (currentTravel <= 0) - do absolutely nothing
+            } else {
+                // iPhone: supports expand/collapse and dismiss
+                if (currentTravel < 0 && !_isCardExpanded) {
+                    CGFloat expandDistance = height * 0.4;
+                    CGFloat expandProgress = MIN(1.0, fabs(currentTravel) / expandDistance);
+                    [self updateCardExpansionProgress:expandProgress cardView:cardView];
+                } else if (currentTravel > 0) {
+                    if (_isCardExpanded) {
+                        CGFloat collapseDistance = height * 0.5;
+                        CGFloat collapseProgress = MIN(1.0, currentTravel / collapseDistance);
+                        [self updateCardExpansionProgress:1.0 - collapseProgress cardView:cardView];
                         
-                        // Get the card's current collapsed position
-                        CGRect screenBounds = [UIScreen mainScreen].bounds;
-                        CGFloat collapsedY;
-                        if (isRunningOniPad()) {
-                            CGSize cardSize = calculateiPadCardSize(screenBounds);
-                            collapsedY = (screenBounds.size.height - cardSize.height) / 2;
-                        } else {
+                        if (collapseProgress >= 1.0) {
+                            CGFloat extraTravel = currentTravel - collapseDistance;
+                            CGRect screenBounds = [UIScreen mainScreen].bounds;
                             CGFloat collapsedHeight = screenBounds.size.height * _originalCardHeightRatio;
-                            collapsedY = screenBounds.size.height * _originalCardVerticalPosition - collapsedHeight;
+                            CGFloat collapsedY = screenBounds.size.height * _originalCardVerticalPosition - collapsedHeight;
                             if (collapsedY < 0) collapsedY = 0;
+                            
+                            CGFloat newY = collapsedY + extraTravel * 0.6;
+                            CGFloat maxY = screenHeight;
+                            newY = MIN(maxY, newY);
+                            
+                            CGRect currentFrame = cardView.frame;
+                            [CATransaction begin];
+                            [CATransaction setDisableActions:YES];
+                            cardView.frame = CGRectMake(currentFrame.origin.x, newY, currentFrame.size.width, currentFrame.size.height);
+                            [CATransaction commit];
+                            
+                            if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
+                                OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
+                                containerVC.customFrame = cardView.frame;
+                            }
                         }
-                        
-                        // Add the extra travel with some resistance for dismiss hint
-                        CGFloat newY = collapsedY + extraTravel * 0.6; // Less damping for more direct feel
+                    } else {
+                        CGFloat newY = self.initialY + currentTravel;
                         CGFloat maxY = screenHeight;
                         newY = MIN(maxY, newY);
                         
-                        // Directly update frame for smooth dismiss hint
-                        CGRect currentFrame = cardView.frame;
-                        // iPhone: Use CATransaction to prevent layout interference
-                        if (!isRunningOniPad()) {
-                            [CATransaction begin];
-                            [CATransaction setDisableActions:YES];
-                        }
-                        cardView.frame = CGRectMake(currentFrame.origin.x, newY, currentFrame.size.width, currentFrame.size.height);
-                        if (!isRunningOniPad()) {
-                            [CATransaction commit];
-                        }
+                        [CATransaction begin];
+                        [CATransaction setDisableActions:YES];
+                        cardView.frame = CGRectMake(cardView.frame.origin.x, newY, cardView.frame.size.width, height);
+                        [CATransaction commit];
                         
-                        // Update customFrame (all presentations now use window approach)
                         if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
                             OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
                             containerVC.customFrame = cardView.frame;
                         }
                     }
                     
-                } else {
-                    // Normal collapsed position dragging for dismiss - direct linear movement
-                    CGFloat newY = self.initialY + currentTravel;
-                    CGFloat maxY = screenHeight;
-                    newY = MIN(maxY, newY);
-                    // iPhone: Use CATransaction to prevent layout interference
-                    if (!isRunningOniPad()) {
-                        [CATransaction begin];
-                        [CATransaction setDisableActions:YES];
-                    }
-                    cardView.frame = CGRectMake(cardView.frame.origin.x, newY, cardView.frame.size.width, height);
-                    if (!isRunningOniPad()) {
-                        [CATransaction commit];
-                    }
+                    CGFloat maxTravel = _isCardExpanded ? (height * 0.8) : (height * 0.6);
+                    CGFloat ratio = 1.0 - (currentTravel / maxTravel);
+                    ratio = MAX(0.1, MIN(1.0, ratio));
                     
-                    // Update customFrame (all presentations now use window approach)
-                    if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
-                        OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
-                        containerVC.customFrame = cardView.frame;
+                    CGFloat baseOpacity = _isCardExpanded ? 0.6 : 0.4;
+                    if (overlayView) {
+                        overlayView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:baseOpacity * ratio];
                     }
-                }
-                
-                // Smooth background opacity change - lighter on iPad
-                CGFloat maxTravel = _isCardExpanded ? (height * 0.8) : (height * 0.6);
-                CGFloat ratio = 1.0 - (currentTravel / maxTravel);
-                ratio = MAX(0.1, MIN(1.0, ratio)); // Clamp between 0.1 and 1.0
-                
-                CGFloat baseOpacity = _isCardExpanded ? (isRunningOniPad() ? 0.45 : 0.6) : (isRunningOniPad() ? 0.25 : 0.4);
-                
-                // Update overlay opacity
-                if (overlayView) {
-                    overlayView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:baseOpacity * ratio];
                 }
             }
             break;
@@ -1761,43 +1548,52 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
         case UIGestureRecognizerStateCancelled: {
             CGFloat currentTravel = translation.y;
             
-            // iOS-native thresholds - more generous and intuitive
-            CGFloat expandThreshold = height * 0.15; // 15% upward drag to expand
-            CGFloat collapseThreshold = height * 0.25; // 25% downward drag to collapse  
-            CGFloat dismissThreshold = height * 0.3; // 30% downward drag to dismiss
-            
-            // Velocity thresholds for quick gestures (similar to iOS system gestures)
-            CGFloat expandVelocityThreshold = -300; // Lower threshold for upward swipes
-            CGFloat collapseVelocityThreshold = 300; // Lower threshold for downward swipes
-            CGFloat dismissVelocityThreshold = 500; // Moderate threshold for dismiss
-            
-            // Determine action based on distance and velocity
             BOOL shouldExpand = NO;
             BOOL shouldCollapse = NO;
             BOOL shouldDismiss = NO;
             
-            if (currentTravel < -expandThreshold || velocity.y < expandVelocityThreshold) {
-                // Dragged up sufficiently or fast upward velocity (disabled on iPad)
-                if (!_isCardExpanded && !isRunningOniPad()) {
-                    shouldExpand = YES;
-                }
-            } else if (currentTravel > 0) {
-                // Downward movement - determine collapse vs dismiss
-                if (_isCardExpanded) {
-                    // For expanded cards, prioritize collapse over dismiss
-                    if (currentTravel > collapseThreshold || velocity.y > collapseVelocityThreshold) {
-                        shouldCollapse = YES;
-                        
-                        // Only dismiss if dragged much further or with very high velocity
-                        if (currentTravel > dismissThreshold * 1.5 && velocity.y > dismissVelocityThreshold * 1.5) {
-                            shouldDismiss = YES;
-                            shouldCollapse = NO; // Override collapse with dismiss
-                        }
-                    }
-                } else {
-                    // For collapsed cards, dismiss if threshold met
-                    if (currentTravel > dismissThreshold || velocity.y > dismissVelocityThreshold) {
+            if (isRunningOniPad()) {
+                // NOTE: iPad - fixed size card, only dismiss gesture, must drag to bottom of screen
+                // Dismiss only when card is dragged all the way to bottom (very close to screen bottom)
+                if (currentTravel > 0) {
+                    CGFloat currentY = cardView.frame.origin.y;
+                    CGFloat screenHeight = self.portraitWindow ? self.portraitWindow.bounds.size.height : cardView.superview.bounds.size.height;
+                    CGFloat cardBottom = currentY + height;
+                    CGFloat distanceToBottom = screenHeight - cardBottom;
+                    
+                    // Dismiss ONLY if card bottom is very close to screen bottom (< 80pt) OR very fast swipe down (>800 velocity)
+                    // This ensures smooth following all the way down without premature dismissal
+                    CGFloat dismissVelocityThreshold = 800;
+                    if (distanceToBottom < 80.0 || (velocity.y > dismissVelocityThreshold && currentTravel > height * 0.25)) {
                         shouldDismiss = YES;
+                    }
+                }
+            } else {
+                // iPhone: supports expand/collapse and dismiss
+                CGFloat expandThreshold = height * 0.15;
+                CGFloat collapseThreshold = height * 0.25;
+                CGFloat dismissThreshold = height * 0.3;
+                CGFloat expandVelocityThreshold = -300;
+                CGFloat collapseVelocityThreshold = 300;
+                CGFloat dismissVelocityThreshold = 500;
+                
+                if (currentTravel < -expandThreshold || velocity.y < expandVelocityThreshold) {
+                    if (!_isCardExpanded) {
+                        shouldExpand = YES;
+                    }
+                } else if (currentTravel > 0) {
+                    if (_isCardExpanded) {
+                        if (currentTravel > collapseThreshold || velocity.y > collapseVelocityThreshold) {
+                            shouldCollapse = YES;
+                            if (currentTravel > dismissThreshold * 1.5 && velocity.y > dismissVelocityThreshold * 1.5) {
+                                shouldDismiss = YES;
+                                shouldCollapse = NO;
+                            }
+                        }
+                    } else {
+                        if (currentTravel > dismissThreshold || velocity.y > dismissVelocityThreshold) {
+                            shouldDismiss = YES;
+                        }
                     }
                 }
             }
@@ -1860,18 +1656,15 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
                                  animations:^{
                     cardView.frame = CGRectMake(cardView.frame.origin.x, finalY, cardView.frame.size.width, cardView.frame.size.height);
                     
-                    // Update customFrame (all presentations now use window approach)
                     if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
                         OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
                         containerVC.customFrame = cardView.frame;
                     }
                     
-                    // Fade out overlay
                     if (overlayView) {
                         overlayView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.0];
                     }
                 } completion:^(BOOL finished) {
-                    // Re-enable layout updates after dismissal completes
                     if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
                         OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
                         containerVC.skipLayoutDuringInitialSetup = NO;
@@ -1883,22 +1676,56 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
                     }];
                 }];
             } else {
-                // Return to current state with iOS-native spring animation
-                CGFloat targetProgress = _isCardExpanded ? 1.0 : 0.0;
-                [UIView animateWithDuration:0.4 
-                                      delay:0 
-                     usingSpringWithDamping:0.8 
-                      initialSpringVelocity:fabs(velocity.y) / 1000.0 
-                                    options:UIViewAnimationOptionCurveEaseOut 
-                                 animations:^{
-                    [self updateCardExpansionProgress:targetProgress cardView:cardView];
-                } completion:^(BOOL finished) {
-                    // iPhone: Re-enable layout after gesture completes
-                    if (!isRunningOniPad() && [self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
-                        OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
-                        containerVC.skipLayoutDuringInitialSetup = NO;
-                    }
-                }];
+                // Return to current state
+                if (isRunningOniPad()) {
+                    // NOTE: iPad - snap back to original centered position smoothly when gesture doesn't dismiss
+                    // Use the same calculation as initial card positioning to ensure exact match
+                    CGRect screenBounds = [UIScreen mainScreen].bounds;
+                    CGFloat phoneLikeWidth = fmin(400.0, screenBounds.size.width * 0.9);
+                    CGFloat cardHeight = screenBounds.size.height * _cardHeightRatio;
+                    CGFloat originalX = (screenBounds.size.width - phoneLikeWidth) / 2;
+                    CGFloat originalY = (screenBounds.size.height - cardHeight) / 2;
+                    
+                    [UIView animateWithDuration:0.3 
+                                          delay:0 
+                         usingSpringWithDamping:0.85 
+                          initialSpringVelocity:fabs(velocity.y) / 1000.0 
+                                        options:UIViewAnimationOptionCurveEaseOut 
+                                     animations:^{
+                        cardView.frame = CGRectMake(originalX, originalY, phoneLikeWidth, cardHeight);
+                        
+                        if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
+                            OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
+                            containerVC.customFrame = cardView.frame;
+                        }
+                        
+                        if (overlayView) {
+                            overlayView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.25];
+                        }
+                    } completion:^(BOOL finished) {
+                        // Re-enable layout updates after snap-back completes
+                        if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
+                            OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
+                            containerVC.skipLayoutDuringInitialSetup = NO;
+                        }
+                    }];
+                } else {
+                    // iPhone: Return to expanded/collapsed state
+                    CGFloat targetProgress = _isCardExpanded ? 1.0 : 0.0;
+                    [UIView animateWithDuration:0.4 
+                                          delay:0 
+                         usingSpringWithDamping:0.8 
+                          initialSpringVelocity:fabs(velocity.y) / 1000.0 
+                                        options:UIViewAnimationOptionCurveEaseOut 
+                                     animations:^{
+                        [self updateCardExpansionProgress:targetProgress cardView:cardView];
+                    } completion:^(BOOL finished) {
+                        if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
+                            OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
+                            containerVC.skipLayoutDuringInitialSetup = NO;
+                        }
+                    }];
+                }
             }
             break;
         }
@@ -2608,16 +2435,12 @@ extern "C" {
                 // Use window-based presentation for all cases (iPhone, iPad, popup)
                 [[StashPayCardSafariDelegate sharedInstance] setPreviousKeyWindow:[UIApplication sharedApplication].keyWindow];
                 
-                // iPhone card mode: Start frame BELOW screen, then animate to finalY
-                // iPad and popup: Start at final position
+                // NOTE: iPhone card starts below screen (frame-based animation), iPad/popup start at final position
                 CGFloat initialY;
                 if (!_usePopupPresentation && !isRunningOniPad()) {
-                    // iPhone: Start frame below screen (off-screen)
-                    // Use a larger offset to ensure smooth entry (like Apple Pay)
                     CGFloat screenHeight = screenBounds.size.height;
-                    initialY = screenHeight + height; // Start with entire card below screen
+                    initialY = screenHeight + height;
                 } else {
-                    // iPad and popup: Start at final position
                     initialY = finalY;
                 }
                 
@@ -2647,27 +2470,22 @@ extern "C" {
                 [CATransaction setDisableActions:YES];
                 [UIView setAnimationsEnabled:NO];
                 
-                // CRITICAL: For iPhone card mode, ensure frame is BELOW screen
-                // For iPad and popup, ensure frame is at final position
+                // NOTE: iPhone card frame starts below screen for slide-up animation, iPad/popup at final position
                 if (!_usePopupPresentation && !isRunningOniPad()) {
-                    // iPhone: Frame must be below screen (entire card off-screen)
                     CGFloat screenHeight = screenBounds.size.height;
-                    CGFloat belowScreenY = screenHeight + height; // Entire card below screen
+                    CGFloat belowScreenY = screenHeight + height;
                     containerVC.view.frame = CGRectMake(x, belowScreenY, width, height);
                     containerVC.customFrame = CGRectMake(x, belowScreenY, width, height);
                 } else {
-                    // iPad and popup: Frame at final position
                     containerVC.view.frame = containerVC.customFrame;
                 }
                 containerVC.view.autoresizingMask = UIViewAutoresizingNone;
-                // iPhone card: Start slightly visible to avoid harsh pop-in
-                // iPad/popup: Start invisible for fade-in effect
                 if (!_usePopupPresentation && !isRunningOniPad()) {
-                    containerVC.view.alpha = 0.95; // Almost opaque to avoid pop-in
+                    containerVC.view.alpha = 0.95;
                 } else {
                     containerVC.view.alpha = 0.0;
                 }
-                containerVC.view.transform = CGAffineTransformIdentity; // No transform - frame position handles it
+                containerVC.view.transform = CGAffineTransformIdentity;
                 
                 [CATransaction commit];
                 [UIView setAnimationsEnabled:YES];
@@ -2699,13 +2517,12 @@ extern "C" {
                 // CRITICAL: Keep skipLayout enabled during animation for ALL modes
                 // This prevents viewWillLayoutSubviews from interfering with the animation
                 
-                // iPhone card mode: Verify frame is below screen before showing window
+                // NOTE: Verify iPhone card frame is below screen before showing (iOS may reset it)
                 if (!_usePopupPresentation && !isRunningOniPad()) {
                     CGFloat screenHeight = screenBounds.size.height;
                     CGFloat currentY = containerVC.view.frame.origin.y;
                     if (currentY < screenHeight) {
-                        // Frame is not below screen, fix it
-                        CGFloat belowScreenY = screenHeight + height; // Entire card below screen
+                        CGFloat belowScreenY = screenHeight + height;
                         [CATransaction begin];
                         [CATransaction setDisableActions:YES];
                         containerVC.view.frame = CGRectMake(x, belowScreenY, width, height);
@@ -2717,7 +2534,6 @@ extern "C" {
                 cardWindow.hidden = NO;
                 [cardWindow makeKeyAndVisible];
                 
-                // Final frame check for iPad and popup mode only
                 if (isRunningOniPad() || _usePopupPresentation) {
                     dispatch_async(dispatch_get_main_queue(), ^{
                         if (!CGRectEqualToRect(containerVC.view.frame, containerVC.customFrame)) {
@@ -2728,7 +2544,6 @@ extern "C" {
                             [CATransaction commit];
                         }
                         
-                        // Also verify bounds match (especially important on iPad)
                         if (!CGSizeEqualToSize(containerVC.view.bounds.size, containerVC.customFrame.size)) {
                             [CATransaction begin];
                             [CATransaction setDisableActions:YES];
@@ -2737,13 +2552,12 @@ extern "C" {
                         }
                     });
                 } else {
-                    // iPhone card mode: Verify frame is still below screen after window appears
+                    // NOTE: Re-verify iPhone card frame after window appears (iOS can reset during window creation)
                     dispatch_async(dispatch_get_main_queue(), ^{
                         CGFloat screenHeight = screenBounds.size.height;
                         CGFloat currentY = containerVC.view.frame.origin.y;
                         if (currentY < screenHeight) {
-                            // Frame was reset to top, fix it to below screen
-                            CGFloat belowScreenY = screenHeight + height; // Entire card below screen
+                            CGFloat belowScreenY = screenHeight + height;
                             [CATransaction begin];
                             [CATransaction setDisableActions:YES];
                             containerVC.view.frame = CGRectMake(x, belowScreenY, width, height);
@@ -2858,27 +2672,21 @@ extern "C" {
                             };
                         }];
                     } else {
-                        // iPhone card mode: smooth slide-up animation from bottom (like Apple Pay)
-                        // Use native iOS animation timing for smooth, natural feel
-                        // Animate overlay fade-in slightly before card slide for smoother effect
+                        // NOTE: iPhone card animation - overlay fades in first, then card slides up from below screen
                         [UIView animateWithDuration:0.15 animations:^{
                             overlayView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:overlayOpacity];
                         }];
                         
-                        // Main card slide animation with refined spring physics
                         [UIView animateWithDuration:0.6 
                                               delay:0.05 
                              usingSpringWithDamping:0.75 
                               initialSpringVelocity:0.0 
                                             options:UIViewAnimationOptionCurveEaseOut 
                                          animations:^{
-                            // Animate frame from below screen to final position
                             containerVC.view.frame = CGRectMake(x, finalY, width, height);
                             containerVC.customFrame = CGRectMake(x, finalY, width, height);
-                            // Ensure alpha is fully opaque (in case it was slightly transparent)
                             containerVC.view.alpha = 1.0;
                         } completion:^(BOOL finished) {
-                            // Re-enable layout updates after animation completes
                             containerVC.skipLayoutDuringInitialSetup = NO;
                             
                             // Add drag tray (already has pan gesture for dismiss)
