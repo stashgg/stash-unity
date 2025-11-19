@@ -1,3 +1,4 @@
+#if UNITY_EDITOR_OSX
 using System;
 using UnityEngine;
 using UnityEditor;
@@ -7,13 +8,12 @@ using StashPopup.Editor.macOS;
 namespace StashPopup.Editor
 {
     /// <summary>
-    /// Editor window for testing StashPayCard popup and checkout dialogs in Unity Editor
+    /// Editor window for testing StashPayCard popup and checkout dialogs in Unity Editor (macOS only)
     /// </summary>
     public class StashPayCardEditorWindow : EditorWindow
     {
         private string currentUrl = "";
         private bool isPopupMode = false;
-        private bool isLoading = false;
         private WebViewLauncher webViewLauncher;
         
         // Device size presets (width x height in points)
@@ -195,13 +195,11 @@ namespace StashPopup.Editor
             if (string.IsNullOrEmpty(url))
                 return;
             
-            isLoading = true;
             Repaint();
             
             // Create native webview window immediately
             CreateWebViewWindow();
             
-            isLoading = false;
             Repaint();
         }
         
@@ -337,4 +335,5 @@ namespace StashPopup.Editor
         }
     }
 }
+#endif // UNITY_EDITOR_OSX
 
