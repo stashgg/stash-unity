@@ -313,6 +313,9 @@ namespace StashPopup
             {
             _StashPayCardOpenCheckoutInSafariVC(url);
             }
+#elif UNITY_EDITOR
+            // Use Editor window for testing in Unity Editor
+            OpenEditorTestWindow(url, isPopup, customSize);
 #else
             Application.OpenURL(url);
 #endif
@@ -527,6 +530,70 @@ namespace StashPopup
         private static void OnIOSPageLoaded(double loadTimeMs)
         {
             Instance?.OnPageLoaded?.Invoke(loadTimeMs);
+        }
+#endif
+
+#if UNITY_EDITOR
+        // Editor-only callback methods for testing
+        public void OnEditorPaymentSuccess()
+        {
+            OnPaymentSuccess?.Invoke();
+        }
+        
+        public void OnEditorPaymentFailure()
+        {
+            OnPaymentFailure?.Invoke();
+        }
+        
+        public void OnEditorOptinResponse(string optinType)
+        {
+            OnOptinResponse?.Invoke(optinType);
+        }
+        
+        public void OnEditorDismissCatalog()
+        {
+            OnSafariViewDismissed?.Invoke();
+        }
+        
+        // Editor-only method to open test window using reflection
+        private void OpenEditorTestWindow(string url, bool isPopup, PopupSizeConfig? customSize)
+        {
+            try
+            {
+                // Use reflection to avoid direct assembly reference
+                System.Type editorWindowType = System.Type.GetType("StashPopup.Editor.StashPayCardEditorWindow, Assembly-CSharp-Editor");
+                if (editorWindowType == null)
+                {
+                    // Try alternative assembly name
+                    editorWindowType = System.Type.GetType("StashPopup.Editor.StashPayCardEditorWindow");
+                }
+                
+                if (editorWindowType != null)
+                {
+                    if (isPopup)
+                    {
+                        System.Reflection.MethodInfo openPopupMethod = editorWindowType.GetMethod("OpenPopup", 
+                            new System.Type[] { typeof(string), typeof(PopupSizeConfig?) });
+                        if (openPopupMethod != null)
+                        {
+                            openPopupMethod.Invoke(null, new object[] { url, customSize });
+                        }
+                    }
+                    else
+                    {
+                        System.Reflection.MethodInfo openCheckoutMethod = editorWindowType.GetMethod("OpenCheckout", 
+                            new System.Type[] { typeof(string) });
+                        if (openCheckoutMethod != null)
+                        {
+                            openCheckoutMethod.Invoke(null, new object[] { url });
+                        }
+                    }
+                }
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"StashPayCard: Could not open Editor test window: {e.Message}");
+            }
         }
 #endif
 
