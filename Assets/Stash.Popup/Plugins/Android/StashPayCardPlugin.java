@@ -11,52 +11,43 @@ import android.net.Uri;
 import android.os.*;
 import android.util.*;
 import android.view.*;
-import android.view.ViewTreeObserver;
 import android.webkit.*;
 import android.widget.*;
 import com.unity3d.player.UnityPlayer;
 
-
+/**
+ * Android plugin for StashPayCard SDK.
+ * Manages popup (Dialog-based) and checkout (Activity-based) presentations with WebView integration.
+ */
 public class StashPayCardPlugin {
     private static final String TAG = "StashPayCard";
+    private static final String UNITY_GAME_OBJECT = "StashPayCard";
     private static StashPayCardPlugin instance;
     
-    // Core references
     private Activity activity;
     private Dialog currentDialog;
     private WebView webView;
     private FrameLayout currentContainer;
-    private Button currentHomeButton;
     private ProgressBar loadingIndicator;
     private ViewTreeObserver.OnGlobalLayoutListener orientationChangeListener;
     
-    // Configuration
     private String initialURL;
     private float cardHeightRatio = 0.6f;
-    private float cardVerticalPosition = 1.0f;
-    private float cardWidthRatio = 1.0f;
     
-    // State flags
     private boolean isCurrentlyPresented = false;
     private boolean paymentSuccessHandled = false;
     private boolean isPurchaseProcessing = false;
     private boolean usePopupPresentation = false;
     private boolean forceSafariViewController = false;
-    private boolean isExpanded = false;
     private int lastOrientation = Configuration.ORIENTATION_UNDEFINED;
     
-    // Custom popup size multipliers
     private boolean useCustomSize = false;
     private float customPortraitWidthMultiplier = 0.85f;
     private float customPortraitHeightMultiplier = 1.125f;
     private float customLandscapeWidthMultiplier = 1.27075f;
     private float customLandscapeHeightMultiplier = 0.9f;
     
-    // Page load tracking
     private long pageLoadStartTime = 0;
-    
-    // Constants
-    private String unityGameObjectName = "StashPayCard";
     
     private class StashJavaScriptInterface {
         @JavascriptInterface
@@ -67,7 +58,7 @@ public class StashPayCardPlugin {
 
             new Handler(Looper.getMainLooper()).post(() -> {
                 try {
-                    UnityPlayer.UnitySendMessage(unityGameObjectName, "OnAndroidPaymentSuccess", "");
+                    UnityPlayer.UnitySendMessage(UNITY_GAME_OBJECT, "OnAndroidPaymentSuccess", "");
                     dismissCurrentDialog();
                 } catch (Exception e) {
                     Log.e(TAG, "Error handling payment success: " + e.getMessage());
@@ -81,7 +72,7 @@ public class StashPayCardPlugin {
             isPurchaseProcessing = false;
             new Handler(Looper.getMainLooper()).post(() -> {
                 try {
-                    UnityPlayer.UnitySendMessage(unityGameObjectName, "OnAndroidPaymentFailure", "");
+                    UnityPlayer.UnitySendMessage(UNITY_GAME_OBJECT, "OnAndroidPaymentFailure", "");
                     dismissCurrentDialog();
                 } catch (Exception e) {
                     Log.e(TAG, "Error handling payment failure: " + e.getMessage());
@@ -99,15 +90,15 @@ public class StashPayCardPlugin {
         public void setPaymentChannel(String optinType) {
             new Handler(Looper.getMainLooper()).post(() -> {
                 try {
-                    UnityPlayer.UnitySendMessage(unityGameObjectName, "OnAndroidOptinResponse", 
+                    UnityPlayer.UnitySendMessage(UNITY_GAME_OBJECT, "OnAndroidOptinResponse", 
                         optinType != null ? optinType : "");
                     dismissCurrentDialog();
                 } catch (Exception e) {
                     Log.e(TAG, "Error handling payment channel: " + e.getMessage());
                 }
-                });
-            }
+            });
         }
+    }
     
     public static StashPayCardPlugin getInstance() {
         if (instance == null) {
@@ -127,11 +118,12 @@ public class StashPayCardPlugin {
     
     public void openPopup(String url) {
         usePopupPresentation = true;
-        useCustomSize = false; // Reset to use default multipliers
+        useCustomSize = false;
         openURLInternal(url);
     }
     
-    public void openPopupWithSize(String url, float portraitWidthMultiplier, float portraitHeightMultiplier, float landscapeWidthMultiplier, float landscapeHeightMultiplier) {
+    public void openPopupWithSize(String url, float portraitWidthMultiplier, float portraitHeightMultiplier, 
+                                   float landscapeWidthMultiplier, float landscapeHeightMultiplier) {
         usePopupPresentation = true;
         customPortraitWidthMultiplier = portraitWidthMultiplier;
         customPortraitHeightMultiplier = portraitHeightMultiplier;
@@ -166,8 +158,6 @@ public class StashPayCardPlugin {
     
     public void setCardConfiguration(float heightRatio, float verticalPosition, float widthRatio) {
         this.cardHeightRatio = heightRatio;
-        this.cardVerticalPosition = verticalPosition;
-        this.cardWidthRatio = widthRatio;
     }
     
     public void setForceSafariViewController(boolean force) {
@@ -179,17 +169,11 @@ public class StashPayCardPlugin {
     }
     
     private void openURLInternal(String url) {
-        if (activity == null) {
-            Log.e(TAG, "Activity is null, cannot open URL");
+        if (activity == null || url == null || url.isEmpty()) {
+            Log.e(TAG, "Invalid activity or URL");
             return;
         }
 
-        if (url == null || url.isEmpty()) {
-            Log.e(TAG, "URL is null or empty");
-            return;
-        }
-
-        // Ensure URL has protocol
         if (!url.startsWith("http://") && !url.startsWith("https://")) {
             url = "https://" + url;
         }
@@ -200,8 +184,10 @@ public class StashPayCardPlugin {
             if (forceSafariViewController) {
                 openWithChromeCustomTabs(finalUrl);
             } else if (usePopupPresentation) {
+                // NOTE: Popup uses Dialog for seamless rotation on all devices
                 createAndShowPopupDialog(finalUrl);
             } else {
+                // NOTE: Checkout uses Activity for reliable presentation and gesture handling
                 launchPortraitActivity(finalUrl);
             }
         });
@@ -224,8 +210,7 @@ public class StashPayCardPlugin {
             activity.startActivity(intent);
             isCurrentlyPresented = true;
         } catch (Exception e) {
-            Log.e(TAG, "Portrait Activity failed: " + e.getMessage());
-            createAndShowCardStyleDialog(url);
+            Log.e(TAG, "Failed to launch Activity: " + e.getMessage());
         }
     }
     
@@ -244,16 +229,14 @@ public class StashPayCardPlugin {
             mainFrame.setBackgroundColor(Color.parseColor("#20000000"));
             
             int[] dimensions = calculatePopupDimensions();
-            int popupWidth = dimensions[0];
-            int popupHeight = dimensions[1];
-            
             currentContainer = new FrameLayout(activity);
-            FrameLayout.LayoutParams containerParams = new FrameLayout.LayoutParams(popupWidth, popupHeight);
+            FrameLayout.LayoutParams containerParams = new FrameLayout.LayoutParams(dimensions[0], dimensions[1]);
             containerParams.gravity = Gravity.CENTER;
             currentContainer.setLayoutParams(containerParams);
             
             lastOrientation = activity.getResources().getConfiguration().orientation;
             
+            // NOTE: Orientation change listener for seamless popup transformation
             orientationChangeListener = new ViewTreeObserver.OnGlobalLayoutListener() {
                 @Override
                 public void onGlobalLayout() {
@@ -264,9 +247,6 @@ public class StashPayCardPlugin {
                             lastOrientation = currentOrientation;
                             
                             int[] newDimensions = calculatePopupDimensions();
-                            int newWidth = newDimensions[0];
-                            int newHeight = newDimensions[1];
-                            
                             FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) currentContainer.getLayoutParams();
                             
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
@@ -275,8 +255,8 @@ public class StashPayCardPlugin {
                                     .scaleY(0.95f)
                                     .setDuration(100)
                                     .withEndAction(() -> {
-                                        params.width = newWidth;
-                                        params.height = newHeight;
+                                        params.width = newDimensions[0];
+                                        params.height = newDimensions[1];
                                         currentContainer.setLayoutParams(params);
                                         currentContainer.animate()
                                             .scaleX(1.0f)
@@ -286,8 +266,8 @@ public class StashPayCardPlugin {
                                     })
                                     .start();
                             } else {
-                                params.width = newWidth;
-                                params.height = newHeight;
+                                params.width = newDimensions[0];
+                                params.height = newDimensions[1];
                                 currentContainer.setLayoutParams(params);
                             }
                         }
@@ -298,20 +278,32 @@ public class StashPayCardPlugin {
             
             GradientDrawable popupBg = new GradientDrawable();
             popupBg.setColor(getThemeBackgroundColor());
-            popupBg.setCornerRadius(dpToPx(20));
+            float radius = dpToPx(20);
+            popupBg.setCornerRadius(radius);
             currentContainer.setBackground(popupBg);
             
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 currentContainer.setElevation(dpToPx(24));
+                currentContainer.setOutlineProvider(new ViewOutlineProvider() {
+                    @Override
+                    public void getOutline(View view, Outline outline) {
+                        outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), radius);
+                    }
+                });
+                currentContainer.setClipToOutline(true);
             }
             
             webView = new WebView(activity);
-            setupPopupWebView(webView, url);
+            FrameLayout.LayoutParams webViewParams = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT);
+            webView.setLayoutParams(webViewParams);
             currentContainer.addView(webView);
+            
+            setupPopupWebView(webView, url);
             
             mainFrame.addView(currentContainer);
             currentDialog.setContentView(mainFrame);
-            
+
             Window window = currentDialog.getWindow();
             if (window != null) {
                 window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
@@ -319,22 +311,24 @@ public class StashPayCardPlugin {
                                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
                 window.setBackgroundDrawableResource(android.R.color.transparent);
                 window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-                WindowManager.LayoutParams params = window.getAttributes();
-                params.dimAmount = 0.3f;
-                window.setAttributes(params);
+                WindowManager.LayoutParams windowParams = window.getAttributes();
+                windowParams.dimAmount = 0.3f;
+                window.setAttributes(windowParams);
             }
             
             currentContainer.setOnClickListener(v -> {});
 
             currentDialog.setOnDismissListener(dialog -> {
                 if (!paymentSuccessHandled) {
-                    UnityPlayer.UnitySendMessage("StashPayCard", "OnAndroidDialogDismissed", "");
+                    UnityPlayer.UnitySendMessage(UNITY_GAME_OBJECT, "OnAndroidDialogDismissed", "");
                 }
                 cleanupAllViews();
                 isCurrentlyPresented = false;
             });
             
-        isCurrentlyPresented = true;
+            currentDialog.show();
+            animateFadeIn();
+            isCurrentlyPresented = true;
         } catch (Exception e) {
             Log.e(TAG, "Error creating popup: " + e.getMessage());
         }
@@ -373,322 +367,6 @@ public class StashPayCardPlugin {
         }
     }
     
-    private void createAndShowCardStyleDialog(String url) {
-        cleanupAllViews();
-        initialURL = url;
-        paymentSuccessHandled = false;
-
-        try {
-            currentDialog = new Dialog(activity, android.R.style.Theme_Translucent_NoTitleBar_Fullscreen);
-            currentDialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
-
-            FrameLayout mainFrame = new FrameLayout(activity);
-            mainFrame.setBackgroundColor(Color.parseColor("#20000000"));
-            
-            DisplayMetrics metrics = activity.getResources().getDisplayMetrics();
-            int screenHeight = metrics.heightPixels;
-            int cardHeight = (int) (screenHeight * 0.68f);
-            
-            currentContainer = createCardContainer(cardHeight);
-            
-            LinearLayout dragHandle = createDragHandleArea();
-            currentContainer.addView(dragHandle);
-            
-            webView = new WebView(activity);
-            setupCardWebView(webView, url);
-            currentContainer.addView(webView);
-
-            currentHomeButton = new Button(activity);
-            setupHomeButton(currentHomeButton);
-            currentHomeButton.setVisibility(View.GONE);
-            currentContainer.addView(currentHomeButton);
-
-            mainFrame.addView(currentContainer);
-            currentDialog.setContentView(mainFrame);
-
-            Window window = currentDialog.getWindow();
-            if (window != null) {
-                window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-                window.setFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
-                               WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
-                window.setBackgroundDrawableResource(android.R.color.transparent);
-                window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-                WindowManager.LayoutParams params = window.getAttributes();
-                params.dimAmount = 0.3f;
-                window.setAttributes(params);
-            }
-
-            // Dismiss on overlay tap
-            mainFrame.setOnClickListener(v -> dismissCustomCardDialog());
-            currentContainer.setOnClickListener(v -> {});
-
-            // Set dismiss listener
-            currentDialog.setOnDismissListener(dialog -> {
-                if (!paymentSuccessHandled) {
-                    UnityPlayer.UnitySendMessage("StashPayCard", "OnAndroidDialogDismissed", "");
-                }
-                cleanupAllViews();
-                isCurrentlyPresented = false;
-            });
-
-            currentDialog.show();
-            animateSlideUp();
-            isCurrentlyPresented = true;
-        } catch (Exception e) {
-            Log.e(TAG, "Error creating card dialog: " + e.getMessage());
-        }
-    }
-    
-    private FrameLayout createCardContainer(int cardHeight) {
-        FrameLayout container = new FrameLayout(activity);
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT, cardHeight);
-        params.gravity = Gravity.BOTTOM;
-        container.setLayoutParams(params);
-        
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(getThemeBackgroundColor());
-        float radius = dpToPx(25);
-        bg.setCornerRadii(new float[]{
-            radius, radius, // top-left
-            radius, radius, // top-right
-            0, 0,           // bottom-right
-            0, 0            // bottom-left
-        });
-        container.setBackground(bg);
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            container.setElevation(dpToPx(24));
-            container.setOutlineProvider(new ViewOutlineProvider() {
-                @Override
-                public void getOutline(View view, Outline outline) {
-                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight() + dpToPx(25), dpToPx(25));
-                }
-            });
-            container.setClipToOutline(true);
-        }
-        
-        container.setClipChildren(true);
-        container.setClipToPadding(true);
-        
-        return container;
-    }
-    
-    private LinearLayout createDragHandleArea() {
-        LinearLayout dragArea = new LinearLayout(activity);
-        dragArea.setOrientation(LinearLayout.VERTICAL);
-        dragArea.setGravity(Gravity.CENTER_HORIZONTAL);
-        dragArea.setPadding(dpToPx(20), dpToPx(16), dpToPx(20), dpToPx(16));
-        dragArea.setBackgroundColor(Color.TRANSPARENT);
-        
-        View handle = new View(activity);
-        GradientDrawable handleDrawable = new GradientDrawable();
-        handleDrawable.setColor(Color.parseColor("#D1D1D6"));
-        handleDrawable.setCornerRadius(dpToPx(2));
-        handle.setLayoutParams(new LinearLayout.LayoutParams(dpToPx(36), dpToPx(5)));
-        dragArea.addView(handle);
-        
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
-            dpToPx(120),
-            FrameLayout.LayoutParams.WRAP_CONTENT);
-        params.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
-        dragArea.setLayoutParams(params);
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            dragArea.setElevation(dpToPx(8));
-        }
-        
-        addDragToDismissTouch(dragArea);
-        
-        return dragArea;
-    }
-    
-    private void addDragToDismissTouch(View dragArea) {
-        dragArea.setOnTouchListener(new View.OnTouchListener() {
-            private float initialY = 0;
-            private float initialTranslationY = 0;
-            private boolean isDragging = false;
-            
-            @Override
-            public boolean onTouch(View v, MotionEvent event) {
-                if (currentContainer == null) return false;
-
-                switch (event.getAction()) {
-                    case MotionEvent.ACTION_DOWN:
-                        initialY = event.getRawY();
-                        initialTranslationY = currentContainer.getTranslationY();
-                        isDragging = false;
-                        return true;
-
-                    case MotionEvent.ACTION_MOVE:
-                        float deltaY = event.getRawY() - initialY;
-                        if (Math.abs(deltaY) > dpToPx(10)) {
-                            isDragging = true;
-                            if (deltaY > 0) {
-                                float newTranslationY = initialTranslationY + deltaY;
-                                currentContainer.setTranslationY(newTranslationY);
-                                float progress = Math.min(deltaY / dpToPx(200), 1.0f);
-                                currentContainer.setAlpha(1.0f - (progress * 0.3f));
-                            } else if (deltaY < 0 && !isExpanded) {
-                                DisplayMetrics metrics = activity.getResources().getDisplayMetrics();
-                                int screenHeight = metrics.heightPixels;
-                                int baseHeight = (int)(screenHeight * 0.68f);
-                                int maxHeight = (int)(screenHeight * 0.88f);
-                                
-                                int heightIncrease = (int)(Math.abs(deltaY) * 0.75f);
-                                int newHeight = Math.min(baseHeight + heightIncrease, maxHeight);
-                                
-                                FrameLayout.LayoutParams cardParams = 
-                                    (FrameLayout.LayoutParams)currentContainer.getLayoutParams();
-                                cardParams.height = newHeight;
-                                currentContainer.setLayoutParams(cardParams);
-                            }
-                        }
-                        return true;
-
-                    case MotionEvent.ACTION_UP:
-                    case MotionEvent.ACTION_CANCEL:
-                        if (isDragging) {
-                            float finalDeltaY = event.getRawY() - initialY;
-                            DisplayMetrics metrics = activity.getResources().getDisplayMetrics();
-
-                            if (finalDeltaY > 0) {
-                                int dismissThreshold = (int)(metrics.heightPixels * 0.25f);
-                                if (finalDeltaY > dismissThreshold) {
-                                    animateDismissCard();
-                                } else {
-                                    animateSnapBack();
-                                }
-                            } else if (finalDeltaY < 0 && !isExpanded && Math.abs(finalDeltaY) > dpToPx(80)) {
-                                animateExpandCard();
-                            } else {
-                                animateSnapBack();
-                            }
-                        }
-                        return true;
-                }
-                return false;
-            }
-        });
-    }
-
-    private void animateSlideUp() {
-        if (currentContainer != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
-            currentContainer.setTranslationY(currentContainer.getHeight());
-            currentContainer.animate()
-                .translationY(0)
-                .setDuration(300)
-                .setInterpolator(new android.view.animation.DecelerateInterpolator(1.5f))
-                .start();
-        }
-    }
-    
-    private void dismissCustomCardDialog() {
-        if (currentDialog != null && currentContainer != null) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
-        int containerHeight = currentContainer.getHeight();
-        if (containerHeight == 0) {
-                    containerHeight = (int) (activity.getResources().getDisplayMetrics().heightPixels * 0.75f);
-        }
-
-            currentContainer.animate()
-                    .translationY(containerHeight)
-                    .setDuration(250)
-                .withEndAction(() -> {
-                        if (currentDialog != null) currentDialog.dismiss();
-                })
-                .start();
-        } else {
-                currentDialog.dismiss();
-            }
-        }
-    }
-
-    private void animateDismissCard() {
-        if (currentContainer == null) return;
-        int containerHeight = currentContainer.getHeight();
-        if (containerHeight == 0) {
-            containerHeight = (int)(activity.getResources().getDisplayMetrics().heightPixels * 0.68f);
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
-            currentContainer.animate()
-                .translationY(containerHeight)
-                .alpha(0.0f)
-                .setDuration(300)
-                .withEndAction(() -> {
-                    if (currentDialog != null) currentDialog.dismiss();
-                })
-                .start();
-        } else {
-            if (currentDialog != null) currentDialog.dismiss();
-        }
-    }
-    
-    private void animateExpandCard() {
-        if (currentContainer == null) return;
-        DisplayMetrics metrics = activity.getResources().getDisplayMetrics();
-        int expandedHeight = (int)(metrics.heightPixels * 0.88f);
-        
-        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams)currentContainer.getLayoutParams();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
-            android.animation.ValueAnimator animator = android.animation.ValueAnimator.ofInt(params.height, expandedHeight);
-            animator.setDuration(300);
-            animator.addUpdateListener(animation -> {
-                params.height = (Integer)animation.getAnimatedValue();
-                currentContainer.setLayoutParams(params);
-            });
-            animator.start();
-            
-            currentContainer.animate()
-                .translationY(0)
-                .alpha(1.0f)
-                .scaleX(1.0f)
-                .scaleY(1.0f)
-                .setDuration(300)
-                .start();
-        } else {
-            params.height = expandedHeight;
-            currentContainer.setLayoutParams(params);
-        }
-
-        isExpanded = true;
-    }
-
-    private void animateSnapBack() {
-        if (currentContainer == null) return;
-        DisplayMetrics metrics = activity.getResources().getDisplayMetrics();
-        int targetHeight = isExpanded ?
-            (int)(metrics.heightPixels * 0.88f) : 
-            (int)(metrics.heightPixels * 0.68f);
-        
-        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams)currentContainer.getLayoutParams();
-        if (params.height != targetHeight) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
-                android.animation.ValueAnimator animator = android.animation.ValueAnimator.ofInt(params.height, targetHeight);
-                animator.setDuration(250);
-                animator.addUpdateListener(animation -> {
-                    params.height = (Integer)animation.getAnimatedValue();
-                    currentContainer.setLayoutParams(params);
-                });
-                animator.start();
-            } else {
-                params.height = targetHeight;
-                currentContainer.setLayoutParams(params);
-            }
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
-            currentContainer.animate()
-                .translationY(0)
-                .alpha(1.0f)
-                .scaleX(1.0f)
-                .scaleY(1.0f)
-                .setDuration(250)
-                .start();
-        }
-    }
-
     private void setupPopupWebView(WebView webView, String url) {
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -699,13 +377,8 @@ public class StashPayCardPlugin {
         settings.setDisplayZoomControls(false);
         settings.setSupportZoom(false);
         
-        // Enable dark mode rendering if system is in dark mode
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            if (isDarkTheme()) {
-                settings.setForceDark(WebSettings.FORCE_DARK_ON);
-                    } else {
-                settings.setForceDark(WebSettings.FORCE_DARK_OFF);
-            }
+            settings.setForceDark(isDarkTheme() ? WebSettings.FORCE_DARK_ON : WebSettings.FORCE_DARK_OFF);
         }
         
         webView.setWebViewClient(new WebViewClient() {
@@ -714,7 +387,6 @@ public class StashPayCardPlugin {
                 super.onPageStarted(view, url, favicon);
                 pageLoadStartTime = System.currentTimeMillis();
                 showLoadingIndicator();
-                view.setVisibility(View.INVISIBLE);
                 injectStashSDKFunctions();
             }
             
@@ -722,41 +394,23 @@ public class StashPayCardPlugin {
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 
-                // Calculate and report page load time
                 if (pageLoadStartTime > 0) {
                     long loadTimeMs = System.currentTimeMillis() - pageLoadStartTime;
-                    UnityPlayer.UnitySendMessage(unityGameObjectName, "OnAndroidPageLoaded", String.valueOf(loadTimeMs));
+                    UnityPlayer.UnitySendMessage(UNITY_GAME_OBJECT, "OnAndroidPageLoaded", String.valueOf(loadTimeMs));
                     pageLoadStartTime = 0;
                 }
                 
                 injectStashSDKFunctions();
-                
-                // Show the dialog now that the page has finished loading
-                if (currentDialog != null && !currentDialog.isShowing()) {
-                    activity.runOnUiThread(() -> {
-                        try {
-                            currentDialog.show();
-                            animateFadeIn();
-                            view.setVisibility(View.VISIBLE);
-                            hideLoadingIndicator();
-                        } catch (Exception e) {
-                            android.util.Log.e(TAG, "Error showing dialog after page load: " + e.getMessage());
-                        }
-                    });
-                } else {
-                    // Dialog already showing, just make WebView visible
-                    view.postDelayed(() -> {
-                        hideLoadingIndicator();
-                        view.setVisibility(View.VISIBLE);
-                    }, 300);
-                }
+                view.postDelayed(() -> {
+                    hideLoadingIndicator();
+                    view.setVisibility(View.VISIBLE);
+                }, 300);
             }
         });
         
         webView.setWebChromeClient(new WebChromeClient());
         webView.addJavascriptInterface(new StashJavaScriptInterface(), "StashAndroid");
         
-        // Disable scrolling and scrollbars for popup mode
         webView.setVerticalScrollBarEnabled(false);
         webView.setHorizontalScrollBarEnabled(false);
         
@@ -775,88 +429,11 @@ public class StashPayCardPlugin {
             webView.setClipToOutline(true);
         }
         
+        webView.setVisibility(View.VISIBLE);
         webView.loadUrl(url);
     }
     
-    private void setupCardWebView(WebView webView, String url) {
-        WebSettings settings = webView.getSettings();
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-        settings.setLoadWithOverviewMode(true);
-        settings.setUseWideViewPort(true);
-        settings.setBuiltInZoomControls(false);
-        settings.setDisplayZoomControls(false);
-        settings.setSupportZoom(false);
-        settings.setJavaScriptCanOpenWindowsAutomatically(true);
-        settings.setSupportMultipleWindows(true);
-
-        // Enable dark mode rendering if system is in dark mode
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            if (isDarkTheme()) {
-                settings.setForceDark(WebSettings.FORCE_DARK_ON);
-            } else {
-                settings.setForceDark(WebSettings.FORCE_DARK_OFF);
-            }
-        }
-        
-        webView.setWebViewClient(new WebViewClient() {
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                handleProviderButtons(url);
-                return false;
-            }
-            
-            @Override
-            public void onPageStarted(WebView view, String url, Bitmap favicon) {
-                super.onPageStarted(view, url, favicon);
-                pageLoadStartTime = System.currentTimeMillis();
-                showLoadingIndicator();
-                view.setVisibility(View.INVISIBLE);
-                injectStashSDKFunctions();
-            }
-            
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-                
-                // Calculate and report page load time
-                if (pageLoadStartTime > 0) {
-                    long loadTimeMs = System.currentTimeMillis() - pageLoadStartTime;
-                    UnityPlayer.UnitySendMessage(unityGameObjectName, "OnAndroidPageLoaded", String.valueOf(loadTimeMs));
-                    pageLoadStartTime = 0;
-                }
-                
-                handleProviderButtons(url);
-                injectStashSDKFunctions();
-                view.postDelayed(() -> {
-                    hideLoadingIndicator();
-                        view.setVisibility(View.VISIBLE);
-                }, 300);
-            }
-        });
-
-        webView.setWebChromeClient(new WebChromeClient() {
-            @Override
-            public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
-                activity.runOnUiThread(() -> {
-                    if (initialURL != null && !initialURL.isEmpty()) {
-                        openWithChromeCustomTabs(initialURL);
-                    }
-                    dismissCurrentDialog();
-                });
-                return true;
-            }
-        });
-
-        webView.addJavascriptInterface(new StashJavaScriptInterface(), "StashAndroid");
-
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT);
-        webView.setLayoutParams(params);
-        webView.setBackgroundColor(Color.TRANSPARENT);
-        webView.loadUrl(url);
-    }
-    
+    // NOTE: Injects window.stash_sdk callbacks for Unity communication
     private void injectStashSDKFunctions() {
         if (webView == null) return;
         
@@ -894,57 +471,6 @@ public class StashPayCardPlugin {
         webView.evaluateJavascript(script, null);
     }
     
-    private void setupHomeButton(Button homeButton) {
-        homeButton.setText("⌂");
-        homeButton.setTextSize(18);
-        homeButton.setTextColor(getThemeSecondaryTextColor());
-        homeButton.setGravity(Gravity.CENTER);
-        homeButton.setPadding(0, 0, 0, 0);
-        
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(getThemeButtonBackgroundColor());
-        bg.setCornerRadius(dpToPx(20));
-        bg.setStroke(dpToPx(1), getThemeBorderColor());
-        homeButton.setBackground(bg);
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            homeButton.setElevation(dpToPx(6));
-        }
-        
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dpToPx(36), dpToPx(36));
-        params.gravity = Gravity.TOP | Gravity.START;
-        params.setMargins(dpToPx(12), dpToPx(12), 0, 0);
-        homeButton.setLayoutParams(params);
-        homeButton.setOnClickListener(v -> navigateHome());
-    }
-    
-    private void navigateHome() {
-        if (webView != null && initialURL != null && !initialURL.isEmpty()) {
-            activity.runOnUiThread(() -> {
-                try {
-                    webView.loadUrl(initialURL);
-                } catch (Exception e) {
-                    Log.e(TAG, "Error navigating home: " + e.getMessage());
-                }
-            });
-        }
-    }
-    
-    private void handleProviderButtons(String url) {
-        if (url == null || currentHomeButton == null) return;
-        String lowerUrl = url.toLowerCase();
-        boolean isProvider = lowerUrl.contains("klarna") || 
-                            lowerUrl.contains("paypal") || 
-                            lowerUrl.contains("stripe");
-                activity.runOnUiThread(() -> {
-            try {
-                currentHomeButton.setVisibility(isProvider ? View.VISIBLE : View.GONE);
-                    } catch (Exception e) {
-                Log.e(TAG, "Error toggling home button: " + e.getMessage());
-            }
-        });
-    }
-    
     private void showLoadingIndicator() {
         if (currentContainer == null || activity == null) return;
         activity.runOnUiThread(() -> {
@@ -953,35 +479,25 @@ public class StashPayCardPlugin {
                     ((ViewGroup)loadingIndicator.getParent()).removeView(loadingIndicator);
                 }
                 
-                // Use application context for proper Material theme
-                Context appContext = activity.getApplicationContext();
+                loadingIndicator = new ProgressBar(activity.getApplicationContext());
                 
-                // Create ProgressBar with default style (not Large - matches Activity implementation)
-                loadingIndicator = new ProgressBar(appContext);
-                
-                // Enable hardware acceleration
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
                     loadingIndicator.setLayerType(View.LAYER_TYPE_HARDWARE, null);
                 }
                 
-                // Set to indeterminate mode (spinning animation)
                 loadingIndicator.setIndeterminate(true);
                 
-                // Apply theme color
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     loadingIndicator.setIndeterminateTintList(
                         android.content.res.ColorStateList.valueOf(isDarkTheme() ? Color.WHITE : Color.DKGRAY));
                 }
                 
-                // Same size as Activity
                 FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dpToPx(48), dpToPx(48));
                 params.gravity = Gravity.CENTER;
                 loadingIndicator.setLayoutParams(params);
                 
                 currentContainer.addView(loadingIndicator);
                 loadingIndicator.bringToFront();
-                
-                // Force animation to start after layout
                 loadingIndicator.post(() -> {
                     if (loadingIndicator != null) {
                         loadingIndicator.setVisibility(View.VISIBLE);
@@ -989,7 +505,7 @@ public class StashPayCardPlugin {
                     }
                 });
             } catch (Exception e) {
-                Log.e(TAG, "Error showing loading indicator: " + e.getMessage());
+                Log.e(TAG, "Error showing loading: " + e.getMessage());
             }
         });
     }
@@ -1009,14 +525,14 @@ public class StashPayCardPlugin {
                             loadingIndicator = null;
                         })
                         .start();
-        } else {
+                } else {
                     if (loadingIndicator.getParent() != null) {
                         ((ViewGroup)loadingIndicator.getParent()).removeView(loadingIndicator);
                     }
                     loadingIndicator = null;
                 }
             } catch (Exception e) {
-                Log.e(TAG, "Error hiding loading indicator: " + e.getMessage());
+                Log.e(TAG, "Error hiding loading: " + e.getMessage());
             }
         });
     }
@@ -1062,7 +578,7 @@ public class StashPayCardPlugin {
 
         isCurrentlyPresented = true;
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            UnityPlayer.UnitySendMessage(unityGameObjectName, "OnAndroidDialogDismissed", "");
+            UnityPlayer.UnitySendMessage(UNITY_GAME_OBJECT, "OnAndroidDialogDismissed", "");
         }, 1000);
     }
     
@@ -1073,21 +589,19 @@ public class StashPayCardPlugin {
         isCurrentlyPresented = true;
 
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            UnityPlayer.UnitySendMessage(unityGameObjectName, "OnAndroidDialogDismissed", "");
+            UnityPlayer.UnitySendMessage(UNITY_GAME_OBJECT, "OnAndroidDialogDismissed", "");
         }, 1000);
     }
 
     private void dismissCurrentDialog() {
-        if (usePopupPresentation) {
+        if (currentDialog != null) {
             dismissPopupDialog();
-        } else if (currentDialog != null) {
-            dismissCustomCardDialog();
         }
     }
     
+    // NOTE: Cleanup all views and listeners to prevent memory leaks
     private void cleanupAllViews() {
         try {
-            // Clean up loading indicator
             if (loadingIndicator != null) {
                 try {
                     if (loadingIndicator.getParent() != null) {
@@ -1099,7 +613,6 @@ public class StashPayCardPlugin {
                 loadingIndicator = null;
             }
             
-            // Dismiss dialog
             if (currentDialog != null) {
                 if (currentDialog.isShowing()) {
                     currentDialog.dismiss();
@@ -1107,7 +620,6 @@ public class StashPayCardPlugin {
                 currentDialog = null;
             }
             
-            // Clean up WebView
             if (webView != null) {
                 try {
                     if (webView.getParent() != null) {
@@ -1115,28 +627,14 @@ public class StashPayCardPlugin {
                     }
                     webView.stopLoading();
                     webView.destroy();
-            } catch (Exception e) {
+                } catch (Exception e) {
                     Log.e(TAG, "Error cleaning up WebView: " + e.getMessage());
                 }
                 webView = null;
             }
             
-            // Clean up home button
-            if (currentHomeButton != null) {
-                try {
-                    if (currentHomeButton.getParent() != null) {
-                        ((ViewGroup)currentHomeButton.getParent()).removeView(currentHomeButton);
-                }
-            } catch (Exception e) {
-                    Log.e(TAG, "Error cleaning up home button: " + e.getMessage());
-                }
-                currentHomeButton = null;
-            }
-            
-            // Clean up container
             if (currentContainer != null) {
                 try {
-                    // Remove orientation change listener
                     if (orientationChangeListener != null && currentContainer.getParent() != null) {
                         View parent = (View) currentContainer.getParent();
                         if (parent.getViewTreeObserver().isAlive()) {
@@ -1147,19 +645,17 @@ public class StashPayCardPlugin {
                         ((ViewGroup)currentContainer.getParent()).removeView(currentContainer);
                     }
                     currentContainer.removeAllViews();
-            } catch (Exception e) {
+                } catch (Exception e) {
                     Log.e(TAG, "Error cleaning up container: " + e.getMessage());
                 }
                 currentContainer = null;
             }
             
-            // Clean up orientation change listener
             orientationChangeListener = null;
         } catch (Exception e) {
             Log.e(TAG, "Error during cleanup: " + e.getMessage());
         }
         
-        isExpanded = false;
         isPurchaseProcessing = false;
         usePopupPresentation = false;
         initialURL = null;
@@ -1170,19 +666,21 @@ public class StashPayCardPlugin {
         boolean isLandscape = activity.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
         
         int smallerDimension = Math.min(metrics.widthPixels, metrics.heightPixels);
-        boolean isTablet = smallerDimension > 600;
+        boolean isTablet = (smallerDimension / metrics.density) >= 600;
         int baseSize = Math.max(
             isTablet ? dpToPx(400) : dpToPx(300),
             Math.min(isTablet ? dpToPx(500) : dpToPx(500), (int)(smallerDimension * (isTablet ? 0.5f : 0.75f)))
         );
         
-        float portraitWidthMultiplier = useCustomSize ? customPortraitWidthMultiplier : 0.85f;
-        float portraitHeightMultiplier = useCustomSize ? customPortraitHeightMultiplier : 1.125f;
-        float landscapeWidthMultiplier = useCustomSize ? customLandscapeWidthMultiplier : 1.27075f;
-        float landscapeHeightMultiplier = useCustomSize ? customLandscapeHeightMultiplier : 0.9f;
+        float widthMultiplier = isLandscape ? 
+            (useCustomSize ? customLandscapeWidthMultiplier : 1.27075f) :
+            (useCustomSize ? customPortraitWidthMultiplier : 0.85f);
+        float heightMultiplier = isLandscape ? 
+            (useCustomSize ? customLandscapeHeightMultiplier : 0.9f) :
+            (useCustomSize ? customPortraitHeightMultiplier : 1.125f);
 
-        int popupWidth = (int)(baseSize * (isLandscape ? landscapeWidthMultiplier : portraitWidthMultiplier));
-        int popupHeight = (int)(baseSize * (isLandscape ? landscapeHeightMultiplier : portraitHeightMultiplier));
+        int popupWidth = (int)(baseSize * widthMultiplier);
+        int popupHeight = (int)(baseSize * heightMultiplier);
 
         return new int[]{popupWidth, popupHeight};
     }
@@ -1196,23 +694,10 @@ public class StashPayCardPlugin {
             int nightModeFlags = activity.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
             return nightModeFlags == Configuration.UI_MODE_NIGHT_YES;
         }
-            return false;
+        return false;
     }
 
     private int getThemeBackgroundColor() {
         return isDarkTheme() ? Color.parseColor("#1C1C1E") : Color.WHITE;
     }
-    
-    private int getThemeSecondaryTextColor() {
-        return Color.parseColor("#8E8E93");
-    }
-
-    private int getThemeButtonBackgroundColor() {
-        return isDarkTheme() ? Color.parseColor("#2C2C2E") : Color.parseColor("#F2F2F7");
-    }
-
-    private int getThemeBorderColor() {
-        return isDarkTheme() ? Color.parseColor("#38383A") : Color.parseColor("#E5E5EA");
-    }
 }
-
