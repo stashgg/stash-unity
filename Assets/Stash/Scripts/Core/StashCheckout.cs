@@ -69,7 +69,7 @@ namespace Stash.Core
                     platformString = "ANDROID";
                     break;
                 default:
-                    platformString = "UNKNOWN";
+                    platformString = "IOS";
                     break;
             }
             // Create the request body JSON string with the user and item objects
