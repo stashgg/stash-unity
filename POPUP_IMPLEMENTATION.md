@@ -1,30 +1,70 @@
-# Popup Implementation Documentation
+# Stash Pay - Native Checkout Plugins
 
-## Overview
+## Why Plugins 
 
-The StashPayCard SDK provides two presentation modes across iOS, Android, and Unity Editor:
-- **Popup**: Dialog-based presentation with rotation support
-- **Checkout**: Full-screen card presentation with device-specific behavior
+This SDK uses native platform plugins (iOS/Android) for several reasons:
 
-## Architecture
+### Security and Compliance
+- **Compliance**: Payment processing occurs entirely in Android/iOS native WebViews, isolating sensitive data from Unity's managed environment. Only very thin messaging layer (for states) is implemented.
+- **Platform Security**: Native WebViews leverage OS-level security features (Keychain on iOS, KeyStore on Android) that Unity cannot access directly
+- **Certificate Validation**: Platform WebViews handle SSL/TLS validation using system trust stores, ensuring proper certificate pinning.
+
+### Performance
+- **Native Rendering**: Platform native WebViews use hardware-accelerated rendering pipelines optimized for each OS.
+- **Memory Efficiency**: Native WebViews manage their own memory pools separately from Unity's heap, preventing GC pressure
+- **Web Standards**: Native WebViews support latest web APIs (WebGL, CSS Grid, modern JavaScript) that Unity WebView wrappers lag behind
+
+### Portability & Maintanance
+- **Unity Independence**: The native plugins are not tied to Unity and can be used directly in standalone iOS or Android apps if needed.
+- **Stable Native APIs**: The native APIs utilized are minimal and change infrequently, making the codebase simple to maintain and update for all customers. 
+- **No Project-specific Dependencies**: Native plugins have almost no reliance on Unity’s internal APIs, making upgrades painless and robust across Unity versions. Just like Apple Pay and Google Pay dialogs, our plugin leaves actual game code untouched and isolated.
+
+## Why not in Unity directly ?
+
+### Option A: WebView in Unity Game
+Unity-embedded WebViews (different solutions) have fundamental issues:
+- **Outdated Rendering**: Often based on old Chromium versions with security vulnerabilities.
+- **Poor Touch Handling**: Input must pass through Unity's event system, adding latency.
+- **No Platform Features**: Cannot access Apple Pay, Google Pay, or biometric authentication.
+- **Memory Leaks & Pressure**: Third-party plugins often fail to properly clean up native resources.
+
+### Option B: Purchase wrapped in API
+Direct API integration (without WebView) is insufficient because:
+- **3D Secure**: Requires interactive browser challenge-response flow
+- **Payment Provider UI**: Many providers (PayPal, Apple Pay, Google Pay) require native UI components
+- **Dynamic Flows**: Payment flows change based on user region, card type, and risk assessment
+- **Regulatory Requirements**
+
+
+## Stash Popup Overview
+
+The StashPayCard SDK provides **two presentation modes** across iOS, Android, and Unity Editor:
+- **Popup**: Dialog-based presentation for opt-in and other dialogs.
+- **Checkout**: Card style presentation with device-specific behavior for checkouts.
+
+
+## General Architecture
 
 ### Presentation Strategy
 - **iOS**: Uses `UIWindow` and `UIViewController` for both popup and checkout
 - **Android Popup**: Uses `Dialog` with `WebView`
 - **Android Checkout**: Uses separate `Activity` (`StashPayCardPortraitActivity`)
-- **Unity Editor**: Uses native macOS `WKWebView` in separate window with IPC queue
 
 ### Communication Layer
-All platforms inject `window.stash_sdk` JavaScript functions into the WebView for Unity callbacks:
+All platforms inject `window.stash_sdk` JavaScript functions into the WebView for Unity callbacks.
+This way Stash Pay frontend can communicate directly with the game and the page events get propagated to the game.
+
 - `onPaymentSuccess()`: Payment completed successfully
 - `onPaymentFailure()`: Payment failed
-- `setPaymentChannel(optinType)`: Payment channel selected (optin response)
 - `onPurchaseProcessing()`: Purchase is being processed
+- `setPaymentChannel(optinType)`: Payment channel selected (Popup only)
 
-## Unity Integration (`StashPayCard.cs`)
+## Unity Wrapper (`StashPayCard.cs`)
+
+Unity interacts with the platform-specific plugins via this interface.
 
 ### Platform Abstraction
-Unity uses conditional compilation and platform-specific P/Invoke to call native plugins:
+Unity uses conditional compilation and platform-specific calls to native plugins:
 
 ```csharp
 #if UNITY_IOS && !UNITY_EDITOR
@@ -44,13 +84,12 @@ Unity uses conditional compilation and platform-specific P/Invoke to call native
 ```
 
 ### iOS Native Calls
-- **Method**: P/Invoke via `[DllImport("__Internal")]`
+- **Method**: Platform Invoke (P/Invoke) via `[DllImport("__Internal")]`
 - **Functions**: Direct C function calls compiled into Unity binary
 - **Callbacks**: Unity MonoPInvokeCallback functions called from Objective-C via `UnitySendMessage`
 
 ### Android Native Calls
-- **Method**: JNI via `AndroidJavaClass` and `AndroidJavaObject`
-- **Plugin Access**: Singleton instance retrieved via `getInstance()`
+- **Method**: JNI (Java Native Interface) via `AndroidJavaClass` and `AndroidJavaObject`
 - **Functions**: `Call()` method invokes Java methods by name
 - **Callbacks**: `UnityPlayer.UnitySendMessage()` from Java to Unity
 
@@ -78,14 +117,9 @@ private static void OnIOSPaymentSuccess() {
 }
 ```
 
-### Editor Integration
-- **Conditional Compilation**: `#elif UNITY_EDITOR` block
-- **Reflection**: Uses `Type.GetType()` and `MethodInfo.Invoke()` to call editor window
-- **Callbacks**: Editor window directly invokes public static methods like `OnEditorPaymentSuccess()`
-
 ## iOS Implementation (`StashPayCardURLHandler.mm`)
 
-### Popup Mode
+### Popup 
 - **Presentation**: Creates dedicated [`UIWindow`](https://developer.apple.com/documentation/uikit/uiwindow) with transparent background, centered [`UIViewController`](https://developer.apple.com/documentation/uikit/uiviewcontroller)
 - **Rotation**: Full rotation support ([`UIInterfaceOrientationMaskAll`](https://developer.apple.com/documentation/uikit/uiinterfaceorientationmask))
 - **Sizing**: Dynamically calculated based on screen dimensions and orientation
@@ -95,10 +129,10 @@ private static void OnIOSPaymentSuccess() {
 - **Dismissal**: Fade-out animation, window and view controller cleanup
 - **Layout Updates**: [`viewWillLayoutSubviews`](https://developer.apple.com/documentation/uikit/uiviewcontroller/1621437-viewwilllayoutsubviews) handles orientation changes
 
-### Checkout Mode (Card Presentation)
+### Checkout Card
 - **Presentation**: Uses dedicated [`UIWindow`](https://developer.apple.com/documentation/uikit/uiwindow) with card-style view controller
 - **iPhone**: 
-  - Forced portrait orientation ([`UIInterfaceOrientationMaskPortrait`](https://developer.apple.com/documentation/uikit/uiinterfaceorientationmask))
+  - Enforce portrait orientation ([`UIInterfaceOrientationMaskPortrait`](https://developer.apple.com/documentation/uikit/uiinterfaceorientationmask))
   - Bottom-aligned card (68% screen height)
   - Slide-up animation from bottom using [`CGAffineTransform`](https://developer.apple.com/documentation/corefoundation/cgaffinetransform)
   - Drag-to-dismiss and drag-to-expand gestures
@@ -108,23 +142,22 @@ private static void OnIOSPaymentSuccess() {
   - Slide-up animation to center
   - Drag-to-dismiss only (no expand gesture)
   - Seamless rotation with frame recalculation in [`viewWillLayoutSubviews`](https://developer.apple.com/documentation/uikit/uiviewcontroller/1621437-viewwilllayoutsubviews)
-- **Rounded Corners**: Top corners only (25pt radius) using [`CAShapeLayer`](https://developer.apple.com/documentation/quartzcore/cashapelayer) and [`UIBezierPath`](https://developer.apple.com/documentation/uikit/uibezierpath)
-- **Gestures**: [`UIPanGestureRecognizer`](https://developer.apple.com/documentation/uikit/uipangesturerecognizer) with custom [`gestureRecognizerShouldBegin`](https://developer.apple.com/documentation/uikit/uigesturerecognizerdelegate/1624213-gesturerecognizershouldbegin) for iPad gesture blocking
 
 ### WebView Setup
 - **WebView**: [`WKWebView`](https://developer.apple.com/documentation/webkit/wkwebview) with JavaScript enabled via [`WKWebViewConfiguration`](https://developer.apple.com/documentation/webkit/wkwebviewconfiguration)
 - **Script Injection**: [`WKUserScript`](https://developer.apple.com/documentation/webkit/wkuserscript) injected at document start for `window.stash_sdk`
 - **Message Handlers**: [`WKScriptMessageHandler`](https://developer.apple.com/documentation/webkit/wkscriptmessagehandler) via [`WKUserContentController`](https://developer.apple.com/documentation/webkit/wkusercontentcontroller) for callback interception
-- **Scrolling**: Disabled for popup mode via JavaScript injection
+- **Scrolling**: Enabled for card, Disabled for popup mode via JavaScript injection
 
 ### Memory Management
 - **Cleanup**: `cleanupCardInstance()` removes all [`objc_setAssociatedObject`](https://developer.apple.com/documentation/objectivec/1418509-objc_setassociatedobject) references, delegates, and views
 - **Callback Pattern**: `callUnityCallbackOnce` block pattern with `__weak` references to prevent retain cycles
 - **View Hierarchy**: Explicit [`removeFromSuperview`](https://developer.apple.com/documentation/uikit/uiview/1622421-removefromsuperview) and `nil` assignments
 
+
 ## Android Implementation
 
-### Popup Mode (`StashPayCardPlugin.java`)
+### Popup (`StashPayCardPlugin.java`)
 - **Presentation**: [`Dialog`](https://developer.android.com/reference/android/app/Dialog) with `Theme_Translucent_NoTitleBar_Fullscreen`
 - **Container**: [`FrameLayout`](https://developer.android.com/reference/android/widget/FrameLayout) centered with [`Gravity.CENTER`](https://developer.android.com/reference/android/view/Gravity)
 - **Rotation**: Full rotation support via [`ViewTreeObserver.OnGlobalLayoutListener`](https://developer.android.com/reference/android/view/ViewTreeObserver.OnGlobalLayoutListener)
@@ -136,7 +169,7 @@ private static void OnIOSPaymentSuccess() {
 - **Dismissal**: Fade-out animation, cleanup via `cleanupAllViews()`
 - **Rounded Corners**: 20dp radius with [`GradientDrawable`](https://developer.android.com/reference/android/graphics/drawable/GradientDrawable) and [`ViewOutlineProvider`](https://developer.android.com/reference/android/view/ViewOutlineProvider)
 
-### Checkout Mode (`StashPayCardPortraitActivity.java`)
+### Checkout (`StashPayCardPortraitActivity.java`)
 - **Presentation**: Separate transparent [`Activity`](https://developer.android.com/reference/android/app/Activity) with `Theme.Translucent.NoTitleBar.Fullscreen`
 - **Phone**:
   - Forced portrait orientation ([`SCREEN_ORIENTATION_PORTRAIT`](https://developer.android.com/reference/android/content/pm/ActivityInfo#SCREEN_ORIENTATION_PORTRAIT))
@@ -159,37 +192,13 @@ private static void OnIOSPaymentSuccess() {
 - **Settings**: [`WebSettings`](https://developer.android.com/reference/android/webkit/WebSettings) with `setLoadWithOverviewMode(true)`, `setUseWideViewPort(true)` for proper rendering
 - **JavaScript Interface**: [`addJavascriptInterface`](https://developer.android.com/reference/android/webkit/WebView#addJavascriptInterface(java.lang.Object,%20java.lang.String))`(new StashJavaScriptInterface(), "StashAndroid")`
 - **Script Injection**: [`evaluateJavascript()`](https://developer.android.com/reference/android/webkit/WebView#evaluateJavascript(java.lang.String,%20android.webkit.ValueCallback%3Cjava.lang.String%3E)) to inject `window.stash_sdk` functions
-- **Scrolling**: Disabled for popup mode via JavaScript injection
-- **Dark Mode**: [`setForceDark()`](https://developer.android.com/reference/android/webkit/WebSettings#setForceDark(int)) based on system theme (API 29+)
+- **Scrolling**: Enabled for card, disabled for popup mode via JavaScript injection
 
 ### Memory Management
 - **Activity Lifecycle**: [`onDestroy()`](https://developer.android.com/reference/android/app/Activity#onDestroy()) calls [`webView.destroy()`](https://developer.android.com/reference/android/webkit/WebView#destroy()) and nullifies references
 - **Dialog Cleanup**: `cleanupAllViews()` removes all views, listeners, and WebView
 - **Listener Removal**: [`removeOnGlobalLayoutListener()`](https://developer.android.com/reference/android/view/ViewTreeObserver#removeOnGlobalLayoutListener(android.view.ViewTreeObserver.OnGlobalLayoutListener)) for orientation listener
 
-## Unity Editor Implementation (`StashPayCardEditorWindow.cs` + macOS Bundle)
-
-### Architecture
-- **C# Editor Window**: Unity [`EditorWindow`](https://docs.unity3d.com/ScriptReference/EditorWindow.html) with simulation buttons
-- **Native WebView**: Objective-C++ bundle (`WebViewLauncher.bundle`) loaded via [`dlopen`](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man3/dlopen.3.html)
-- **IPC**: In-memory notification queue with [`pthread_mutex`](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man3/pthread_mutex_lock.3.html) protected access
-  - C++ side: `QueueNotification()` adds to queue
-  - C# side: `PollNotification()` polls queue in [`EditorApplication.update`](https://docs.unity3d.com/ScriptReference/EditorApplication-update.html)
-
-### WebView Window
-- **Window**: [`NSWindow`](https://developer.apple.com/documentation/appkit/nswindow) with [`WKWebView`](https://developer.apple.com/documentation/webkit/wkwebview) created via Objective-C runtime
-- **Script Injection**: Same `window.stash_sdk` functions as iOS/Android
-- **Message Handlers**: Posts to notification queue instead of Unity messages
-- **Lifecycle**: Explicit cleanup via `DestroyWebViewWindow()`
-
-### Callback Simulation
-Editor window provides buttons to trigger callbacks directly:
-- Payment Success
-- Payment Failure
-- Set Payment Channel
-- Dismiss Catalog
-
-All callbacks close the editor window and native WebView.
 
 ## Key Platform Differences
 
@@ -224,9 +233,3 @@ All callbacks close the editor window and native WebView.
 - **Gesture Blocking**: iPad requires explicit gesture blocking in [`gestureRecognizerShouldBegin`](https://developer.apple.com/documentation/uikit/uigesturerecognizerdelegate/1624213-gesturerecognizershouldbegin)
 - **Animation Timing**: [`CATransaction`](https://developer.apple.com/documentation/quartzcore/catransaction) with [`setDisableActions:YES`](https://developer.apple.com/documentation/quartzcore/catransaction/1448255-setdisableactions) to prevent unwanted animations
 - **Memory**: ARC requires careful weak/strong self pattern in blocks to prevent retain cycles
-
-### Unity Editor
-- **Platform Limitation**: macOS only (uses [AppKit](https://developer.apple.com/documentation/appkit) and [WebKit](https://developer.apple.com/documentation/webkit) APIs)
-- **IPC Requirement**: Native bundle runs out-of-process, requires queue-based communication
-- **Bundle Loading**: Manual [`dlopen`](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man3/dlopen.3.html)/[`dlsym`](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man3/dlsym.3.html) required, P/Invoke insufficient for complex Objective-C
-
