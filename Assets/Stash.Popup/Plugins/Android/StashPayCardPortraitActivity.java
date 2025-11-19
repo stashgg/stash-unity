@@ -63,7 +63,16 @@ public class StashPayCardPortraitActivity extends Activity {
         // NOTE: Window setup to keep Unity running underneath
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         Window window = getWindow();
-        window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        
+        // NOTE: For phones forcing portrait, set window background to black for compatibility
+        // This ensures proper background on older Android versions (below API 16)
+        boolean isPhoneForcingPortrait = !usePopup && !isTablet();
+        if (isPhoneForcingPortrait) {
+            window.setBackgroundDrawable(new ColorDrawable(Color.BLACK));
+        } else {
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        }
+        
         window.addFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
         window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL);
         window.addFlags(WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH);
@@ -82,10 +91,14 @@ public class StashPayCardPortraitActivity extends Activity {
     private void createUI() {
         rootLayout = new FrameLayout(this);
         
-        // Solid background for phones rotated from landscape, transparent overlay otherwise
-        if (wasLandscapeBeforeRotation && !isTablet()) {
-            rootLayout.setBackgroundColor(isDarkTheme() ? Color.BLACK : Color.WHITE);
+        // NOTE: On phones when forcing portrait rotation, always use black background
+        // This ensures proper background regardless of system theme or Android version
+        boolean isPhoneForcingPortrait = !usePopup && !isTablet();
+        if (isPhoneForcingPortrait) {
+            // Always black background for phone checkout (forced portrait)
+            rootLayout.setBackgroundColor(Color.BLACK);
         } else {
+            // Transparent overlay for tablets and popups
             rootLayout.setBackgroundColor(Color.parseColor("#20000000"));
         }
         
