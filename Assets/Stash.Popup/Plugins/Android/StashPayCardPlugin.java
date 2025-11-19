@@ -661,12 +661,38 @@ public class StashPayCardPlugin {
         initialURL = null;
     }
     
+    // NOTE: Improved tablet detection matching Activity implementation
+    private boolean isTablet() {
+        DisplayMetrics metrics = activity.getResources().getDisplayMetrics();
+        int smallerDimension = Math.min(metrics.widthPixels, metrics.heightPixels);
+        float smallerDp = smallerDimension / metrics.density;
+        
+        // Method 1: Screen size in dp (standard Android approach)
+        boolean isTabletBySize = smallerDp >= 600;
+        
+        // Method 2: Check screen configuration (more reliable on some devices)
+        boolean isTabletByConfig = false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB_MR2) {
+            int screenSize = activity.getResources().getConfiguration().screenLayout & Configuration.SCREENLAYOUT_SIZE_MASK;
+            isTabletByConfig = (screenSize == Configuration.SCREENLAYOUT_SIZE_LARGE || 
+                               screenSize == Configuration.SCREENLAYOUT_SIZE_XLARGE);
+        }
+        
+        // Method 3: Aspect ratio check (tablets typically have different aspect ratios)
+        float aspectRatio = (float) Math.max(metrics.widthPixels, metrics.heightPixels) / 
+                           Math.min(metrics.widthPixels, metrics.heightPixels);
+        boolean isTabletByAspect = aspectRatio < 2.0f && smallerDp >= 500;
+        
+        // Return true if any method indicates tablet (most permissive approach)
+        return isTabletBySize || isTabletByConfig || isTabletByAspect;
+    }
+    
     private int[] calculatePopupDimensions() {
         DisplayMetrics metrics = activity.getResources().getDisplayMetrics();
         boolean isLandscape = activity.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
         
         int smallerDimension = Math.min(metrics.widthPixels, metrics.heightPixels);
-        boolean isTablet = (smallerDimension / metrics.density) >= 600;
+        boolean isTablet = isTablet();
         int baseSize = Math.max(
             isTablet ? dpToPx(400) : dpToPx(300),
             Math.min(isTablet ? dpToPx(500) : dpToPx(500), (int)(smallerDimension * (isTablet ? 0.5f : 0.75f)))

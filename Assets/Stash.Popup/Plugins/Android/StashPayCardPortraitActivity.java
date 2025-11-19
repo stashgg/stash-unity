@@ -33,6 +33,7 @@ public class StashPayCardPortraitActivity extends Activity {
     private boolean usePopup;
     private boolean wasLandscapeBeforeRotation;
     private boolean isExpanded = false;
+    private boolean isInitializing = true; // NOTE: Prevents orientation changes during setup
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -50,7 +51,8 @@ public class StashPayCardPortraitActivity extends Activity {
             return;
         }
         
-        // NOTE: Rotation logic - popup and tablet checkout allow rotation, phone checkout forces portrait
+        // NOTE: Set orientation BEFORE any UI creation to prevent rotation flicker
+        // Rotation logic - popup and tablet checkout allow rotation, phone checkout forces portrait
         boolean isTablet = isTablet();
         if (usePopup || isTablet) {
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR);
@@ -72,6 +74,9 @@ public class StashPayCardPortraitActivity extends Activity {
         window.setAttributes(params);
         
         createUI();
+        
+        // NOTE: Mark initialization complete after UI is created to allow orientation changes
+        isInitializing = false;
     }
     
     private void createUI() {
@@ -643,9 +648,14 @@ public class StashPayCardPortraitActivity extends Activity {
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         
+        // NOTE: Ignore orientation changes during initial setup to prevent flicker
+        if (isInitializing) {
+            return;
+        }
+        
         // NOTE: Recreate UI on rotation for tablet checkout (seamless transformation)
         // Popup uses Dialog-based approach and doesn't need this
-        if (!usePopup && isTablet() && cardContainer != null) {
+        if (!usePopup && isTablet() && cardContainer != null && rootLayout != null) {
             rootLayout.removeAllViews();
             createUI();
         }
@@ -659,11 +669,30 @@ public class StashPayCardPortraitActivity extends Activity {
         return false;
     }
     
+    // NOTE: Improved tablet detection using multiple methods for better accuracy
     private boolean isTablet() {
         DisplayMetrics metrics = getResources().getDisplayMetrics();
         int smallerDimension = Math.min(metrics.widthPixels, metrics.heightPixels);
         float smallerDp = smallerDimension / metrics.density;
-        return smallerDp >= 600;
+        
+        // Method 1: Screen size in dp (standard Android approach)
+        boolean isTabletBySize = smallerDp >= 600;
+        
+        // Method 2: Check screen configuration (more reliable on some devices)
+        boolean isTabletByConfig = false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB_MR2) {
+            int screenSize = getResources().getConfiguration().screenLayout & Configuration.SCREENLAYOUT_SIZE_MASK;
+            isTabletByConfig = (screenSize == Configuration.SCREENLAYOUT_SIZE_LARGE || 
+                               screenSize == Configuration.SCREENLAYOUT_SIZE_XLARGE);
+        }
+        
+        // Method 3: Aspect ratio check (tablets typically have different aspect ratios)
+        float aspectRatio = (float) Math.max(metrics.widthPixels, metrics.heightPixels) / 
+                           Math.min(metrics.widthPixels, metrics.heightPixels);
+        boolean isTabletByAspect = aspectRatio < 2.0f && smallerDp >= 500;
+        
+        // Return true if any method indicates tablet (most permissive approach)
+        return isTabletBySize || isTabletByConfig || isTabletByAspect;
     }
     
     private int dpToPx(int dp) {
