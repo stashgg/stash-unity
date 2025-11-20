@@ -2,7 +2,6 @@ package com.stash.popup;
 
 import android.app.Activity;
 import android.app.Dialog;
-import android.content.Context;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.graphics.*;
@@ -31,7 +30,6 @@ public class StashPayCardPlugin {
     private ProgressBar loadingIndicator;
     private ViewTreeObserver.OnGlobalLayoutListener orientationChangeListener;
     
-    private String initialURL;
     private float cardHeightRatio = 0.6f;
     
     private boolean isCurrentlyPresented = false;
@@ -96,9 +94,9 @@ public class StashPayCardPlugin {
                 } catch (Exception e) {
                     Log.e(TAG, "Error handling payment channel: " + e.getMessage());
                 }
-            });
+                });
+            }
         }
-    }
     
     public static StashPayCardPlugin getInstance() {
         if (instance == null) {
@@ -157,6 +155,7 @@ public class StashPayCardPlugin {
     }
     
     public void setCardConfiguration(float heightRatio, float verticalPosition, float widthRatio) {
+        // NOTE: Only heightRatio is used, other parameters kept for API compatibility
         this.cardHeightRatio = heightRatio;
     }
     
@@ -195,16 +194,20 @@ public class StashPayCardPlugin {
     
     private void launchPortraitActivity(String url) {
         try {
-            int currentOrientation = activity.getResources().getConfiguration().orientation;
-            boolean isCurrentlyLandscape = currentOrientation == Configuration.ORIENTATION_LANDSCAPE;
+            // NOTE: Detect landscape BEFORE launching Activity (for expanded mode)
+            // Check device rotation to determine if Unity is in landscape
+            android.view.Display display = activity.getWindowManager().getDefaultDisplay();
+            int rotation = display.getRotation();
+            boolean isLandscape = (rotation == android.view.Surface.ROTATION_90 || 
+                                  rotation == android.view.Surface.ROTATION_270);
             
             Intent intent = new Intent();
             intent.setClassName(activity, "com.stash.popup.StashPayCardPortraitActivity");
             intent.putExtra("url", url);
-            intent.putExtra("initialURL", url);
+            intent.putExtra("initialURL", url); // NOTE: Used for home button to reload initial page
             intent.putExtra("cardHeightRatio", cardHeightRatio);
             intent.putExtra("usePopup", usePopupPresentation);
-            intent.putExtra("wasLandscape", isCurrentlyLandscape);
+            intent.putExtra("wasLandscape", isLandscape); // NOTE: Pass landscape state for expanded mode
             intent.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
             
             activity.startActivity(intent);
@@ -218,7 +221,6 @@ public class StashPayCardPlugin {
         boolean preserveUseCustomSize = useCustomSize;
         cleanupAllViews();
         useCustomSize = preserveUseCustomSize;
-        initialURL = url;
         paymentSuccessHandled = false;
 
         try {
@@ -303,7 +305,7 @@ public class StashPayCardPlugin {
             
             mainFrame.addView(currentContainer);
             currentDialog.setContentView(mainFrame);
-
+            
             Window window = currentDialog.getWindow();
             if (window != null) {
                 window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
@@ -318,7 +320,7 @@ public class StashPayCardPlugin {
             
             currentContainer.setOnClickListener(v -> {});
 
-            currentDialog.setOnDismissListener(dialog -> {
+        currentDialog.setOnDismissListener(dialog -> {
                 if (!paymentSuccessHandled) {
                     UnityPlayer.UnitySendMessage(UNITY_GAME_OBJECT, "OnAndroidDialogDismissed", "");
                 }
@@ -326,9 +328,9 @@ public class StashPayCardPlugin {
                 isCurrentlyPresented = false;
             });
             
-            currentDialog.show();
+        currentDialog.show();
             animateFadeIn();
-            isCurrentlyPresented = true;
+        isCurrentlyPresented = true;
         } catch (Exception e) {
             Log.e(TAG, "Error creating popup: " + e.getMessage());
         }
@@ -411,25 +413,9 @@ public class StashPayCardPlugin {
         webView.setWebChromeClient(new WebChromeClient());
         webView.addJavascriptInterface(new StashJavaScriptInterface(), "StashAndroid");
         
-        webView.setVerticalScrollBarEnabled(false);
-        webView.setHorizontalScrollBarEnabled(false);
-        
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT);
-        webView.setLayoutParams(params);
+            webView.setVerticalScrollBarEnabled(false);
+            webView.setHorizontalScrollBarEnabled(false);
         webView.setBackgroundColor(Color.TRANSPARENT);
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            webView.setOutlineProvider(new ViewOutlineProvider() {
-                @Override
-                public void getOutline(View view, Outline outline) {
-                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), dpToPx(20));
-                }
-            });
-            webView.setClipToOutline(true);
-        }
-        
-        webView.setVisibility(View.VISIBLE);
         webView.loadUrl(url);
     }
     
@@ -525,7 +511,7 @@ public class StashPayCardPlugin {
                             loadingIndicator = null;
                         })
                         .start();
-                } else {
+        } else {
                     if (loadingIndicator.getParent() != null) {
                         ((ViewGroup)loadingIndicator.getParent()).removeView(loadingIndicator);
                     }
@@ -592,7 +578,7 @@ public class StashPayCardPlugin {
             UnityPlayer.UnitySendMessage(UNITY_GAME_OBJECT, "OnAndroidDialogDismissed", "");
         }, 1000);
     }
-
+    
     private void dismissCurrentDialog() {
         if (currentDialog != null) {
             dismissPopupDialog();
@@ -627,7 +613,7 @@ public class StashPayCardPlugin {
                     }
                     webView.stopLoading();
                     webView.destroy();
-                } catch (Exception e) {
+            } catch (Exception e) {
                     Log.e(TAG, "Error cleaning up WebView: " + e.getMessage());
                 }
                 webView = null;
@@ -645,7 +631,7 @@ public class StashPayCardPlugin {
                         ((ViewGroup)currentContainer.getParent()).removeView(currentContainer);
                     }
                     currentContainer.removeAllViews();
-                } catch (Exception e) {
+            } catch (Exception e) {
                     Log.e(TAG, "Error cleaning up container: " + e.getMessage());
                 }
                 currentContainer = null;
@@ -658,7 +644,6 @@ public class StashPayCardPlugin {
         
         isPurchaseProcessing = false;
         usePopupPresentation = false;
-        initialURL = null;
     }
     
     // NOTE: Improved tablet detection matching Activity implementation
@@ -720,7 +705,7 @@ public class StashPayCardPlugin {
             int nightModeFlags = activity.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
             return nightModeFlags == Configuration.UI_MODE_NIGHT_YES;
         }
-        return false;
+            return false;
     }
 
     private int getThemeBackgroundColor() {

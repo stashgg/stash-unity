@@ -445,21 +445,21 @@ CGSize calculateiPadCardSize(CGRect screenBounds);
                 // Page is ready - show webview and remove loading
                 WebViewLoadDelegate *strongSelf = weakSelf;
                 if (strongSelf) {
-                    if (@available(iOS 13.0, *)) {
-                        UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
-                        if (currentStyle == UIUserInterfaceStyleDark) {
-                            NSString *forceColor = @"document.documentElement.style.backgroundColor = 'black'; \
-                                                  document.body.style.backgroundColor = 'black'; \
-                                                  var style = document.createElement('style'); \
-                                                  style.innerHTML = 'body, html { background-color: black !important; }'; \
-                                                  document.head.appendChild(style);";
-                            [webView evaluateJavaScript:forceColor completionHandler:^(id result, NSError *error) {
+                if (@available(iOS 13.0, *)) {
+                    UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
+                    if (currentStyle == UIUserInterfaceStyleDark) {
+                        NSString *forceColor = @"document.documentElement.style.backgroundColor = 'black'; \
+                                              document.body.style.backgroundColor = 'black'; \
+                                              var style = document.createElement('style'); \
+                                              style.innerHTML = 'body, html { background-color: black !important; }'; \
+                                              document.head.appendChild(style);";
+                        [webView evaluateJavaScript:forceColor completionHandler:^(id result, NSError *error) {
                                 [strongSelf showWebViewAndRemoveLoading];
-                            }];
-                        } else {
-                            [strongSelf showWebViewAndRemoveLoading];
-                        }
+                        }];
                     } else {
+                            [strongSelf showWebViewAndRemoveLoading];
+                    }
+                } else {
                         [strongSelf showWebViewAndRemoveLoading];
                     }
                 }
@@ -480,21 +480,21 @@ CGSize calculateiPadCardSize(CGRect screenBounds);
 - (void)webView:(WKWebView *)webView didCommitNavigation:(WKNavigation *)navigation {
     // Show webview immediately for iPhone card mode (not iPad)
     if (!_usePopupPresentation && !isRunningOniPad()) {
-        [self showWebViewAndRemoveLoading];
+    [self showWebViewAndRemoveLoading];
     }
 }
 
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
     // Show webview even on error after a brief delay
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [self showWebViewAndRemoveLoading];
+    [self showWebViewAndRemoveLoading];
     });
 }
 
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
     // Show webview even on error after a brief delay
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [self showWebViewAndRemoveLoading];
+    [self showWebViewAndRemoveLoading];
     });
 }
 
@@ -594,13 +594,13 @@ static SafariViewDismissedCallback GetGlobalSafariViewDismissedCallback() {
         SafariViewDismissedCallback globalCallback = GetGlobalSafariViewDismissedCallback();
         
         if (globalCallback != NULL) {
-            _callbackWasCalled = YES;
+        _callbackWasCalled = YES;
             _isCardCurrentlyPresented = NO;
             self.safariViewDismissedCallback = nil;
             
-            dispatch_async(dispatch_get_main_queue(), ^{
+        dispatch_async(dispatch_get_main_queue(), ^{
                 globalCallback();
-            });
+        });
         }
     }
 }
@@ -1484,60 +1484,60 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
             } else {
                 // iPhone: supports expand/collapse and dismiss
                 if (currentTravel < 0 && !_isCardExpanded) {
-                    CGFloat expandDistance = height * 0.4;
-                    CGFloat expandProgress = MIN(1.0, fabs(currentTravel) / expandDistance);
-                    [self updateCardExpansionProgress:expandProgress cardView:cardView];
-                } else if (currentTravel > 0) {
-                    if (_isCardExpanded) {
-                        CGFloat collapseDistance = height * 0.5;
-                        CGFloat collapseProgress = MIN(1.0, currentTravel / collapseDistance);
-                        [self updateCardExpansionProgress:1.0 - collapseProgress cardView:cardView];
-                        
-                        if (collapseProgress >= 1.0) {
-                            CGFloat extraTravel = currentTravel - collapseDistance;
-                            CGRect screenBounds = [UIScreen mainScreen].bounds;
+                CGFloat expandDistance = height * 0.4;
+                CGFloat expandProgress = MIN(1.0, fabs(currentTravel) / expandDistance);
+                [self updateCardExpansionProgress:expandProgress cardView:cardView];
+            } else if (currentTravel > 0) {
+                if (_isCardExpanded) {
+                    CGFloat collapseDistance = height * 0.5;
+                    CGFloat collapseProgress = MIN(1.0, currentTravel / collapseDistance);
+                    [self updateCardExpansionProgress:1.0 - collapseProgress cardView:cardView];
+                    
+                    if (collapseProgress >= 1.0) {
+                        CGFloat extraTravel = currentTravel - collapseDistance;
+                        CGRect screenBounds = [UIScreen mainScreen].bounds;
                             CGFloat collapsedHeight = screenBounds.size.height * _originalCardHeightRatio;
                             CGFloat collapsedY = screenBounds.size.height * _originalCardVerticalPosition - collapsedHeight;
                             if (collapsedY < 0) collapsedY = 0;
-                            
+                        
                             CGFloat newY = collapsedY + extraTravel * 0.6;
-                            CGFloat maxY = screenHeight;
-                            newY = MIN(maxY, newY);
-                            
-                            CGRect currentFrame = cardView.frame;
-                            [CATransaction begin];
-                            [CATransaction setDisableActions:YES];
-                            cardView.frame = CGRectMake(currentFrame.origin.x, newY, currentFrame.size.width, currentFrame.size.height);
-                            [CATransaction commit];
-                            
-                            if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
-                                OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
-                                containerVC.customFrame = cardView.frame;
-                            }
-                        }
-                    } else {
-                        CGFloat newY = self.initialY + currentTravel;
                         CGFloat maxY = screenHeight;
                         newY = MIN(maxY, newY);
                         
-                        [CATransaction begin];
-                        [CATransaction setDisableActions:YES];
-                        cardView.frame = CGRectMake(cardView.frame.origin.x, newY, cardView.frame.size.width, height);
-                        [CATransaction commit];
+                        CGRect currentFrame = cardView.frame;
+                            [CATransaction begin];
+                            [CATransaction setDisableActions:YES];
+                        cardView.frame = CGRectMake(currentFrame.origin.x, newY, currentFrame.size.width, currentFrame.size.height);
+                            [CATransaction commit];
                         
                         if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
                             OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
                             containerVC.customFrame = cardView.frame;
                         }
                     }
+                } else {
+                    CGFloat newY = self.initialY + currentTravel;
+                    CGFloat maxY = screenHeight;
+                    newY = MIN(maxY, newY);
+                        
+                        [CATransaction begin];
+                        [CATransaction setDisableActions:YES];
+                    cardView.frame = CGRectMake(cardView.frame.origin.x, newY, cardView.frame.size.width, height);
+                        [CATransaction commit];
                     
-                    CGFloat maxTravel = _isCardExpanded ? (height * 0.8) : (height * 0.6);
-                    CGFloat ratio = 1.0 - (currentTravel / maxTravel);
+                    if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
+                        OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
+                        containerVC.customFrame = cardView.frame;
+                    }
+                }
+                
+                CGFloat maxTravel = _isCardExpanded ? (height * 0.8) : (height * 0.6);
+                CGFloat ratio = 1.0 - (currentTravel / maxTravel);
                     ratio = MAX(0.1, MIN(1.0, ratio));
-                    
+                
                     CGFloat baseOpacity = _isCardExpanded ? 0.6 : 0.4;
-                    if (overlayView) {
-                        overlayView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:baseOpacity * ratio];
+                if (overlayView) {
+                    overlayView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:baseOpacity * ratio];
                     }
                 }
             }
@@ -1576,23 +1576,23 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
                 CGFloat expandVelocityThreshold = -300;
                 CGFloat collapseVelocityThreshold = 300;
                 CGFloat dismissVelocityThreshold = 500;
-                
-                if (currentTravel < -expandThreshold || velocity.y < expandVelocityThreshold) {
+            
+            if (currentTravel < -expandThreshold || velocity.y < expandVelocityThreshold) {
                     if (!_isCardExpanded) {
-                        shouldExpand = YES;
-                    }
-                } else if (currentTravel > 0) {
-                    if (_isCardExpanded) {
-                        if (currentTravel > collapseThreshold || velocity.y > collapseVelocityThreshold) {
-                            shouldCollapse = YES;
-                            if (currentTravel > dismissThreshold * 1.5 && velocity.y > dismissVelocityThreshold * 1.5) {
-                                shouldDismiss = YES;
-                                shouldCollapse = NO;
-                            }
-                        }
-                    } else {
-                        if (currentTravel > dismissThreshold || velocity.y > dismissVelocityThreshold) {
+                    shouldExpand = YES;
+                }
+            } else if (currentTravel > 0) {
+                if (_isCardExpanded) {
+                    if (currentTravel > collapseThreshold || velocity.y > collapseVelocityThreshold) {
+                        shouldCollapse = YES;
+                        if (currentTravel > dismissThreshold * 1.5 && velocity.y > dismissVelocityThreshold * 1.5) {
                             shouldDismiss = YES;
+                                shouldCollapse = NO;
+                        }
+                    }
+                } else {
+                    if (currentTravel > dismissThreshold || velocity.y > dismissVelocityThreshold) {
+                        shouldDismiss = YES;
                         }
                     }
                 }
@@ -1711,14 +1711,14 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
                     }];
                 } else {
                     // iPhone: Return to expanded/collapsed state
-                    CGFloat targetProgress = _isCardExpanded ? 1.0 : 0.0;
-                    [UIView animateWithDuration:0.4 
-                                          delay:0 
-                         usingSpringWithDamping:0.8 
-                          initialSpringVelocity:fabs(velocity.y) / 1000.0 
-                                        options:UIViewAnimationOptionCurveEaseOut 
-                                     animations:^{
-                        [self updateCardExpansionProgress:targetProgress cardView:cardView];
+                CGFloat targetProgress = _isCardExpanded ? 1.0 : 0.0;
+                [UIView animateWithDuration:0.4 
+                                      delay:0 
+                     usingSpringWithDamping:0.8 
+                      initialSpringVelocity:fabs(velocity.y) / 1000.0 
+                                    options:UIViewAnimationOptionCurveEaseOut 
+                                 animations:^{
+                    [self updateCardExpansionProgress:targetProgress cardView:cardView];
                     } completion:^(BOOL finished) {
                         if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
                             OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
@@ -2424,11 +2424,11 @@ extern "C" {
                             screenBounds.size.width = screenBounds.size.height;
                             screenBounds.size.height = temp;
                         }
-                        width = screenBounds.size.width * _cardWidthRatio;
-                        height = screenBounds.size.height * _cardHeightRatio;
-                        x = (screenBounds.size.width - width) / 2;
-                        finalY = screenBounds.size.height * _cardVerticalPosition - height;
-                        if (finalY < 0) finalY = 0;
+                    width = screenBounds.size.width * _cardWidthRatio;
+                    height = screenBounds.size.height * _cardHeightRatio;
+                    x = (screenBounds.size.width - width) / 2;
+                    finalY = screenBounds.size.height * _cardVerticalPosition - height;
+                    if (finalY < 0) finalY = 0;
                     }
                 }
                 
@@ -2539,7 +2539,7 @@ extern "C" {
                         if (!CGRectEqualToRect(containerVC.view.frame, containerVC.customFrame)) {
                             [CATransaction begin];
                             [CATransaction setDisableActions:YES];
-                            containerVC.view.frame = containerVC.customFrame;
+                containerVC.view.frame = containerVC.customFrame;
                             containerVC.view.bounds = CGRectMake(0, 0, containerVC.customFrame.size.width, containerVC.customFrame.size.height);
                             [CATransaction commit];
                         }
@@ -2583,13 +2583,13 @@ extern "C" {
                     cornersToRound = UIRectCornerAllCorners;
                 } else {
                     // iPhone: based on vertical position
-                    if (_cardVerticalPosition < 0.1) {
-                        cornersToRound = UIRectCornerBottomLeft | UIRectCornerBottomRight;
-                    } else if (_cardVerticalPosition > 0.9) {
-                        cornersToRound = UIRectCornerTopLeft | UIRectCornerTopRight;
-                    } else {
-                        cornersToRound = UIRectCornerAllCorners;
-                    }
+                if (_cardVerticalPosition < 0.1) {
+                    cornersToRound = UIRectCornerBottomLeft | UIRectCornerBottomRight;
+                } else if (_cardVerticalPosition > 0.9) {
+                    cornersToRound = UIRectCornerTopLeft | UIRectCornerTopRight;
+                } else {
+                    cornersToRound = UIRectCornerAllCorners;
+                }
                 }
                 
                 // Apply corner radius mask (use customFrame size to ensure correct bounds)
@@ -2644,24 +2644,24 @@ extern "C" {
                     // Card mode: split implementation for iPhone and iPad
                     if (isRunningOniPad()) {
                         // iPad card mode: slide-up animation, supports rotation
-                        [UIView animateWithDuration:animationDuration 
-                                              delay:0 
-                             usingSpringWithDamping:0.85 
-                              initialSpringVelocity:0.5 
-                                            options:UIViewAnimationOptionCurveEaseOut 
-                                         animations:^{
-                            containerVC.view.alpha = 1.0;
-                            containerVC.view.transform = CGAffineTransformIdentity;
-                            overlayView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:overlayOpacity];
-                        } completion:^(BOOL finished) {
+                [UIView animateWithDuration:animationDuration 
+                                      delay:0 
+                     usingSpringWithDamping:0.85 
+                      initialSpringVelocity:0.5 
+                                    options:UIViewAnimationOptionCurveEaseOut 
+                                 animations:^{
+                    containerVC.view.alpha = 1.0;
+                    containerVC.view.transform = CGAffineTransformIdentity;
+                    overlayView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:overlayOpacity];
+                } completion:^(BOOL finished) {
                             // Re-enable layout updates after animation completes
                             containerVC.skipLayoutDuringInitialSetup = NO;
                             
                             // Add drag tray (iPad: only drag tray gesture, no pan on card)
-                            UIView *dragTray = [[StashPayCardSafariDelegate sharedInstance] createDragTray:width];
-                            [containerVC.view addSubview:dragTray];
-                            [StashPayCardSafariDelegate sharedInstance].dragTrayView = dragTray;
-                            
+                        UIView *dragTray = [[StashPayCardSafariDelegate sharedInstance] createDragTray:width];
+                        [containerVC.view addSubview:dragTray];
+                        [StashPayCardSafariDelegate sharedInstance].dragTrayView = dragTray;
+                        
                             // iPad: NO keyboard observing, NO tap-to-dismiss, NO pan gesture on card
                             
                             [StashPayCardSafariDelegate sharedInstance].safariViewDismissedCallback = ^{
@@ -2695,26 +2695,26 @@ extern "C" {
                             [StashPayCardSafariDelegate sharedInstance].dragTrayView = dragTray;
                             
                             // iPhone: tap-to-dismiss on overlay
-                            UIButton *dismissButton = [UIButton buttonWithType:UIButtonTypeCustom];
-                            dismissButton.frame = overlayView.bounds;
-                            dismissButton.backgroundColor = [UIColor clearColor];
-                            dismissButton.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-                            [overlayView addSubview:dismissButton];
-                            [dismissButton addTarget:[StashPayCardSafariDelegate sharedInstance]
-                                             action:@selector(dismissButtonTapped:)
-                                   forControlEvents:UIControlEventTouchUpInside];
-                            
+                        UIButton *dismissButton = [UIButton buttonWithType:UIButtonTypeCustom];
+                        dismissButton.frame = overlayView.bounds;
+                        dismissButton.backgroundColor = [UIColor clearColor];
+                        dismissButton.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+                        [overlayView addSubview:dismissButton];
+                        [dismissButton addTarget:[StashPayCardSafariDelegate sharedInstance] 
+                                         action:@selector(dismissButtonTapped:) 
+                               forControlEvents:UIControlEventTouchUpInside];
+                    
                             // iPhone: start keyboard observing
-                            [[StashPayCardSafariDelegate sharedInstance] startKeyboardObserving];
-                            
-                            [StashPayCardSafariDelegate sharedInstance].safariViewDismissedCallback = ^{
+                    [[StashPayCardSafariDelegate sharedInstance] startKeyboardObserving];
+                    
+                    [StashPayCardSafariDelegate sharedInstance].safariViewDismissedCallback = ^{
                                 // iPhone: stop keyboard observing
-                                [[StashPayCardSafariDelegate sharedInstance] stopKeyboardObserving];
-                                if (_safariViewDismissedCallback != NULL) {
-                                    _safariViewDismissedCallback();
-                                }
-                            };
-                        }];
+                        [[StashPayCardSafariDelegate sharedInstance] stopKeyboardObserving];
+                        if (_safariViewDismissedCallback != NULL) {
+                            _safariViewDismissedCallback();
+                        }
+                    };
+                }];
                     }
                 }
             }

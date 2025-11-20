@@ -6,7 +6,7 @@ The plugin also provides SFSafariViewController and Chrome Custom Tabs mode as a
 ## Requirements
 
 - Unity 2019.4+
-- iOS 12.0+ / Android API 21+
+- iOS 12.0+ / Android 13.0+
 
 ## Installation
 

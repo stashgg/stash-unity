@@ -263,7 +263,7 @@ namespace StashPopup
                     {
                         Debug.Log("[StashPayCard] Opening popup with platform default size (no custom size specified)");
                         // Use platform default (no custom size specified)
-                        androidPluginInstance.Call("openPopup", url);
+                    androidPluginInstance.Call("openPopup", url);
                     }
                 }
                 else
@@ -280,7 +280,7 @@ namespace StashPopup
 #elif UNITY_IOS && !UNITY_EDITOR
             if (!isPopup)
             {
-                ApplyCardConfiguration();
+            ApplyCardConfiguration();
             }
             _StashPayCardSetSafariViewDismissedCallback(OnIOSSafariViewDismissed);
             _StashPayCardSetPaymentSuccessCallback(OnIOSPaymentSuccess);
@@ -306,7 +306,7 @@ namespace StashPopup
                 {
                     Debug.Log("[StashPayCard] Opening popup with platform default size (no custom size specified)");
                     // Use iOS default (no custom size specified)
-                    _StashPayCardOpenPopup(url);
+                _StashPayCardOpenPopup(url);
                 }
             }
             else

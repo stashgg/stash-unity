@@ -114,8 +114,8 @@
                         <ui:DropdownField name="payment-method-dropdown" class="settings-option-dropdown" />
                     </ui:VisualElement>
                     <ui:VisualElement class="settings-option-row">
-                        <ui:Label text="Lock Portrait Orientation" class="settings-option-label" />
-                        <ui:Toggle name="orientation-lock-toggle" class="settings-option-toggle" />
+                        <ui:Label text="Screen Orientation" class="settings-option-label" />
+                        <ui:DropdownField name="orientation-mode-dropdown" class="settings-option-dropdown" />
                     </ui:VisualElement>
                     <ui:VisualElement class="settings-option-row">
                         <ui:Label text="Device ID" class="settings-option-label" />

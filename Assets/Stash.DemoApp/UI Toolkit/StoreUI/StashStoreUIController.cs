@@ -50,7 +50,7 @@ namespace Stash.Samples
     // Settings popup elements
     private VisualElement settingsPopup;
     private DropdownField paymentMethodDropdown;
-    private Toggle orientationLockToggle;
+    private DropdownField orientationModeDropdown;
     private Label deviceIdLabel;
     private Button settingsButton;
     private Button settingsPopupCloseButton;
@@ -71,8 +71,8 @@ namespace Stash.Samples
     // Popup size configuration (defaults to null to use platform defaults)
     private PopupSizeConfig? customPopupSize = null;
     
-    // Orientation lock state (default: locked to portrait)
-    private bool isOrientationLocked = true;
+    // Orientation mode: "Auto", "Portrait", or "Landscape"
+    private string orientationMode = "Portrait";
     
     // Delegate for purchase callbacks
     public delegate void PurchaseCompletedDelegate(string itemId, bool success);
@@ -87,8 +87,25 @@ namespace Stash.Samples
         // Get the root of the UI document
         root = storeUIDocument.rootVisualElement;
         
-        // Load orientation lock preference (default: true - locked to portrait)
-        isOrientationLocked = PlayerPrefs.GetInt("OrientationLocked", 1) == 1;
+        // Load orientation mode preference (default: "Portrait")
+        // Check for new key first, then migrate from old key if needed
+        if (PlayerPrefs.HasKey("OrientationMode"))
+        {
+            orientationMode = PlayerPrefs.GetString("OrientationMode", "Portrait");
+        }
+        else if (PlayerPrefs.HasKey("OrientationLocked"))
+        {
+            // Migrate from old boolean key to new string key
+            bool wasLocked = PlayerPrefs.GetInt("OrientationLocked", 1) == 1;
+            orientationMode = wasLocked ? "Portrait" : "Auto";
+            PlayerPrefs.SetString("OrientationMode", orientationMode);
+            PlayerPrefs.DeleteKey("OrientationLocked");
+            PlayerPrefs.Save();
+        }
+        else
+        {
+            orientationMode = "Portrait"; // Default
+        }
         
         // Load payment method preference (default: NATIVE_IAP)
         paymentMethod = PlayerPrefs.GetString("PaymentMethod", "NATIVE_IAP");
@@ -155,7 +172,7 @@ namespace Stash.Samples
         // Get settings popup elements
         settingsPopup = root.Q<VisualElement>("settings-popup");
         paymentMethodDropdown = root.Q<DropdownField>("payment-method-dropdown");
-        orientationLockToggle = root.Q<Toggle>("orientation-lock-toggle");
+        orientationModeDropdown = root.Q<DropdownField>("orientation-mode-dropdown");
         deviceIdLabel = root.Q<Label>("device-id-label");
         settingsPopupCloseButton = root.Q<Button>("settings-popup-close-button");
         
@@ -180,14 +197,20 @@ namespace Stash.Samples
             Debug.LogWarning("[StoreUI] Could not find payment-method-dropdown");
         }
         
-        if (orientationLockToggle != null)
+        if (orientationModeDropdown != null)
         {
-            orientationLockToggle.value = isOrientationLocked; // Set initial value from PlayerPrefs
-            orientationLockToggle.RegisterValueChangedCallback(OnOrientationToggleChanged);
+            // Setup dropdown choices
+            orientationModeDropdown.choices = new List<string> { "Auto", "Portrait", "Landscape" };
+            
+            // Set initial value from PlayerPrefs
+            orientationModeDropdown.value = orientationMode;
+            
+            // Register callback
+            orientationModeDropdown.RegisterValueChangedCallback(OnOrientationModeChanged);
         }
         else
         {
-            Debug.LogWarning("[StoreUI] Could not find orientation-lock-toggle");
+            Debug.LogWarning("[StoreUI] Could not find orientation-mode-dropdown");
         }
         
         if (deviceIdLabel != null)
@@ -573,39 +596,51 @@ namespace Stash.Samples
         }
     }
     
-    private void OnOrientationToggleChanged(ChangeEvent<bool> evt)
+    private void OnOrientationModeChanged(ChangeEvent<string> evt)
     {
-        isOrientationLocked = evt.newValue;
+        orientationMode = evt.newValue;
         
         // Save preference to PlayerPrefs
-        PlayerPrefs.SetInt("OrientationLocked", isOrientationLocked ? 1 : 0);
+        PlayerPrefs.SetString("OrientationMode", orientationMode);
         PlayerPrefs.Save();
         
         // Apply the orientation setting
         ApplyOrientationSetting();
         
-        Debug.Log($"[StoreUI] Orientation lock changed to: {(isOrientationLocked ? "Locked (Portrait)" : "Unlocked (All Orientations)")}");
+        Debug.Log($"[StoreUI] Orientation mode changed to: {orientationMode}");
     }
     
     private void ApplyOrientationSetting()
     {
-        if (isOrientationLocked)
+        switch (orientationMode)
         {
+            case "Portrait":
             // Lock to portrait only
             Screen.orientation = ScreenOrientation.Portrait;
             Screen.autorotateToPortrait = true;
             Screen.autorotateToPortraitUpsideDown = false;
             Screen.autorotateToLandscapeLeft = false;
             Screen.autorotateToLandscapeRight = false;
-        }
-        else
-        {
+                break;
+                
+            case "Landscape":
+                // Lock to landscape only
+                Screen.orientation = ScreenOrientation.LandscapeLeft;
+                Screen.autorotateToPortrait = false;
+                Screen.autorotateToPortraitUpsideDown = false;
+                Screen.autorotateToLandscapeLeft = true;
+                Screen.autorotateToLandscapeRight = true;
+                break;
+                
+            case "Auto":
+            default:
             // Allow all orientations
             Screen.orientation = ScreenOrientation.AutoRotation;
             Screen.autorotateToPortrait = true;
             Screen.autorotateToPortraitUpsideDown = true;
             Screen.autorotateToLandscapeLeft = true;
             Screen.autorotateToLandscapeRight = true;
+                break;
         }
     }
     

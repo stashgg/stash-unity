@@ -31,10 +31,9 @@ public class StashPayCardPortraitActivity extends Activity {
     private String initialURL;
     private float cardHeightRatio;
     private boolean usePopup;
-    private boolean wasLandscapeBeforeRotation;
     private boolean isExpanded = false;
     private boolean isInitializing = true; // NOTE: Prevents orientation changes during setup
-    private boolean cardIsRotated = false; // NOTE: True when card is rotated 90 degrees to appear portrait in landscape
+    private boolean wasLandscapeBeforePortrait = false; // NOTE: Track if device was landscape before forcing portrait
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -45,35 +44,34 @@ public class StashPayCardPortraitActivity extends Activity {
         initialURL = intent.getStringExtra("initialURL");
         cardHeightRatio = intent.getFloatExtra("cardHeightRatio", 0.68f);
         usePopup = intent.getBooleanExtra("usePopup", false);
-        wasLandscapeBeforeRotation = intent.getBooleanExtra("wasLandscape", false);
+        // NOTE: Get landscape state from Intent (detected in plugin before Activity launch)
+        wasLandscapeBeforePortrait = intent.getBooleanExtra("wasLandscape", false);
         
         if (url == null || url.isEmpty()) {
             finish();
             return;
         }
         
-        // NOTE: Match Unity's orientation - do NOT force portrait to prevent screen rotation
-        // We'll rotate the card view itself to appear portrait while Activity stays in landscape
-        // This matches iOS implementation - window stays in landscape, view is transformed
         boolean isTablet = isTablet();
+        
+        // NOTE: Force portrait on phone checkout - Unity Activity is locked separately to prevent rotation
         if (usePopup || isTablet) {
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR);
         } else {
-            // NOTE: Keep Activity in landscape when Unity is in landscape - don't force portrait
-            // Card will be rotated 90 degrees to appear portrait while Activity stays landscape
-            if (wasLandscapeBeforeRotation) {
-                // Unity is in landscape - stay in landscape, rotate card view instead
-                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-            } else {
-                // Unity is in portrait - safe to force portrait
-                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
-            }
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         }
         
         // NOTE: Window setup to keep Unity running underneath
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         Window window = getWindow();
-        window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        
+        // NOTE: Use black background when triggered from landscape on phones (not tablets)
+        // This ensures consistent appearance regardless of system theme
+        if (wasLandscapeBeforePortrait && !isTablet && !usePopup) {
+            window.setBackgroundDrawable(new ColorDrawable(Color.BLACK));
+        } else {
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        }
         
         window.addFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
         window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL);
@@ -93,8 +91,15 @@ public class StashPayCardPortraitActivity extends Activity {
     private void createUI() {
         rootLayout = new FrameLayout(this);
         
-        // NOTE: Always use transparent overlay - matches iOS approach
-        rootLayout.setBackgroundColor(Color.parseColor("#20000000"));
+        // NOTE: Use black background when triggered from landscape on phones (not tablets)
+        // Always black, regardless of system theme
+        boolean isTablet = isTablet();
+        if (wasLandscapeBeforePortrait && !isTablet && !usePopup) {
+            rootLayout.setBackgroundColor(Color.BLACK);
+        } else {
+            // NOTE: Use transparent overlay for other cases - matches iOS approach
+            rootLayout.setBackgroundColor(Color.parseColor("#20000000"));
+        }
         
         if (usePopup) {
             createPopup();
@@ -113,58 +118,36 @@ public class StashPayCardPortraitActivity extends Activity {
     
     private void createCard() {
         DisplayMetrics metrics = getResources().getDisplayMetrics();
-        boolean isTablet = isTablet();
+        boolean isTablet = isTablet(); // Cache result to avoid multiple calls
         
-        // NOTE: When Unity is in landscape, rotate card 90 degrees to appear portrait
-        // Card dimensions are swapped when rotated (width becomes visual height, height becomes visual width)
+        // NOTE: Expand card in landscape mode on phones (not tablets)
+        // Use larger height ratio when device was in landscape before forcing portrait
+        float effectiveHeightRatio = cardHeightRatio;
+        if (wasLandscapeBeforePortrait && !isTablet) {
+            // Always use 0.85 (85% of screen height) for landscape expansion
+            effectiveHeightRatio = 0.85f;
+        }
+        
         int cardWidth, cardHeight;
-        boolean needsRotation = wasLandscapeBeforeRotation && !usePopup && !isTablet;
-        
-        if (needsRotation) {
-            // Unity is in landscape - card will be rotated 90 degrees clockwise to appear portrait
-            // When rotated 90deg clockwise: card's width becomes visual height, card's height becomes visual width
-            // For portrait appearance: visual width = narrow (screen height), visual height = tall (screen width * ratio)
-            // So: cardWidth = visual height = screen.width * ratio, cardHeight = visual width = screen.height
-            cardWidth = (int) (metrics.widthPixels * cardHeightRatio); // Becomes visual height after rotation
-            cardHeight = metrics.heightPixels; // Becomes visual width after rotation (narrow)
+        cardHeight = (int) (metrics.heightPixels * effectiveHeightRatio);
+        if (isTablet) {
+            int maxTabletWidth = dpToPx(600);
+            int preferredWidth = (int)(metrics.widthPixels * 0.7f);
+            cardWidth = Math.min(preferredWidth, maxTabletWidth);
         } else {
-            // Normal portrait card (Unity already in portrait)
-            cardHeight = (int) (metrics.heightPixels * cardHeightRatio);
-            if (isTablet) {
-                int maxTabletWidth = dpToPx(600);
-                int preferredWidth = (int)(metrics.widthPixels * 0.7f);
-                cardWidth = Math.min(preferredWidth, maxTabletWidth);
-            } else {
-                cardWidth = FrameLayout.LayoutParams.MATCH_PARENT;
-            }
+            cardWidth = FrameLayout.LayoutParams.MATCH_PARENT;
         }
         
         cardContainer = new FrameLayout(this);
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(cardWidth, cardHeight);
-        
-        if (needsRotation) {
-            // When rotated 90 degrees, center the card
-            params.gravity = Gravity.CENTER;
-        } else {
-            params.gravity = isTablet ? Gravity.CENTER : (Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-        }
-        
+        params.gravity = isTablet ? Gravity.CENTER : (Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
         cardContainer.setLayoutParams(params);
-        
-        // NOTE: Rotate card 90 degrees when Unity is in landscape to appear portrait
-        // This matches iOS - window stays landscape, view is transformed
-        if (needsRotation) {
-            cardContainer.setRotation(90f);
-            cardContainer.setPivotX(cardWidth / 2f);
-            cardContainer.setPivotY(cardHeight / 2f);
-            cardIsRotated = true;
-        }
         
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(isDarkTheme() ? Color.parseColor("#1C1C1E") : Color.WHITE);
         float radius = dpToPx(25);
         
-        if (isTablet()) {
+        if (isTablet) {
             bg.setCornerRadius(radius);
         } else {
             bg.setCornerRadii(new float[]{radius, radius, radius, radius, 0, 0, 0, 0});
@@ -175,7 +158,7 @@ public class StashPayCardPortraitActivity extends Activity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             cardContainer.setElevation(dpToPx(24));
             
-            if (isTablet()) {
+            if (isTablet) {
                 cardContainer.setOutlineProvider(new ViewOutlineProvider() {
                     public void getOutline(View view, Outline outline) {
                         outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), radius);
@@ -197,14 +180,10 @@ public class StashPayCardPortraitActivity extends Activity {
         rootLayout.addView(cardContainer);
         
         addWebView();
-        if (!needsRotation) {
-            // Only add drag handle when not rotated (drag doesn't work well when rotated)
-            addDragHandle();
-        }
+        addDragHandle();
         addHomeButton();
         
-        // NOTE: When rotated, use fade-in since slide-up doesn't work correctly
-        if (isTablet() || needsRotation) {
+        if (isTablet) {
             animateFadeIn();
         } else {
             animateSlideUp();
@@ -304,7 +283,7 @@ public class StashPayCardPortraitActivity extends Activity {
                                 DisplayMetrics metrics = getResources().getDisplayMetrics();
                                 float progress = Math.min(deltaY / metrics.heightPixels, 1.0f);
                                 cardContainer.setAlpha(1.0f - (progress * 0.5f));
-                            } else if (deltaY < 0 && !isTablet && !isExpanded && !wasLandscapeBeforeRotation) {
+                            } else if (deltaY < 0 && !isTablet && !isExpanded) {
                                 // Upward drag - expand (phones only)
                                 DisplayMetrics metrics = getResources().getDisplayMetrics();
                                 int screenHeight = metrics.heightPixels;
@@ -335,7 +314,7 @@ public class StashPayCardPortraitActivity extends Activity {
                                 } else {
                                     animateSnapBack();
                                 }
-                            } else if (finalDeltaY < 0 && !isTablet && !isExpanded && !wasLandscapeBeforeRotation) {
+                            } else if (finalDeltaY < 0 && !isTablet && !isExpanded) {
                                 if (Math.abs(finalDeltaY) > dpToPx(80)) {
                                     animateExpand();
                                 } else {
@@ -393,9 +372,16 @@ public class StashPayCardPortraitActivity extends Activity {
     private void animateSnapBack() {
         if (cardContainer == null) return;
         DisplayMetrics metrics = getResources().getDisplayMetrics();
-        int normalHeight = wasLandscapeBeforeRotation ? 
-            (int)(metrics.heightPixels * 0.95f) : 
-            (int)(metrics.heightPixels * 0.68f);
+        
+        // NOTE: Use effective height ratio (accounts for landscape expansion)
+        float effectiveHeightRatio = cardHeightRatio;
+        boolean isTablet = isTablet();
+        if (wasLandscapeBeforePortrait && !isTablet) {
+            // Always use 0.85 (85% of screen height) for landscape expansion
+            effectiveHeightRatio = 0.85f;
+        }
+        
+        int normalHeight = (int)(metrics.heightPixels * effectiveHeightRatio);
         int targetHeight = isExpanded ? 
             (int)(metrics.heightPixels * 0.95f) : 
             normalHeight;
@@ -564,7 +550,6 @@ public class StashPayCardPortraitActivity extends Activity {
                     loadingIndicator.post(() -> {
                         if (loadingIndicator != null) {
                             loadingIndicator.setVisibility(View.VISIBLE);
-                            loadingIndicator.requestLayout();
                         }
                     });
                 }
@@ -615,14 +600,8 @@ public class StashPayCardPortraitActivity extends Activity {
             cardContainer.animate().alpha(0f).scaleX(0.9f).scaleY(0.9f).setDuration(150)
                 .withEndAction(this::finish).start();
         } else {
-            // NOTE: When rotated, use fade-out instead of slide-down
-            if (cardIsRotated) {
-                cardContainer.animate().alpha(0f).scaleX(0.9f).scaleY(0.9f).setDuration(200)
-                    .withEndAction(this::finish).start();
-            } else {
-                cardContainer.animate().translationY(cardContainer.getHeight()).setDuration(250)
-                    .withEndAction(this::finish).start();
-            }
+            cardContainer.animate().translationY(cardContainer.getHeight()).setDuration(250)
+                .withEndAction(this::finish).start();
         }
     }
     
@@ -659,7 +638,7 @@ public class StashPayCardPortraitActivity extends Activity {
     protected void onPause() {
         super.onPause();
         if (webView != null) {
-            webView.onResume();
+            webView.onPause();
         }
     }
     
@@ -700,9 +679,12 @@ public class StashPayCardPortraitActivity extends Activity {
         
         // NOTE: Recreate UI on rotation for tablet checkout (seamless transformation)
         // Popup uses Dialog-based approach and doesn't need this
-        if (!usePopup && isTablet() && cardContainer != null && rootLayout != null) {
-            rootLayout.removeAllViews();
-            createUI();
+        if (!usePopup && cardContainer != null && rootLayout != null) {
+            boolean isTablet = isTablet(); // Cache result
+            if (isTablet) {
+                rootLayout.removeAllViews();
+                createUI();
+            }
         }
     }
     
