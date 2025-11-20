@@ -80,7 +80,6 @@ namespace StashPopup.Editor.Windows
 
                 // Set current instance for callbacks
                 currentInstance = this;
-                Debug.Log("[WebViewLauncher] Set currentInstance for callbacks");
 
                 // Set up callbacks
                 paymentSuccessCallback = OnPaymentSuccessInternal;
@@ -89,54 +88,35 @@ namespace StashPopup.Editor.Windows
                 optinResponseCallback = OnOptinResponseInternal;
 
                 // Register callbacks BEFORE creating window so they're ready when JavaScript messages arrive
-                Debug.Log("[WebViewLauncher] Registering callbacks with native code");
                 try
                 {
-                    // Convert callback delegates to function pointers
                     IntPtr successPtr = Marshal.GetFunctionPointerForDelegate(paymentSuccessCallback);
                     IntPtr failurePtr = Marshal.GetFunctionPointerForDelegate(paymentFailureCallback);
                     IntPtr processingPtr = Marshal.GetFunctionPointerForDelegate(purchaseProcessingCallback);
                     IntPtr optinPtr = Marshal.GetFunctionPointerForDelegate(optinResponseCallback);
 
-                    Debug.Log($"[WebViewLauncher] Callback function pointers: success={successPtr}, failure={failurePtr}, processing={processingPtr}, optin={optinPtr}");
-
-                    // Register each callback
                     SetPaymentSuccessCallback(successPtr);
-                    Debug.Log("[WebViewLauncher] ✓ PaymentSuccess callback registered");
-
                     SetPaymentFailureCallback(failurePtr);
-                    Debug.Log("[WebViewLauncher] ✓ PaymentFailure callback registered");
-
                     SetPurchaseProcessingCallback(processingPtr);
-                    Debug.Log("[WebViewLauncher] ✓ PurchaseProcessing callback registered");
-
                     SetOptinResponseCallback(optinPtr);
-                    Debug.Log("[WebViewLauncher] ✓ OptinResponse callback registered");
                 }
                 catch (Exception callbackEx)
                 {
-                    Debug.LogError($"[WebViewLauncher] ❌ Failed to register callbacks: {callbackEx.Message}\n{callbackEx.StackTrace}");
+                    Debug.LogError($"[WebViewLauncher] Failed to register callbacks: {callbackEx.Message}");
+                    return false;
                 }
 
                 // Set up notification polling as fallback
                 SetupNotificationCenterListener();
 
                 // Create window AFTER callbacks are registered
-                Debug.Log("[WebViewLauncher] ========== CREATING WEBVIEW WINDOW ==========");
-                Debug.Log($"[WebViewLauncher] URL: {url}");
-                Debug.Log($"[WebViewLauncher] Rect: x={rect.x}, y={rect.y}, width={rect.width}, height={rect.height}");
                 windowPtr = CreateWebViewWindow(rect.x, rect.y, rect.width, rect.height, url);
 
                 if (windowPtr == IntPtr.Zero)
                 {
-                    Debug.LogError("[WebViewLauncher] ✗✗✗ CreateWebViewWindow returned null pointer ✗✗✗");
+                    Debug.LogError("[WebViewLauncher] CreateWebViewWindow returned null pointer");
                     return false;
                 }
-
-                Debug.Log($"[WebViewLauncher] ✓✓✓ WebView window created successfully, handle={windowPtr} ✓✓✓");
-                Debug.Log("[WebViewLauncher] ============================================");
-                Debug.Log("[WebViewLauncher] NOTE: Check DebugView (dbgview.exe) for detailed C++ debug output");
-                Debug.Log("[WebViewLauncher] Download DebugView from: https://docs.microsoft.com/en-us/sysinternals/downloads/debugview");
                 
                 return true;
             }
@@ -155,67 +135,42 @@ namespace StashPopup.Editor.Windows
         [MonoPInvokeCallback(typeof(PaymentSuccessCallback))]
         private static void OnPaymentSuccessInternal()
         {
-            Debug.Log("[WebViewLauncher] OnPaymentSuccessInternal called");
             if (currentInstance != null)
             {
-                Debug.Log("[WebViewLauncher] currentInstance found, dispatching to Unity main thread");
-                // Dispatch to Unity main thread
                 UnityEditor.EditorApplication.delayCall += () =>
                 {
-                    Debug.Log("[WebViewLauncher] Invoking OnPaymentSuccess event");
                     currentInstance.OnPaymentSuccess?.Invoke();
                 };
-            }
-            else
-            {
-                Debug.LogError("[WebViewLauncher] ERROR - currentInstance is null!");
             }
         }
 
         [MonoPInvokeCallback(typeof(PaymentFailureCallback))]
         private static void OnPaymentFailureInternal()
         {
-            Debug.Log("[WebViewLauncher] OnPaymentFailureInternal called");
             if (currentInstance != null)
             {
-                Debug.Log("[WebViewLauncher] currentInstance found, dispatching to Unity main thread");
-                // Dispatch to Unity main thread
                 UnityEditor.EditorApplication.delayCall += () =>
                 {
-                    Debug.Log("[WebViewLauncher] Invoking OnPaymentFailure event");
                     currentInstance.OnPaymentFailure?.Invoke();
                 };
-            }
-            else
-            {
-                Debug.LogError("[WebViewLauncher] ERROR - currentInstance is null!");
             }
         }
 
         [MonoPInvokeCallback(typeof(PurchaseProcessingCallback))]
         private static void OnPurchaseProcessingInternal()
         {
-            Debug.Log("[WebViewLauncher] OnPurchaseProcessingInternal called");
             if (currentInstance != null)
             {
-                Debug.Log("[WebViewLauncher] currentInstance found, dispatching to Unity main thread");
-                // Dispatch to Unity main thread
                 UnityEditor.EditorApplication.delayCall += () =>
                 {
-                    Debug.Log("[WebViewLauncher] Invoking OnPurchaseProcessing event");
                     currentInstance.OnPurchaseProcessing?.Invoke();
                 };
-            }
-            else
-            {
-                Debug.LogError("[WebViewLauncher] ERROR - currentInstance is null!");
             }
         }
 
         [MonoPInvokeCallback(typeof(OptinResponseCallback))]
         private static void OnOptinResponseInternal(IntPtr optinTypePtr)
         {
-            Debug.Log("[WebViewLauncher] OnOptinResponseInternal called");
             if (currentInstance != null)
             {
                 string optinType = "";
@@ -224,18 +179,11 @@ namespace StashPopup.Editor.Windows
                     optinType = Marshal.PtrToStringAnsi(optinTypePtr);
                 }
                 string finalOptinType = optinType ?? "";
-                Debug.Log($"[WebViewLauncher] Optin type: {finalOptinType}, dispatching to Unity main thread");
 
-                // Dispatch to Unity main thread
                 UnityEditor.EditorApplication.delayCall += () =>
                 {
-                    Debug.Log($"[WebViewLauncher] Invoking OnOptinResponse event with: {finalOptinType}");
                     currentInstance.OnOptinResponse?.Invoke(finalOptinType);
                 };
-            }
-            else
-            {
-                Debug.LogError("[WebViewLauncher] ERROR - currentInstance is null!");
             }
         }
 
@@ -243,12 +191,10 @@ namespace StashPopup.Editor.Windows
         {
             try
             {
-                // Use EditorApplication.update to poll for notifications and pump Windows messages
                 if (!messagePumpActive)
                 {
                     UnityEditor.EditorApplication.update += PollForNotifications;
                     messagePumpActive = true;
-                    Debug.Log("[WebViewLauncher] Set up notification polling via EditorApplication.update");
                 }
             }
             catch (Exception ex)
@@ -259,13 +205,9 @@ namespace StashPopup.Editor.Windows
 
         private static void PollForNotifications()
         {
-            // Pump Windows messages for WebView2 - CRITICAL for WebView2 to work
-            // WebView2 requires continuous message pumping to function
-            // Without this, the WebView will appear but won't render content
+            // Pump Windows messages for WebView2
             try
             {
-                // Pump messages multiple times per frame to ensure WebView2 gets enough processing time
-                // WebView2 is very sensitive to message pump frequency
                 for (int i = 0; i < 5; i++)
                 {
                     PumpMessages();
