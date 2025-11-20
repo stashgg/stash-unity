@@ -282,7 +282,8 @@ public class StashPayCardPlugin {
             
             GradientDrawable popupBg = new GradientDrawable();
             popupBg.setColor(getThemeBackgroundColor());
-            float radius = dpToPx(20);
+            // NOTE: Match iOS corner radius - 12 points = 12dp (popups round all corners)
+            float radius = dpToPx(12);
             popupBg.setCornerRadius(radius);
             currentContainer.setBackground(popupBg);
             
@@ -341,6 +342,7 @@ public class StashPayCardPlugin {
     private void animateFadeIn() {
         if (currentContainer != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
             currentContainer.setAlpha(0.0f);
+            // NOTE: Popup presentation - match iOS timing (0.2s) with EaseInOut curve
             currentContainer.setScaleX(0.9f);
             currentContainer.setScaleY(0.9f);
             currentContainer.animate()
@@ -348,7 +350,7 @@ public class StashPayCardPlugin {
                 .scaleX(1.0f)
                 .scaleY(1.0f)
                 .setDuration(200)
-                .setInterpolator(new android.view.animation.DecelerateInterpolator(1.2f))
+                .setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator())
                 .start();
         }
     }
@@ -356,11 +358,13 @@ public class StashPayCardPlugin {
     private void dismissPopupDialog() {
         if (currentDialog != null && currentContainer != null) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
+                // NOTE: Popup dismissal - match iOS spring timing (0.25s) with spring-like interpolator
                 currentContainer.animate()
                     .alpha(0.0f)
                     .scaleX(0.9f)
                     .scaleY(0.9f)
-                    .setDuration(150)
+                    .setDuration(250)
+                    .setInterpolator(new SpringInterpolator())
                     .withEndAction(() -> {
                         if (currentDialog != null) currentDialog.dismiss();
                     })

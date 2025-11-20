@@ -136,6 +136,10 @@
                         <ui:TextField name="api-key-input" class="settings-option-textfield" />
                     </ui:VisualElement>
                     <ui:VisualElement class="settings-option-row settings-option-row-column">
+                        <ui:Label text="API Environment" class="settings-option-label" />
+                        <ui:DropdownField name="api-environment-dropdown" class="settings-option-dropdown" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="settings-option-row settings-option-row-column">
                         <ui:Label text="Channel Selection URL" class="settings-option-label" />
                         <ui:TextField name="channel-selection-url-input" class="settings-option-textfield" />
                     </ui:VisualElement>

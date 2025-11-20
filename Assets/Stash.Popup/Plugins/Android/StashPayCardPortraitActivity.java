@@ -175,11 +175,14 @@ public class StashPayCardPortraitActivity extends Activity {
         
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(isDarkTheme() ? Color.parseColor("#1C1C1E") : Color.WHITE);
-        float radius = dpToPx(25);
+        // NOTE: Match iOS corner radius - 12 points = 12dp
+        float radius = dpToPx(12);
         
         if (isTablet) {
+            // Tablets: round all corners (matches iOS)
             bg.setCornerRadius(radius);
         } else {
+            // Phones: round top corners only (matches iOS)
         bg.setCornerRadii(new float[]{radius, radius, radius, radius, 0, 0, 0, 0});
         }
         cardContainer.setBackground(bg);
@@ -189,15 +192,17 @@ public class StashPayCardPortraitActivity extends Activity {
             cardContainer.setElevation(dpToPx(24));
             
             if (isTablet) {
+                // Tablets: round all corners
                 cardContainer.setOutlineProvider(new ViewOutlineProvider() {
                     public void getOutline(View view, Outline outline) {
                         outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), radius);
                     }
                 });
             } else {
+                // Phones: round top corners only
             cardContainer.setOutlineProvider(new ViewOutlineProvider() {
                 public void getOutline(View view, Outline outline) {
-                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight() + dpToPx(25), dpToPx(25));
+                        outline.setRoundRect(0, 0, view.getWidth(), view.getHeight() + (int)radius, radius);
                 }
             });
             }
@@ -207,11 +212,13 @@ public class StashPayCardPortraitActivity extends Activity {
         cardContainer.setClipChildren(false);
         cardContainer.setClipToPadding(false);
         
-        rootLayout.addView(cardContainer);
-        
+        // NOTE: Add WebView before adding cardContainer to rootLayout to start loading earlier
+        // WebView can load even while card is off-screen, improving perceived performance
         addWebView();
         addDragHandle();
         addHomeButton();
+        
+        rootLayout.addView(cardContainer);
         
         if (isTablet) {
             animateFadeIn();
@@ -231,7 +238,8 @@ public class StashPayCardPortraitActivity extends Activity {
         
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(isDarkTheme() ? Color.parseColor("#1C1C1E") : Color.WHITE);
-        float radius = dpToPx(20);
+        // NOTE: Match iOS corner radius - 12 points = 12dp (popups round all corners)
+        float radius = dpToPx(12);
         bg.setCornerRadius(radius);
         cardContainer.setBackground(bg);
         
@@ -367,10 +375,12 @@ public class StashPayCardPortraitActivity extends Activity {
             height = (int)(getResources().getDisplayMetrics().heightPixels * CARD_HEIGHT_NORMAL);
         }
         
+        // NOTE: Dismiss animation - match iOS spring timing (0.4s) with spring-like interpolator
         cardContainer.animate()
             .translationY(height)
             .alpha(0f)
-            .setDuration(300)
+            .setDuration(400)
+            .setInterpolator(new SpringInterpolator())
             .withEndAction(this::finish)
             .start();
     }
@@ -380,9 +390,11 @@ public class StashPayCardPortraitActivity extends Activity {
         DisplayMetrics metrics = getResources().getDisplayMetrics();
         int expandedHeight = (int)(metrics.heightPixels * CARD_HEIGHT_EXPANDED);
         
+        // NOTE: Expand animation - match iOS spring timing (0.35-0.5s) with spring-like interpolator
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams)cardContainer.getLayoutParams();
         android.animation.ValueAnimator animator = android.animation.ValueAnimator.ofInt(params.height, expandedHeight);
-        animator.setDuration(300);
+        animator.setDuration(450); // Match iOS 0.45s default
+        animator.setInterpolator(new SpringInterpolator());
         animator.addUpdateListener(animation -> {
             params.height = (Integer)animation.getAnimatedValue();
             cardContainer.setLayoutParams(params);
@@ -394,7 +406,8 @@ public class StashPayCardPortraitActivity extends Activity {
             .alpha(1f)
             .scaleX(1f)
             .scaleY(1f)
-            .setDuration(300)
+            .setDuration(450)
+            .setInterpolator(new SpringInterpolator())
             .start();
         
         isExpanded = true;
@@ -419,10 +432,12 @@ public class StashPayCardPortraitActivity extends Activity {
             targetHeight = (int)(metrics.heightPixels * CARD_HEIGHT_NORMAL);
         }
         
+        // NOTE: Snap back animation - match iOS spring timing (0.35-0.45s) with spring-like interpolator
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams)cardContainer.getLayoutParams();
         if (params.height != targetHeight) {
             android.animation.ValueAnimator animator = android.animation.ValueAnimator.ofInt(params.height, targetHeight);
-            animator.setDuration(250);
+            animator.setDuration(450); // Match iOS 0.45s default
+            animator.setInterpolator(new SpringInterpolator());
             animator.addUpdateListener(animation -> {
                 params.height = (Integer)animation.getAnimatedValue();
                 cardContainer.setLayoutParams(params);
@@ -435,7 +450,8 @@ public class StashPayCardPortraitActivity extends Activity {
             .alpha(1f)
             .scaleX(1f)
             .scaleY(1f)
-            .setDuration(250)
+            .setDuration(450)
+            .setInterpolator(new SpringInterpolator())
             .start();
     }
     
@@ -495,12 +511,9 @@ public class StashPayCardPortraitActivity extends Activity {
         
         cardContainer.addView(webView);
         
-        // NOTE: Load URL after container is laid out to ensure WebView has proper dimensions
-        cardContainer.post(() -> {
-            if (webView != null) {
-                webView.loadUrl(url);
-            }
-        });
+        // NOTE: Start loading immediately - WebView can load even while off-screen (before animation)
+        // This improves perceived performance by starting network requests as early as possible
+        webView.loadUrl(url);
     }
     
     private void addHomeButton() {
@@ -617,15 +630,34 @@ public class StashPayCardPortraitActivity extends Activity {
     }
     
     private void animateSlideUp() {
-        cardContainer.setTranslationY(cardContainer.getHeight());
-        cardContainer.post(() -> cardContainer.animate().translationY(0).setDuration(300).start());
+        // NOTE: Card presentation - match iOS timing (0.3s) with EaseInOut curve
+        // Set initial position off-screen (below viewport) before layout
+        DisplayMetrics metrics = getResources().getDisplayMetrics();
+        int screenHeight = metrics.heightPixels;
+        cardContainer.setTranslationY(screenHeight); // Start off-screen
+        
+        // Wait for layout pass, then animate in
+        cardContainer.post(() -> {
+            cardContainer.animate()
+                .translationY(0)
+                .setDuration(300)
+                .setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator())
+                .start();
+        });
     }
     
     private void animateFadeIn() {
+        // NOTE: Popup presentation - match iOS timing (0.2s) with EaseInOut curve
         cardContainer.setAlpha(0f);
         cardContainer.setScaleX(0.9f);
         cardContainer.setScaleY(0.9f);
-        cardContainer.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(200).start();
+        cardContainer.animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(200)
+            .setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator())
+            .start();
     }
     
     private void dismissWithAnimation() {
@@ -651,24 +683,24 @@ public class StashPayCardPortraitActivity extends Activity {
         // NOTE: Don't animate overlay - it causes flashing/tearing
         // Only animate the card, overlay will disappear when Activity finishes
         if (usePopup) {
-            // Popup: fade out card only
+            // Popup: fade out card only - match iOS timing (0.25s) with spring-like interpolator
             cardContainer.animate()
                 .alpha(0f)
                 .scaleX(0.9f)
                 .scaleY(0.9f)
-                .setDuration(150)
-                .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                .setDuration(250)
+                .setInterpolator(new SpringInterpolator())
                 .withEndAction(() -> {
                     // NOTE: Finish Activity with no transition to prevent flashing
                     finishActivityWithNoAnimation();
                 })
                 .start();
         } else {
-            // Card: slide down card only (no overlay animation)
+            // Card: slide down card only - match iOS spring timing (0.4s) with spring-like interpolator
             cardContainer.animate()
                 .translationY(cardContainer.getHeight())
-                .setDuration(250)
-                .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                .setDuration(400)
+                .setInterpolator(new SpringInterpolator())
                 .withEndAction(() -> {
                     // NOTE: Finish Activity with no transition to prevent flashing
                     finishActivityWithNoAnimation();

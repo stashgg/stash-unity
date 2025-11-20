@@ -58,6 +58,7 @@ namespace Stash.Samples
     // Stash SDK settings popup elements
     private VisualElement stashSdkSettingsPopup;
     private TextField apiKeyInput;
+    private DropdownField apiEnvironmentDropdown;
     private TextField channelSelectionUrlInput;
     private Toggle safariWebViewToggle;
     private Toggle showMetricsToggle;
@@ -115,6 +116,17 @@ namespace Stash.Samples
         if (!string.IsNullOrEmpty(savedApiKey))
         {
             apiKey = savedApiKey;
+        }
+        
+        // Load environment from PlayerPrefs (use default if not set)
+        if (PlayerPrefs.HasKey("StashEnvironment"))
+        {
+            string savedEnvironment = PlayerPrefs.GetString("StashEnvironment", "Test");
+            environment = savedEnvironment == "Production" ? StashEnvironment.Production : StashEnvironment.Test;
+        }
+        else
+        {
+            environment = StashEnvironment.Test; // Default to Test
         }
         
         // Load channel selection URL from PlayerPrefs (use default if not set)
@@ -251,6 +263,7 @@ namespace Stash.Samples
         // Get Stash SDK settings popup elements
         stashSdkSettingsPopup = root.Q<VisualElement>("stash-sdk-settings-popup");
         apiKeyInput = root.Q<TextField>("api-key-input");
+        apiEnvironmentDropdown = root.Q<DropdownField>("api-environment-dropdown");
         channelSelectionUrlInput = root.Q<TextField>("channel-selection-url-input");
         safariWebViewToggle = root.Q<Toggle>("safari-webview-toggle");
         showMetricsToggle = root.Q<Toggle>("show-metrics-toggle");
@@ -276,6 +289,22 @@ namespace Stash.Samples
         else
         {
             Debug.LogWarning("[StoreUI] Could not find api-key-input");
+        }
+        
+        if (apiEnvironmentDropdown != null)
+        {
+            // Setup dropdown choices
+            apiEnvironmentDropdown.choices = new List<string> { "Test", "Production" };
+            
+            // Set initial value from current environment
+            apiEnvironmentDropdown.value = environment == StashEnvironment.Production ? "Production" : "Test";
+            
+            // Register callback
+            apiEnvironmentDropdown.RegisterValueChangedCallback(OnApiEnvironmentChanged);
+        }
+        else
+        {
+            Debug.LogWarning("[StoreUI] Could not find api-environment-dropdown");
         }
         
         if (channelSelectionUrlInput != null)
@@ -424,6 +453,24 @@ namespace Stash.Samples
             PlayerPrefs.Save();
             
             Debug.Log($"[StoreUI] Stash API Key updated");
+        }
+    }
+    
+    private void OnApiEnvironmentChanged(ChangeEvent<string> evt)
+    {
+        // Convert dropdown value to StashEnvironment enum
+        StashEnvironment newEnvironment = evt.newValue == "Production" ? StashEnvironment.Production : StashEnvironment.Test;
+        
+        // Update environment if it has changed
+        if (newEnvironment != environment)
+        {
+            environment = newEnvironment;
+            
+            // Save to PlayerPrefs
+            PlayerPrefs.SetString("StashEnvironment", environment == StashEnvironment.Production ? "Production" : "Test");
+            PlayerPrefs.Save();
+            
+            Debug.Log($"[StoreUI] API Environment changed to: {environment}");
         }
     }
     
