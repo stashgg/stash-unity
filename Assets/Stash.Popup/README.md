@@ -1,7 +1,7 @@
 # Stash.Popup
 
 Unity plugin for integrating Stash Pay checkout flows using native WebViews on iOS and Android.
-The plugin also provides SFSafariViewController and Chrome Custom Tabs mode.
+The plugin also provides SFSafariViewController and Chrome Custom Tabs mode as a fallback or alternative flow.
 
 ## Requirements
 
@@ -12,20 +12,21 @@ The plugin also provides SFSafariViewController and Chrome Custom Tabs mode.
 
 Import the `Stash.Popup` folder into your Unity project's Assets directory.
 
-## Folder Structure
+## Package Contents
 
-### Editor
-Build post-processing scripts that automatically configure platform-specific settings:
+### ./Editor
+Build post-processing scripts and editor testing tool:
 - **`AddWebKitFramework.cs`** - Adds WebKit and SafariServices frameworks to iOS Xcode projects
 - **`StashPopupAndroidPostProcess.cs`** - Injects `StashPayCardPortraitActivity` into Android manifest
+- **`StashPayCardEditor/`** - Unity Editor testing extension for testing full checkout without device builds (macOS and Windows)
 
-### Plugins
-Native platform implementations for WebView integration:
+### ./Plugins
+Native platform implementations for Stash Pay integration:
 - **`Plugins/iOS/`** - Objective-C/Objective-C++ code for the native Stash Dialog
 - **`Plugins/Android/`** - Java code for the native Stash Dialog
 
-### Sample
-Start here: Example implementation demonstrating API usage:
+### ./Sample
+Sample scene demonstrating package usage:
 - **`StashPaySample.cs`** - Shows `OpenCheckout()` and `OpenOptin()` with web request integration
 - **`StashPaySample.unity`** - Sample scene with buttons to try checkout
 
@@ -150,9 +151,18 @@ void OpenInBrowser(string url)
 }
 ```
 
+## Unity Editor Testing 
+
+The plugin includes an Unity editor extension that allows you to test StashPayCard popups and checkout dialogs directly in the Unity Editor without building to a device.
+
+**How it works:** When you call `OpenPopup()` or `OpenCheckout()` in the Editor, the extension automatically intercepts these calls and displays the flow in a window within Unity editor. This enables you to interact with the Stash Pay UI, complete purchases, and verify callback events without leaving the Editor.
+
+Currently **Windows** and **macOS** versions of Unity are supported.
+
+
 ## Troubleshooting
 
-### iOS Build Error: Undefined symbol
+### iOS Build Error in Xcode: Undefined symbol
 
 Add frameworks in Unity Project Settings → iOS → Other Settings → Linked Frameworks:
 - `WebKit.framework`
@@ -162,14 +172,7 @@ Clean and rebuild Xcode project.
 
 ### Android: Blank WebView
 
-1. Ensure internet permission in AndroidManifest.xml
-2. Enable hardware acceleration
-
-### Callbacks Not Firing
-
-- Test on real device (callbacks don't work in Unity Editor)
-- Check native logs (Xcode Console / Android Logcat)
-- Verify your web page calls the correct JavaScript functions
+Ensure internet permission in your AndroidManifest.xml.
 
 
 ## API Reference
@@ -211,4 +214,4 @@ Dismisses current dialog and resets state.
 
 ---
 
-Copyright © 2024 Stash. All rights reserved.
+Copyright © 2025 Stash Interactive. All rights reserved.
