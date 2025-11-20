@@ -1,14 +1,18 @@
-#if UNITY_EDITOR_OSX
+#if UNITY_EDITOR_OSX || UNITY_EDITOR_WIN
 using System;
 using UnityEngine;
 using UnityEditor;
 using StashPopup;
+#if UNITY_EDITOR_OSX
 using StashPopup.Editor.macOS;
+#elif UNITY_EDITOR_WIN
+using StashPopup.Editor.Windows;
+#endif
 
 namespace StashPopup.Editor
 {
     /// <summary>
-    /// Editor window for testing StashPayCard popup and checkout dialogs in Unity Editor (macOS only)
+    /// Editor window for testing StashPayCard popup and checkout dialogs in Unity Editor (macOS and Windows)
     /// </summary>
     public class StashPayCardEditorWindow : EditorWindow
     {
@@ -225,7 +229,7 @@ namespace StashPopup.Editor
             webViewLauncher.OnPaymentFailure += OnWebViewPaymentFailure;
             webViewLauncher.OnOptinResponse += OnWebViewOptinResponse;
             
-            // Set up polling for NSNotificationCenter notifications
+            // Set up polling for notifications (macOS uses NSNotificationCenter, Windows uses message queue)
             StartNotificationPolling();
             
             if (webViewLauncher.CreateWindow(webviewRect, currentUrl))
@@ -254,9 +258,8 @@ namespace StashPopup.Editor
         
         private void PollForNotifications()
         {
-            // Check for notifications via a simple file-based mechanism or direct native calls
-            // For now, this will be handled by the native code posting notifications
-            // and we'll use a simpler polling mechanism
+            // Polling is handled by the WebViewLauncher class
+            // macOS uses NSNotificationCenter, Windows uses message queue
         }
         
         private void OnWebViewPaymentSuccess()
@@ -335,5 +338,5 @@ namespace StashPopup.Editor
         }
     }
 }
-#endif // UNITY_EDITOR_OSX
+#endif // UNITY_EDITOR_OSX || UNITY_EDITOR_WIN
 

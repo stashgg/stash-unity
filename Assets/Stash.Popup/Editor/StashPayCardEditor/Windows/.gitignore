@@ -1,0 +1,12 @@
+# Build artifacts (these are generated, don't commit)
+WebViewLauncher.exp
+WebViewLauncher.lib
+WebViewLauncher.obj
+*.pdb
+
+# Temporary build files
+build.rsp
+*.rsp
+
+# Webview SDK folder
+WebView2SDK
