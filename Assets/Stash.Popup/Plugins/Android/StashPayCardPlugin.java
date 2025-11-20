@@ -211,6 +211,8 @@ public class StashPayCardPlugin {
             intent.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
             
             activity.startActivity(intent);
+            // NOTE: Override transition to prevent flash when launching Activity
+            activity.overridePendingTransition(0, 0);
             isCurrentlyPresented = true;
         } catch (Exception e) {
             Log.e(TAG, "Failed to launch Activity: " + e.getMessage());

@@ -56,8 +56,8 @@ namespace StashPopup.Editor
                 XmlElement activityElement = manifest.CreateElement("activity");
                 activityElement.SetAttribute("name", "http://schemas.android.com/apk/res/android", 
                     "com.stash.popup.StashPayCardPortraitActivity");
-                activityElement.SetAttribute("screenOrientation", "http://schemas.android.com/apk/res/android", 
-                    "portrait");
+                // NOTE: Don't set screenOrientation in manifest - set it dynamically in onCreate based on device type
+                // This prevents forced portrait rotation on tablets
                 activityElement.SetAttribute("theme", "http://schemas.android.com/apk/res/android", 
                     "@android:style/Theme.Translucent.NoTitleBar.Fullscreen");
                 activityElement.SetAttribute("launchMode", "http://schemas.android.com/apk/res/android", 

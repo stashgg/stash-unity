@@ -21,6 +21,10 @@ import com.unity3d.player.UnityPlayer;
 public class StashPayCardPortraitActivity extends Activity {
     private static final String TAG = "StashPayCardPortrait";
     
+    // NOTE: Fixed card size ratios - only Normal and Expanded states
+    private static final float CARD_HEIGHT_NORMAL = 0.68f;  // 68% of screen height
+    private static final float CARD_HEIGHT_EXPANDED = 0.95f; // 95% of screen height
+    
     private FrameLayout rootLayout;
     private FrameLayout cardContainer;
     private WebView webView;
@@ -34,6 +38,8 @@ public class StashPayCardPortraitActivity extends Activity {
     private boolean isExpanded = false;
     private boolean isInitializing = true; // NOTE: Prevents orientation changes during setup
     private boolean wasLandscapeBeforePortrait = false; // NOTE: Track if device was landscape before forcing portrait
+    private boolean isDismissing = false; // NOTE: Prevents multiple dismissals and duplicate callbacks
+    private boolean callbackSent = false; // NOTE: Ensures OnAndroidDialogDismissed is only sent once
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -54,10 +60,18 @@ public class StashPayCardPortraitActivity extends Activity {
         
         boolean isTablet = isTablet();
         
-        // NOTE: Force portrait on phone checkout - Unity Activity is locked separately to prevent rotation
-        if (usePopup || isTablet) {
+        // NOTE: Orientation handling:
+        // - Popups: allow all orientations for seamless rotation
+        // - Tablets: lock to current orientation (no forced rotation)
+        // - Phones: force portrait for checkout
+        if (usePopup) {
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR);
+        } else if (isTablet) {
+            // NOTE: For tablets, don't set any orientation - let Activity stay in current state
+            // Not calling setRequestedOrientation prevents unwanted rotation animations
+            // The Activity will maintain whatever orientation it was launched in
         } else {
+            // Phones: force portrait
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         }
         
@@ -70,7 +84,7 @@ public class StashPayCardPortraitActivity extends Activity {
         if (wasLandscapeBeforePortrait && !isTablet && !usePopup) {
             window.setBackgroundDrawable(new ColorDrawable(Color.BLACK));
         } else {
-            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         }
         
         window.addFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
@@ -101,6 +115,9 @@ public class StashPayCardPortraitActivity extends Activity {
             rootLayout.setBackgroundColor(Color.parseColor("#20000000"));
         }
         
+        // NOTE: Ensure overlay starts at full opacity for smooth fade-out
+        rootLayout.setAlpha(1.0f);
+        
         if (usePopup) {
             createPopup();
         } else {
@@ -109,9 +126,16 @@ public class StashPayCardPortraitActivity extends Activity {
         
         // Dismiss on tap-outside for cards only
         if (!usePopup) {
-            rootLayout.setOnClickListener(v -> dismissWithAnimation());
+            rootLayout.setOnClickListener(v -> {
+                // NOTE: Only dismiss if not already dismissing and tap is on the overlay (not card)
+                if (!isDismissing && v == rootLayout) {
+                    dismissWithAnimation();
+                }
+            });
         }
-        cardContainer.setOnClickListener(v -> {});
+        cardContainer.setOnClickListener(v -> {
+            // NOTE: Prevent tap events on card from bubbling to rootLayout
+        });
         
         setContentView(rootLayout);
     }
@@ -120,12 +144,18 @@ public class StashPayCardPortraitActivity extends Activity {
         DisplayMetrics metrics = getResources().getDisplayMetrics();
         boolean isTablet = isTablet(); // Cache result to avoid multiple calls
         
-        // NOTE: Expand card in landscape mode on phones (not tablets)
-        // Use larger height ratio when device was in landscape before forcing portrait
-        float effectiveHeightRatio = cardHeightRatio;
+        // NOTE: Two fixed sizes only - Normal and Expanded
+        // Portrait: starts in Normal, can expand to Expanded
+        // Landscape: starts in Expanded, stays Expanded (no resizing)
+        float effectiveHeightRatio;
         if (wasLandscapeBeforePortrait && !isTablet) {
-            // Always use 0.85 (85% of screen height) for landscape expansion
-            effectiveHeightRatio = 0.85f;
+            // Landscape: always start in Expanded mode
+            effectiveHeightRatio = CARD_HEIGHT_EXPANDED;
+            isExpanded = true; // Mark as expanded from start
+        } else {
+            // Portrait: start in Normal mode
+            effectiveHeightRatio = CARD_HEIGHT_NORMAL;
+            isExpanded = false;
         }
         
         int cardWidth, cardHeight;
@@ -150,7 +180,7 @@ public class StashPayCardPortraitActivity extends Activity {
         if (isTablet) {
             bg.setCornerRadius(radius);
         } else {
-            bg.setCornerRadii(new float[]{radius, radius, radius, radius, 0, 0, 0, 0});
+        bg.setCornerRadii(new float[]{radius, radius, radius, radius, 0, 0, 0, 0});
         }
         cardContainer.setBackground(bg);
         
@@ -165,11 +195,11 @@ public class StashPayCardPortraitActivity extends Activity {
                     }
                 });
             } else {
-                cardContainer.setOutlineProvider(new ViewOutlineProvider() {
-                    public void getOutline(View view, Outline outline) {
-                        outline.setRoundRect(0, 0, view.getWidth(), view.getHeight() + dpToPx(25), dpToPx(25));
-                    }
-                });
+            cardContainer.setOutlineProvider(new ViewOutlineProvider() {
+                public void getOutline(View view, Outline outline) {
+                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight() + dpToPx(25), dpToPx(25));
+                }
+            });
             }
             cardContainer.setClipToOutline(true);
         }
@@ -186,7 +216,7 @@ public class StashPayCardPortraitActivity extends Activity {
         if (isTablet) {
             animateFadeIn();
         } else {
-            animateSlideUp();
+        animateSlideUp();
         }
     }
     
@@ -283,20 +313,14 @@ public class StashPayCardPortraitActivity extends Activity {
                                 DisplayMetrics metrics = getResources().getDisplayMetrics();
                                 float progress = Math.min(deltaY / metrics.heightPixels, 1.0f);
                                 cardContainer.setAlpha(1.0f - (progress * 0.5f));
-                            } else if (deltaY < 0 && !isTablet && !isExpanded) {
-                                // Upward drag - expand (phones only)
+                            } else if (deltaY < 0 && !isTablet && !isExpanded && !wasLandscapeBeforePortrait) {
+                                // Upward drag - show visual feedback for expansion (portrait only)
+                                // Don't resize during drag - only animate to Expanded on release
                                 DisplayMetrics metrics = getResources().getDisplayMetrics();
-                                int screenHeight = metrics.heightPixels;
-                                int baseHeight = (int)(screenHeight * cardHeightRatio);
-                                int maxHeight = (int)(screenHeight * 0.95f);
-                                
-                                int heightIncrease = (int)(Math.abs(deltaY) * 0.75f);
-                                int newHeight = Math.min(baseHeight + heightIncrease, maxHeight);
-                                
-                                FrameLayout.LayoutParams cardParams = 
-                                    (FrameLayout.LayoutParams)cardContainer.getLayoutParams();
-                                cardParams.height = newHeight;
-                                cardContainer.setLayoutParams(cardParams);
+                                float dragProgress = Math.min(Math.abs(deltaY) / dpToPx(100), 1.0f);
+                                // Visual feedback: slight scale/alpha change during drag
+                                cardContainer.setScaleX(1.0f + (dragProgress * 0.02f));
+                                cardContainer.setScaleY(1.0f + (dragProgress * 0.02f));
                             }
                         }
                         return true;
@@ -314,13 +338,17 @@ public class StashPayCardPortraitActivity extends Activity {
                                 } else {
                                     animateSnapBack();
                                 }
-                            } else if (finalDeltaY < 0 && !isTablet && !isExpanded) {
+                            } else if (finalDeltaY < 0 && !isTablet && !isExpanded && !wasLandscapeBeforePortrait) {
+                                // Portrait only: check if dragged enough to expand
                                 if (Math.abs(finalDeltaY) > dpToPx(80)) {
                                     animateExpand();
                                 } else {
                                     animateSnapBack();
                                 }
                             } else {
+                                // Reset scale and snap back
+                                cardContainer.setScaleX(1.0f);
+                                cardContainer.setScaleY(1.0f);
                                 animateSnapBack();
                             }
                         }
@@ -334,7 +362,10 @@ public class StashPayCardPortraitActivity extends Activity {
     private void animateDismiss() {
         if (cardContainer == null) return;
         int height = cardContainer.getHeight();
-        if (height == 0) height = (int)(getResources().getDisplayMetrics().heightPixels * 0.68f);
+        if (height == 0) {
+            // Fallback to normal height if card hasn't been measured yet
+            height = (int)(getResources().getDisplayMetrics().heightPixels * CARD_HEIGHT_NORMAL);
+        }
         
         cardContainer.animate()
             .translationY(height)
@@ -347,7 +378,7 @@ public class StashPayCardPortraitActivity extends Activity {
     private void animateExpand() {
         if (cardContainer == null) return;
         DisplayMetrics metrics = getResources().getDisplayMetrics();
-        int expandedHeight = (int)(metrics.heightPixels * 0.95f);
+        int expandedHeight = (int)(metrics.heightPixels * CARD_HEIGHT_EXPANDED);
         
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams)cardContainer.getLayoutParams();
         android.animation.ValueAnimator animator = android.animation.ValueAnimator.ofInt(params.height, expandedHeight);
@@ -372,19 +403,21 @@ public class StashPayCardPortraitActivity extends Activity {
     private void animateSnapBack() {
         if (cardContainer == null) return;
         DisplayMetrics metrics = getResources().getDisplayMetrics();
-        
-        // NOTE: Use effective height ratio (accounts for landscape expansion)
-        float effectiveHeightRatio = cardHeightRatio;
         boolean isTablet = isTablet();
-        if (wasLandscapeBeforePortrait && !isTablet) {
-            // Always use 0.85 (85% of screen height) for landscape expansion
-            effectiveHeightRatio = 0.85f;
-        }
         
-        int normalHeight = (int)(metrics.heightPixels * effectiveHeightRatio);
-        int targetHeight = isExpanded ? 
-            (int)(metrics.heightPixels * 0.95f) : 
-            normalHeight;
+        // NOTE: Snap to fixed states - Normal or Expanded only
+        int targetHeight;
+        if (wasLandscapeBeforePortrait && !isTablet) {
+            // Landscape: always snap to Expanded
+            targetHeight = (int)(metrics.heightPixels * CARD_HEIGHT_EXPANDED);
+            isExpanded = true;
+        } else if (isExpanded) {
+            // Portrait expanded: stay expanded
+            targetHeight = (int)(metrics.heightPixels * CARD_HEIGHT_EXPANDED);
+        } else {
+            // Portrait normal: snap to normal
+            targetHeight = (int)(metrics.heightPixels * CARD_HEIGHT_NORMAL);
+        }
         
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams)cardContainer.getLayoutParams();
         if (params.height != targetHeight) {
@@ -596,13 +629,74 @@ public class StashPayCardPortraitActivity extends Activity {
     }
     
     private void dismissWithAnimation() {
-        if (usePopup) {
-            cardContainer.animate().alpha(0f).scaleX(0.9f).scaleY(0.9f).setDuration(150)
-                .withEndAction(this::finish).start();
-        } else {
-            cardContainer.animate().translationY(cardContainer.getHeight()).setDuration(250)
-                .withEndAction(this::finish).start();
+        // NOTE: Prevent multiple dismissals - guard against duplicate calls
+        if (isDismissing) {
+            return;
         }
+        isDismissing = true;
+        
+        // NOTE: Lock orientation during dismissal to prevent screen rotation flash
+        // Keep Activity locked to current orientation until fully dismissed
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LOCKED);
+        
+        // NOTE: Clear window dim immediately to prevent flashing
+        Window window = getWindow();
+        if (window != null) {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            WindowManager.LayoutParams params = window.getAttributes();
+            params.dimAmount = 0f;
+            window.setAttributes(params);
+        }
+        
+        // NOTE: Don't animate overlay - it causes flashing/tearing
+        // Only animate the card, overlay will disappear when Activity finishes
+        if (usePopup) {
+            // Popup: fade out card only
+            cardContainer.animate()
+                .alpha(0f)
+                .scaleX(0.9f)
+                .scaleY(0.9f)
+                .setDuration(150)
+                .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                .withEndAction(() -> {
+                    // NOTE: Finish Activity with no transition to prevent flashing
+                    finishActivityWithNoAnimation();
+                })
+                .start();
+        } else {
+            // Card: slide down card only (no overlay animation)
+            cardContainer.animate()
+                .translationY(cardContainer.getHeight())
+                .setDuration(250)
+                .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                .withEndAction(() -> {
+                    // NOTE: Finish Activity with no transition to prevent flashing
+                    finishActivityWithNoAnimation();
+                })
+                .start();
+        }
+    }
+    
+    // NOTE: Finish Activity without transition animation to prevent screen flash during orientation restore
+    private void finishActivityWithNoAnimation() {
+        // NOTE: Hide overlay immediately to prevent flash during finish
+        if (rootLayout != null) {
+            rootLayout.setVisibility(View.INVISIBLE);
+        }
+        
+        // NOTE: Make window fully transparent before finishing to prevent flash
+        Window window = getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            // Ensure no dim or flags that could cause visual artifacts
+            window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION);
+            window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
+        }
+        
+        // NOTE: Override transition BEFORE finish to prevent screen flash/rotation animation
+        overridePendingTransition(0, 0);
+        finish();
     }
     
     private class JSInterface {
@@ -660,7 +754,11 @@ public class StashPayCardPortraitActivity extends Activity {
             webView = null;
         }
         
+        // NOTE: Only send callback once - prevent duplicate callbacks
+        if (!callbackSent) {
+            callbackSent = true;
         UnityPlayer.UnitySendMessage("StashPayCard", "OnAndroidDialogDismissed", "");
+        }
     }
     
     @Override
