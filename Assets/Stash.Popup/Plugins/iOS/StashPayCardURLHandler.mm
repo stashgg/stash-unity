@@ -37,6 +37,7 @@ static CGFloat _customLandscapeHeightMultiplier = 1.1385;
 static BOOL _forceSafariViewController = NO;
 static BOOL _usePopupPresentation = NO;
 static BOOL _isCardExpanded = NO;
+static BOOL _showScrollbar = NO;
 
 #define ENABLE_IPAD_SUPPORT 1
 
@@ -47,11 +48,9 @@ static BOOL _isCardExpanded = NO;
 @property (nonatomic, strong) UIWindow *portraitWindow;
 @property (nonatomic, strong) UIWindow *previousKeyWindow;
 @property (nonatomic, strong) UIView *dragTrayView;
-@property (nonatomic, strong) UIView *navigationBarView;
 @property (nonatomic, strong) NSURL *initialURL;
 @property (nonatomic, assign) CGFloat initialY;
 @property (nonatomic, assign) BOOL isObservingKeyboard;
-@property (nonatomic, assign) BOOL isNavigationBarVisible;
 @property (nonatomic, assign) BOOL isPurchaseProcessing;
 - (void)dismissButtonTapped:(UIButton *)button;
 - (void)dismissWithAnimation:(void (^)(void))completion;
@@ -59,14 +58,11 @@ static BOOL _isCardExpanded = NO;
 - (void)callUnityCallbackOnce;
 - (void)cleanupCardInstance;
 - (void)expandCardToFullScreen;
+- (void)finalizeExpandedState:(UIView *)cardView;
 - (void)collapseCardToOriginal;
 - (void)updateCardExpansionProgress:(CGFloat)progress cardView:(UIView *)cardView;
 - (void)updateButtonPositionsForProgress:(CGFloat)progress cardView:(UIView *)cardView safeAreaInsets:(UIEdgeInsets)safeAreaInsets;
 - (UIView *)createDragTray:(CGFloat)cardWidth;
-- (UIView *)createFloatingBackButton;
-- (void)showFloatingBackButton:(WKWebView *)webView;
-- (void)hideFloatingBackButton:(WKWebView *)webView;
-- (void)backButtonTapped:(UIButton *)button;
 - (void)startKeyboardObserving;
 - (void)stopKeyboardObserving;
 - (void)keyboardWillShow:(NSNotification *)notification;
@@ -165,8 +161,8 @@ CGSize calculateiPadCardSize(CGRect screenBounds);
             [self updateCornerRadiusMask];
         }
     } else {
-        // NOTE: Card mode - skip layout during gestures to prevent interference
-        if (self.skipLayoutDuringInitialSetup) {
+        // NOTE: Card mode - skip layout during gestures or when expanded to prevent interference
+        if (self.skipLayoutDuringInitialSetup || _isCardExpanded) {
             return;
         }
         
@@ -339,17 +335,6 @@ CGSize calculateiPadCardSize(CGRect screenBounds);
     
     NSURL *url = navigationAction.request.URL;
     NSString *urlString = url.absoluteString;
-    
-    // Check if URL contains klarna, paypal, or stripe and show/hide navigation bar accordingly
-    BOOL shouldShowNavigationBar = ([urlString.lowercaseString containsString:@"klarna"] || 
-                                   [urlString.lowercaseString containsString:@"paypal"] ||
-                                   [urlString.lowercaseString containsString:@"payments.stripe.com"]);
-    
-    if (shouldShowNavigationBar && ![[StashPayCardSafariDelegate sharedInstance] isNavigationBarVisible]) {
-        [[StashPayCardSafariDelegate sharedInstance] showFloatingBackButton:webView];
-    } else if (!shouldShowNavigationBar && [[StashPayCardSafariDelegate sharedInstance] isNavigationBarVisible]) {
-        [[StashPayCardSafariDelegate sharedInstance] hideFloatingBackButton:webView];
-    }
     
     if ([url.scheme isEqualToString:@"tel"] ||
         [url.scheme isEqualToString:@"mailto"] ||
@@ -614,11 +599,6 @@ static SafariViewDismissedCallback GetGlobalSafariViewDismissedCallback() {
         self.dragTrayView = nil;
     }
     
-    if (self.navigationBarView) {
-        [self.navigationBarView removeFromSuperview];
-        self.navigationBarView = nil;
-    }
-    
     if (self.currentPresentedVC) {
         objc_setAssociatedObject(self.currentPresentedVC, "webViewDelegate", nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(self.currentPresentedVC, "webViewUIDelegate", nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -671,7 +651,6 @@ static SafariViewDismissedCallback GetGlobalSafariViewDismissedCallback() {
     self.currentPresentedVC = nil;
     self.initialURL = nil;
     
-    self.isNavigationBarVisible = NO;
     self.isPurchaseProcessing = NO;
     _isCardExpanded = NO;
     _isCardCurrentlyPresented = NO;
@@ -906,8 +885,8 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
             webView.scrollView.alwaysBounceVertical = NO;
             webView.scrollView.alwaysBounceHorizontal = NO;
             
-            // Ensure scroll view fills content properly
-            webView.scrollView.showsVerticalScrollIndicator = YES;
+            // Configure scrollbar visibility
+            webView.scrollView.showsVerticalScrollIndicator = _showScrollbar;
             webView.scrollView.showsHorizontalScrollIndicator = NO;
             
             // Inject CSS to prevent web-level overscroll behaviors
@@ -962,15 +941,15 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     // Update button positions for full screen using consistent positioning logic
     [self updateButtonPositionsForProgress:1.0 cardView:cardView safeAreaInsets:safeAreaInsets];
     
-    // Animate to full screen (edge-to-edge)
-    [UIView animateWithDuration:0.2 animations:^{  // Reduced from 0.3
-        cardView.frame = fullScreenFrame;
-        
-        // Update customFrame (all presentations now use window approach)
-        if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
-            OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
-            containerVC.customFrame = cardView.frame;
-        }
+    // Use same spring animation as drag gesture for consistency
+    [UIView animateWithDuration:0.5 
+                          delay:0 
+         usingSpringWithDamping:0.85 
+          initialSpringVelocity:0.0 
+                        options:UIViewAnimationOptionCurveEaseOut 
+                     animations:^{
+        // Use updateCardExpansionProgress to ensure frame calculation matches drag gesture
+        [self updateCardExpansionProgress:1.0 cardView:cardView];
         
         // Update overlay opacity
         UIView *overlayView = objc_getAssociatedObject(self.currentPresentedVC, "overlayView");
@@ -996,6 +975,110 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
         maskLayer.path = maskPath.CGPath;
         cardView.layer.mask = maskLayer;
     }];
+}
+
+- (void)finalizeExpandedState:(UIView *)cardView {
+    if (!cardView || !self.currentPresentedVC) return;
+    
+    CGRect screenBounds = [UIScreen mainScreen].bounds;
+    UIEdgeInsets safeAreaInsets = UIEdgeInsetsZero;
+    if (@available(iOS 11.0, *)) {
+        UIView *parentView = cardView.superview;
+        if (parentView && [parentView respondsToSelector:@selector(safeAreaInsets)]) {
+            safeAreaInsets = parentView.safeAreaInsets;
+        }
+    }
+    CGFloat safeTop = safeAreaInsets.top;
+    CGRect fullScreenFrame = CGRectMake(0, safeTop, screenBounds.size.width, screenBounds.size.height - safeTop);
+    
+    // Update WebView constraints for expanded state
+    for (UIView *subview in cardView.subviews) {
+        if ([subview isKindOfClass:NSClassFromString(@"WKWebView")]) {
+            WKWebView *webView = (WKWebView *)subview;
+            
+            NSMutableArray *constraintsToRemove = [NSMutableArray array];
+            for (NSLayoutConstraint *constraint in cardView.constraints) {
+                if (constraint.firstItem == webView || constraint.secondItem == webView) {
+                    [constraintsToRemove addObject:constraint];
+                }
+            }
+            [NSLayoutConstraint deactivateConstraints:constraintsToRemove];
+            webView.translatesAutoresizingMaskIntoConstraints = NO;
+            
+            [NSLayoutConstraint activateConstraints:@[
+                [webView.leadingAnchor constraintEqualToAnchor:cardView.leadingAnchor],
+                [webView.trailingAnchor constraintEqualToAnchor:cardView.trailingAnchor],
+                [webView.topAnchor constraintEqualToAnchor:cardView.topAnchor],
+                [webView.bottomAnchor constraintEqualToAnchor:cardView.bottomAnchor]
+            ]];
+            
+            if (@available(iOS 13.0, *)) {
+                UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
+                UIColor *backgroundColor = (currentStyle == UIUserInterfaceStyleDark) ? [UIColor blackColor] : [UIColor systemBackgroundColor];
+                webView.backgroundColor = backgroundColor;
+                webView.scrollView.backgroundColor = backgroundColor;
+            } else {
+                webView.backgroundColor = [UIColor whiteColor];
+                webView.scrollView.backgroundColor = [UIColor whiteColor];
+            }
+            
+            if (@available(iOS 11.0, *)) {
+                webView.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+            }
+            webView.scrollView.contentInset = UIEdgeInsetsZero;
+            webView.scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
+            webView.scrollView.bounces = NO;
+            webView.scrollView.alwaysBounceVertical = NO;
+            webView.scrollView.alwaysBounceHorizontal = NO;
+            
+            webView.scrollView.showsVerticalScrollIndicator = _showScrollbar;
+            webView.scrollView.showsHorizontalScrollIndicator = NO;
+            
+            break;
+        }
+    }
+    
+    // Update drag tray for full screen
+    UIView *dragTray = [cardView viewWithTag:8888];
+    if (dragTray) {
+        dragTray.frame = CGRectMake(0, 0, fullScreenFrame.size.width, 44);
+        [cardView bringSubviewToFront:dragTray];
+        
+        CAGradientLayer *gradientLayer = (CAGradientLayer*)dragTray.layer.sublayers.firstObject;
+        if (gradientLayer && [gradientLayer isKindOfClass:[CAGradientLayer class]]) {
+            gradientLayer.frame = dragTray.bounds;
+        }
+        
+        UIView *handle = [dragTray viewWithTag:8889];
+        if (handle) {
+            CGFloat handleX = (fullScreenFrame.size.width / 2.0) - 20.0;
+            handle.frame = CGRectMake(handleX, 12, 40, 5);
+            handle.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.95];
+            handle.layer.shadowOpacity = 0.8;
+        }
+    }
+    
+    // Update overlay and background
+    UIView *overlayView = objc_getAssociatedObject(self.currentPresentedVC, "overlayView");
+    if (overlayView) {
+        overlayView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.6];
+    }
+    
+    if (@available(iOS 13.0, *)) {
+        UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
+        cardView.backgroundColor = (currentStyle == UIUserInterfaceStyleDark) ? [UIColor blackColor] : [UIColor systemBackgroundColor];
+    } else {
+        cardView.backgroundColor = [UIColor whiteColor];
+    }
+    
+    // Add rounded corners at top
+    UIBezierPath *maskPath = [UIBezierPath bezierPathWithRoundedRect:cardView.bounds
+                                                  byRoundingCorners:UIRectCornerTopLeft | UIRectCornerTopRight
+                                                        cornerRadii:CGSizeMake(16.0, 16.0)];
+    CAShapeLayer *maskLayer = [[CAShapeLayer alloc] init];
+    maskLayer.frame = cardView.bounds;
+    maskLayer.path = maskPath.CGPath;
+    cardView.layer.mask = maskLayer;
 }
 
 - (void)updateCardExpansionProgress:(CGFloat)progress cardView:(UIView *)cardView {
@@ -1138,19 +1221,6 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     
     // Interpolate top offset
     CGFloat currentTopOffset = collapsedTopOffset + (expandedTopOffset - collapsedTopOffset) * progress;
-    
-    // Update back button position if visible
-    UIView *backButton = [cardView viewWithTag:9999];
-    if (backButton && self.navigationBarView) {
-        // Calculate left offset for both states
-        CGFloat collapsedLeftOffset = 16; // 16pt margin from left edge
-        CGFloat expandedLeftOffset = safeAreaInsets.left + 16; // Respect left safe area + 16pt margin
-        
-        // Interpolate left offset
-        CGFloat currentLeftOffset = collapsedLeftOffset + (expandedLeftOffset - collapsedLeftOffset) * progress;
-        
-        backButton.frame = CGRectMake(currentLeftOffset, currentTopOffset, 40, 40);
-    }
 }
 
 - (void)collapseCardToOriginal {
@@ -1371,42 +1441,6 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     return dragTrayView;
 }
 
-- (UIView *)createFloatingBackButton {
-    UIButton *floatingBackButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    
-    CGFloat topSafeArea = 0;
-    if (@available(iOS 11.0, *)) {
-        UIView *currentView = self.currentPresentedVC.view;
-        if (currentView && [currentView respondsToSelector:@selector(safeAreaInsets)]) {
-            topSafeArea = currentView.safeAreaInsets.top;
-        }
-    }
-    
-    CGFloat topOffset = MAX(16, topSafeArea + 8) + 6;
-    floatingBackButton.frame = CGRectMake(16, topOffset, 40, 40);
-    floatingBackButton.tag = 9999;
-    
-    BOOL isDarkMode = NO;
-    if (@available(iOS 13.0, *)) {
-        isDarkMode = ([UITraitCollection currentTraitCollection].userInterfaceStyle == UIUserInterfaceStyleDark);
-    }
-    
-    [floatingBackButton setTitle:@"←" forState:UIControlStateNormal];
-    floatingBackButton.titleLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightSemibold];
-    [floatingBackButton setTitleColor:isDarkMode ? [UIColor whiteColor] : [UIColor blackColor] forState:UIControlStateNormal];
-    floatingBackButton.backgroundColor = isDarkMode ? [UIColor colorWithWhite:0.1 alpha:0.5] : [UIColor colorWithWhite:0.95 alpha:0.5];
-    floatingBackButton.layer.cornerRadius = 20;
-    floatingBackButton.layer.shadowColor = [UIColor blackColor].CGColor;
-    floatingBackButton.layer.shadowOffset = CGSizeMake(0, isRunningOniPad() ? 1 : 2);
-    floatingBackButton.layer.shadowOpacity = isRunningOniPad() ? 0.1 : 0.2;
-    floatingBackButton.layer.shadowRadius = isRunningOniPad() ? 2 : 4;
-    floatingBackButton.layer.borderWidth = 0.5;
-    floatingBackButton.layer.borderColor = isDarkMode ? [UIColor colorWithWhite:0.3 alpha:0.5].CGColor : [UIColor colorWithWhite:0.7 alpha:0.5].CGColor;
-    
-    [floatingBackButton addTarget:self action:@selector(backButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
-    
-    return floatingBackButton;
-}
 
 - (void)handleDragTrayPanGesture:(UIPanGestureRecognizer *)gesture {
     if (!self.currentPresentedVC) return;
@@ -1447,7 +1481,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
             CGFloat currentTravel = translation.y;
             CGFloat screenHeight = self.portraitWindow ? self.portraitWindow.bounds.size.height : cardView.superview.bounds.size.height;
             
-            if (isRunningOniPad()) {
+                        if (isRunningOniPad()) {
                 // NOTE: iPad - completely block upward drags, do absolutely nothing
                 if (currentTravel <= 0) {
                     return; // Exit immediately, don't process upward drags at all
@@ -1457,18 +1491,18 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
                 if (currentTravel > 0) {
                     // Direct linear following - no thresholds, no jumps, just smooth following
                     CGFloat newY = self.initialY + currentTravel;
-                    CGFloat maxY = screenHeight;
-                    newY = MIN(maxY, newY);
-                    
+                        CGFloat maxY = screenHeight;
+                        newY = MIN(maxY, newY);
+                        
                     // NOTE: Use CATransaction to prevent layout interference and ensure smooth following
                     [CATransaction begin];
                     [CATransaction setDisableActions:YES];
                     cardView.frame = CGRectMake(cardView.frame.origin.x, newY, cardView.frame.size.width, height);
                     [CATransaction commit];
                     
-                    if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
-                        OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
-                        containerVC.customFrame = cardView.frame;
+                        if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
+                            OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
+                            containerVC.customFrame = cardView.frame;
                     }
                     
                     // Update overlay opacity smoothly based on distance dragged
@@ -1481,65 +1515,35 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
                     }
                 }
                 // NOTE: iPad completely ignores upward drags (currentTravel <= 0) - do absolutely nothing
-            } else {
-                // iPhone: supports expand/collapse and dismiss
-                if (currentTravel < 0 && !_isCardExpanded) {
-                CGFloat expandDistance = height * 0.4;
-                CGFloat expandProgress = MIN(1.0, fabs(currentTravel) / expandDistance);
-                [self updateCardExpansionProgress:expandProgress cardView:cardView];
-            } else if (currentTravel > 0) {
-                if (_isCardExpanded) {
-                    CGFloat collapseDistance = height * 0.5;
-                    CGFloat collapseProgress = MIN(1.0, currentTravel / collapseDistance);
-                    [self updateCardExpansionProgress:1.0 - collapseProgress cardView:cardView];
-                    
-                    if (collapseProgress >= 1.0) {
-                        CGFloat extraTravel = currentTravel - collapseDistance;
-                        CGRect screenBounds = [UIScreen mainScreen].bounds;
-                            CGFloat collapsedHeight = screenBounds.size.height * _originalCardHeightRatio;
-                            CGFloat collapsedY = screenBounds.size.height * _originalCardVerticalPosition - collapsedHeight;
-                            if (collapsedY < 0) collapsedY = 0;
-                        
-                            CGFloat newY = collapsedY + extraTravel * 0.6;
-                        CGFloat maxY = screenHeight;
-                        newY = MIN(maxY, newY);
-                        
-                        CGRect currentFrame = cardView.frame;
-                            [CATransaction begin];
-                            [CATransaction setDisableActions:YES];
-                        cardView.frame = CGRectMake(currentFrame.origin.x, newY, currentFrame.size.width, currentFrame.size.height);
-                            [CATransaction commit];
-                        
-                        if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
-                            OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
-                            containerVC.customFrame = cardView.frame;
-                        }
-                    }
                 } else {
+                // iPhone: Only two states - NORMAL and EXPANDED. No intermediate states during drag.
+                // Just move the card visually during drag, but don't change its size until gesture ends.
+                if (currentTravel > 0) {
+                    // Dragging down - move card down
                     CGFloat newY = self.initialY + currentTravel;
                     CGFloat maxY = screenHeight;
                     newY = MIN(maxY, newY);
-                        
-                        [CATransaction begin];
-                        [CATransaction setDisableActions:YES];
-                    cardView.frame = CGRectMake(cardView.frame.origin.x, newY, cardView.frame.size.width, height);
-                        [CATransaction commit];
+                    
+                    [CATransaction begin];
+                    [CATransaction setDisableActions:YES];
+                    cardView.frame = CGRectMake(cardView.frame.origin.x, newY, cardView.frame.size.width, cardView.frame.size.height);
+                    [CATransaction commit];
                     
                     if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
                         OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
                         containerVC.customFrame = cardView.frame;
-                    }
                 }
                 
-                CGFloat maxTravel = _isCardExpanded ? (height * 0.8) : (height * 0.6);
+                    // Update overlay opacity based on drag distance
+                    CGFloat maxTravel = height * 0.6;
                 CGFloat ratio = 1.0 - (currentTravel / maxTravel);
-                    ratio = MAX(0.1, MIN(1.0, ratio));
-                
+                    ratio = MAX(0.0, MIN(1.0, ratio));
                     CGFloat baseOpacity = _isCardExpanded ? 0.6 : 0.4;
                 if (overlayView) {
                     overlayView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:baseOpacity * ratio];
-                    }
                 }
+                }
+                // Dragging up: Don't do anything during drag - will be handled on gesture end
             }
             break;
         }
@@ -1569,28 +1573,31 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
                     }
                 }
             } else {
-                // iPhone: supports expand/collapse and dismiss
+                // iPhone: Only two states - NORMAL and EXPANDED
+                // Simple logic: drag up expands, drag down collapses or dismisses
                 CGFloat expandThreshold = height * 0.15;
                 CGFloat collapseThreshold = height * 0.25;
-                CGFloat dismissThreshold = height * 0.3;
+                CGFloat dismissThreshold = height * 0.4;
                 CGFloat expandVelocityThreshold = -300;
                 CGFloat collapseVelocityThreshold = 300;
                 CGFloat dismissVelocityThreshold = 500;
             
             if (currentTravel < -expandThreshold || velocity.y < expandVelocityThreshold) {
+                    // Dragging up: expand if currently NORMAL
                     if (!_isCardExpanded) {
                     shouldExpand = YES;
                 }
             } else if (currentTravel > 0) {
+                    // Dragging down
                 if (_isCardExpanded) {
-                    if (currentTravel > collapseThreshold || velocity.y > collapseVelocityThreshold) {
-                        shouldCollapse = YES;
-                        if (currentTravel > dismissThreshold * 1.5 && velocity.y > dismissVelocityThreshold * 1.5) {
+                        // From EXPANDED: collapse or dismiss
+                        if (currentTravel > dismissThreshold && velocity.y > dismissVelocityThreshold) {
                             shouldDismiss = YES;
-                                shouldCollapse = NO;
-                        }
+                        } else if (currentTravel > collapseThreshold || velocity.y > collapseVelocityThreshold) {
+                            shouldCollapse = YES;
                     }
                 } else {
+                        // From NORMAL: dismiss only
                     if (currentTravel > dismissThreshold || velocity.y > dismissVelocityThreshold) {
                         shouldDismiss = YES;
                         }
@@ -1710,21 +1717,38 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
                         }
                     }];
                 } else {
-                    // iPhone: Return to expanded/collapsed state
-                CGFloat targetProgress = _isCardExpanded ? 1.0 : 0.0;
+                    // iPhone: Snap back to current state (NORMAL or EXPANDED) - no intermediate states
+                    if (_isCardExpanded) {
+                        // Snap back to EXPANDED state
                 [UIView animateWithDuration:0.4 
                                       delay:0 
-                     usingSpringWithDamping:0.8 
+                             usingSpringWithDamping:0.85 
                       initialSpringVelocity:fabs(velocity.y) / 1000.0 
                                     options:UIViewAnimationOptionCurveEaseOut 
                                  animations:^{
-                    [self updateCardExpansionProgress:targetProgress cardView:cardView];
-                    } completion:^(BOOL finished) {
-                        if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
-                            OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
-                            containerVC.skipLayoutDuringInitialSetup = NO;
-                        }
-                    }];
+                            [self updateCardExpansionProgress:1.0 cardView:cardView];
+                        } completion:^(BOOL finished) {
+                            if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
+                                OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
+                                containerVC.skipLayoutDuringInitialSetup = NO;
+                            }
+                        }];
+                    } else {
+                        // Snap back to NORMAL state
+                        [UIView animateWithDuration:0.4 
+                                              delay:0 
+                             usingSpringWithDamping:0.85 
+                              initialSpringVelocity:fabs(velocity.y) / 1000.0 
+                                            options:UIViewAnimationOptionCurveEaseOut 
+                                         animations:^{
+                            [self updateCardExpansionProgress:0.0 cardView:cardView];
+                        } completion:^(BOOL finished) {
+                            if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
+                                OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
+                                containerVC.skipLayoutDuringInitialSetup = NO;
+                            }
+                        }];
+                    }
                 }
             }
             break;
@@ -1757,11 +1781,55 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
         return;
     }
     
-    // iPhone: expand card when keyboard appears
+    // iPhone: expand card when keyboard appears - use same logic as drag gesture
     if (!_isCardExpanded && self.currentPresentedVC) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [self expandCardToFullScreen];
-        });
+        UIView *cardView = self.currentPresentedVC.view;
+        
+        // Disable layout updates during expansion to prevent conflicts with keyboard animation
+        if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
+            OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
+            containerVC.skipLayoutDuringInitialSetup = YES;
+        }
+        
+        // Get keyboard animation timing
+        NSDictionary *userInfo = notification.userInfo;
+        NSNumber *animationDuration = userInfo[UIKeyboardAnimationDurationUserInfoKey];
+        NSNumber *animationCurve = userInfo[UIKeyboardAnimationCurveUserInfoKey];
+        CGFloat duration = animationDuration ? [animationDuration doubleValue] : 0.25;
+        UIViewAnimationOptions options = animationCurve ? ([animationCurve unsignedIntegerValue] << 16) : UIViewAnimationOptionCurveEaseOut;
+        
+        _isCardExpanded = YES;
+        
+        // Use updateCardExpansionProgress to ensure exact same frame calculation as drag gesture
+        [UIView animateWithDuration:duration 
+                              delay:0 
+                            options:options 
+                         animations:^{
+            [self updateCardExpansionProgress:1.0 cardView:cardView];
+            
+            // Update overlay opacity
+            UIView *overlayView = objc_getAssociatedObject(self.currentPresentedVC, "overlayView");
+            if (overlayView) {
+                overlayView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.6];
+            }
+        } completion:^(BOOL finished) {
+            // Lock frame in place to prevent layout system from resetting it
+            [CATransaction begin];
+            [CATransaction setDisableActions:YES];
+            
+            if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
+                OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
+                containerVC.customFrame = cardView.frame;
+            }
+            
+            [CATransaction commit];
+            
+            // Keep layout disabled while card is expanded to prevent viewWillLayoutSubviews from resetting frame
+            // Layout will be re-enabled when card collapses
+            
+            // Finalize expanded state - update WebView constraints and corner radius
+            [self finalizeExpandedState:cardView];
+        }];
     }
 }
 
@@ -1771,30 +1839,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
         return;
     }
     
-    // iPhone: collapse card when keyboard hides
-    if (_isCardExpanded && self.currentPresentedVC) {
-        WKWebView *webView = nil;
-        for (UIView *subview in self.currentPresentedVC.view.subviews) {
-            if ([subview isKindOfClass:NSClassFromString(@"WKWebView")]) {
-                webView = (WKWebView *)subview;
-                break;
-            }
-        }
-        
-        if (webView) {
-            [webView evaluateJavaScript:@"document.activeElement.tagName === 'SELECT'" completionHandler:^(id result, NSError *error) {
-                BOOL hasActiveSelect = [result boolValue];
-                
-                if (!hasActiveSelect) {
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        [self collapseCardToOriginal];
-                    });
-                }
-            }];
-        } else {
-            [self collapseCardToOriginal];
-        }
-    }
+    // iPhone: don't collapse card when keyboard hides - keep expanded state
 }
 
 // WKScriptMessageHandler implementation for handling JavaScript calls
@@ -1845,6 +1890,29 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     }
     else if ([message.name isEqualToString:@"stashPurchaseProcessing"]) {
         self.isPurchaseProcessing = YES;
+        
+        // iPhone only: collapse card if expanded when purchase processing starts
+        if (!isRunningOniPad() && _isCardExpanded && self.currentPresentedVC) {
+            UIView *cardView = self.currentPresentedVC.view;
+            
+            [UIView animateWithDuration:0.4 
+                                  delay:0 
+                 usingSpringWithDamping:0.85 
+                  initialSpringVelocity:0.0 
+                                options:UIViewAnimationOptionCurveEaseOut 
+                             animations:^{
+                [self updateCardExpansionProgress:0.0 cardView:cardView];
+            } completion:^(BOOL finished) {
+                _isCardExpanded = NO;
+                [self collapseCardToOriginal];
+                
+                // Re-enable layout updates after collapse
+                if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
+                    OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
+                    containerVC.skipLayoutDuringInitialSetup = NO;
+                }
+            }];
+        }
     }
     else if ([message.name isEqualToString:@"stashOptin"]) {
         NSString *optinType = [message.body isKindOfClass:[NSString class]] ? (NSString *)message.body : @"";
@@ -1867,60 +1935,6 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     }
 }
 
-- (void)showFloatingBackButton:(WKWebView *)webView {
-    if (self.isNavigationBarVisible || !self.currentPresentedVC) return;
-    
-    UIView *containerView = self.currentPresentedVC.view;
-    
-    // Create floating back button if it doesn't exist
-    if (!self.navigationBarView) {
-        self.navigationBarView = [self createFloatingBackButton];
-    }
-    
-    // Position floating button in top-left corner
-    self.navigationBarView.alpha = 0.0;
-    self.navigationBarView.transform = CGAffineTransformMakeScale(0.8, 0.8); // Start slightly smaller
-    
-    // Add to container on top of everything
-    [containerView addSubview:self.navigationBarView];
-    [containerView bringSubviewToFront:self.navigationBarView];
-    
-    [UIView animateWithDuration:0.3 delay:0 usingSpringWithDamping:0.7 initialSpringVelocity:0.5 options:UIViewAnimationOptionCurveEaseOut animations:^{
-        self.navigationBarView.alpha = 1.0;
-        self.navigationBarView.transform = CGAffineTransformIdentity; // Scale to normal size
-    } completion:^(BOOL finished) {
-        self.isNavigationBarVisible = YES;
-    }];
-}
-
-- (void)hideFloatingBackButton:(WKWebView *)webView {
-    if (!self.isNavigationBarVisible || !self.navigationBarView) return;
-    
-    // Animate the floating button out of view with scale and fade
-    [UIView animateWithDuration:0.25 delay:0 usingSpringWithDamping:0.8 initialSpringVelocity:0.3 options:UIViewAnimationOptionCurveEaseIn animations:^{
-        self.navigationBarView.alpha = 0.0;
-        self.navigationBarView.transform = CGAffineTransformMakeScale(0.6, 0.6); // Scale down while fading
-    } completion:^(BOOL finished) {
-        [self.navigationBarView removeFromSuperview];
-        self.navigationBarView = nil;
-        self.isNavigationBarVisible = NO;
-    }];
-}
-
-
-
-- (void)backButtonTapped:(UIButton *)button {
-    if (!self.currentPresentedVC || !self.initialURL) return;
-    
-    for (UIView *subview in self.currentPresentedVC.view.subviews) {
-        if ([subview isKindOfClass:NSClassFromString(@"WKWebView")]) {
-            WKWebView *webView = (WKWebView *)subview;
-            NSURLRequest *request = [NSURLRequest requestWithURL:self.initialURL];
-            [webView loadRequest:request];
-            break;
-        }
-    }
-}
 
 @end
 
@@ -2078,11 +2092,7 @@ extern "C" {
             // Reset expansion state for new card
             _isCardExpanded = NO;
             
-            // Reset navigation bar state for new card
-            [[StashPayCardSafariDelegate sharedInstance] setIsNavigationBarVisible:NO];
-            [[StashPayCardSafariDelegate sharedInstance] setNavigationBarView:nil];
-            
-            // Store the initial URL for back button functionality
+            // Store the initial URL
             [[StashPayCardSafariDelegate sharedInstance] setInitialURL:url];
             
             // Create a custom view controller with WKWebView
@@ -2311,7 +2321,7 @@ extern "C" {
                 
                 // Enable scrolling for popup mode
                 webView.scrollView.scrollEnabled = YES;
-                webView.scrollView.showsVerticalScrollIndicator = YES;
+                webView.scrollView.showsVerticalScrollIndicator = _showScrollbar;
                 webView.scrollView.showsHorizontalScrollIndicator = NO;
                 
                 // Use the proper public API for iOS 9.0+
