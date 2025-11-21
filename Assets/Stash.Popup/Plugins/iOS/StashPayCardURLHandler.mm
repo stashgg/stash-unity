@@ -81,6 +81,13 @@ static BOOL _showScrollbar = NO;
 BOOL isRunningOniPad();
 CGSize calculateiPadCardSize(CGRect screenBounds);
 
+// Helper functions to reduce code duplication
+UIColor* getSystemBackgroundColor(void);
+void configureScrollViewForWebView(UIScrollView* scrollView);
+UIRectCorner getCornersToRoundForPosition(CGFloat verticalPosition, BOOL isiPad);
+void setWebViewBackgroundColor(WKWebView* webView, UIColor* color);
+CAShapeLayer* createCornerRadiusMask(CGRect bounds, UIRectCorner corners, CGFloat radius);
+
 @interface OrientationLockedViewController : UIViewController
 @property (nonatomic, assign) CGRect customFrame;
 @property (nonatomic, assign) BOOL enforcePortrait;
@@ -255,28 +262,17 @@ CGSize calculateiPadCardSize(CGRect screenBounds);
     CGRect viewBounds = self.view.bounds;
     UIRectCorner cornersToRound;
     
-    // iPad: always round all corners
-    if (isRunningOniPad()) {
-        cornersToRound = UIRectCornerAllCorners;
-    } else if (_usePopupPresentation) {
-        // Popup mode: always round all corners
+    // iPad or popup mode: always round all corners
+    if (isRunningOniPad() || _usePopupPresentation) {
         cornersToRound = UIRectCornerAllCorners;
     } else {
         // iPhone card mode: round based on position
-        if (_cardVerticalPosition < 0.1) {
-            cornersToRound = UIRectCornerBottomLeft | UIRectCornerBottomRight;
-        } else if (_cardVerticalPosition > 0.9) {
-            cornersToRound = UIRectCornerTopLeft | UIRectCornerTopRight;
-        } else {
-            cornersToRound = UIRectCornerAllCorners;
-        }
+        cornersToRound = getCornersToRoundForPosition(_cardVerticalPosition, NO);
     }
     
-    UIBezierPath *maskPath = [UIBezierPath bezierPathWithRoundedRect:viewBounds
-                                                  byRoundingCorners:cornersToRound
-                                                        cornerRadii:CGSizeMake(12.0, 12.0)];
+    CAShapeLayer *newMaskLayer = createCornerRadiusMask(viewBounds, cornersToRound, 12.0);
     maskLayer.frame = viewBounds;
-    maskLayer.path = maskPath.CGPath;
+    maskLayer.path = newMaskLayer.path;
 }
 
 - (UIInterfaceOrientationMask)supportedInterfaceOrientations {
@@ -378,14 +374,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds);
     }
     
     if (_webView.alpha < 0.01) {
-        UIColor *backgroundColor;
-        if (@available(iOS 13.0, *)) {
-            UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
-            backgroundColor = (currentStyle == UIUserInterfaceStyleDark) ? [UIColor blackColor] : [UIColor systemBackgroundColor];
-        } else {
-            backgroundColor = [UIColor whiteColor];
-        }
-        
+        UIColor *backgroundColor = getSystemBackgroundColor();
         _webView.backgroundColor = backgroundColor;
         _webView.scrollView.backgroundColor = backgroundColor;
         _webView.scrollView.opaque = YES;
@@ -529,11 +518,8 @@ CGSize calculateiPadCardSize(CGRect screenBounds);
     completionHandler(nil);
 }
 
-// Handle new window requests by loading them in the same WebView
+// Handle new window requests - allow new windows/tabs for testing
 - (WKWebView *)webView:(WKWebView *)webView createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration forNavigationAction:(WKNavigationAction *)navigationAction windowFeatures:(WKWindowFeatures *)windowFeatures {
-    // Instead of creating a new window, load the URL in the existing WebView
-    // This prevents target="_blank" links and window.open() from opening new windows
-    
     NSURL *url = navigationAction.request.URL;
     NSString *urlString = url.absoluteString;
     
@@ -543,29 +529,78 @@ CGSize calculateiPadCardSize(CGRect screenBounds);
         [url.scheme isEqualToString:@"sms"] ||
         [urlString containsString:@"apps.apple.com"] ||
         [urlString containsString:@"itunes.apple.com"]) {
-        // Open these externally and return nil to prevent new window
+        // Open these externally
         [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
         return nil;
     }
     
-    // For all other URLs, load them in the existing WebView
-    [webView loadRequest:navigationAction.request];
-    
-    // Return nil to prevent the new window from being created
-    return nil;
+    // Allow new windows/tabs to be created (removed blocking for testing)
+    WKWebView *newWebView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration];
+    return newWebView;
 }
 
-// Disable JavaScript alerts/prompts that might interfere
+// Allow JavaScript alerts/prompts to display normally (required for PayPal verification, etc.)
 - (void)webView:(WKWebView *)webView runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(void))completionHandler {
-    completionHandler();
+    // Show native alert dialog
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:nil
+                                                                   message:message
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertAction *okAction = [UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        completionHandler();
+    }];
+    [alert addAction:okAction];
+    
+    UIViewController *presentingVC = [UIApplication sharedApplication].keyWindow.rootViewController;
+    while (presentingVC.presentedViewController) {
+        presentingVC = presentingVC.presentedViewController;
+    }
+    [presentingVC presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)webView:(WKWebView *)webView runJavaScriptConfirmPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(BOOL))completionHandler {
-    completionHandler(NO);
+    // Show native confirm dialog
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:nil
+                                                                   message:message
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:^(UIAlertAction *action) {
+        completionHandler(NO);
+    }];
+    UIAlertAction *okAction = [UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        completionHandler(YES);
+    }];
+    [alert addAction:cancelAction];
+    [alert addAction:okAction];
+    
+    UIViewController *presentingVC = [UIApplication sharedApplication].keyWindow.rootViewController;
+    while (presentingVC.presentedViewController) {
+        presentingVC = presentingVC.presentedViewController;
+    }
+    [presentingVC presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)webView:(WKWebView *)webView runJavaScriptTextInputPanelWithPrompt:(NSString *)prompt defaultText:(NSString *)defaultText initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(NSString *))completionHandler {
-    completionHandler(nil);
+    // Show native prompt dialog
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:nil
+                                                                   message:prompt
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
+        textField.text = defaultText;
+    }];
+    UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:^(UIAlertAction *action) {
+        completionHandler(nil);
+    }];
+    UIAlertAction *okAction = [UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        UITextField *textField = alert.textFields.firstObject;
+        completionHandler(textField.text ?: defaultText);
+    }];
+    [alert addAction:cancelAction];
+    [alert addAction:okAction];
+    
+    UIViewController *presentingVC = [UIApplication sharedApplication].keyWindow.rootViewController;
+    while (presentingVC.presentedViewController) {
+        presentingVC = presentingVC.presentedViewController;
+    }
+    [presentingVC presentViewController:alert animated:YES completion:nil];
 }
 
 @end
@@ -824,6 +859,61 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     return CGSizeMake(cardWidth, cardHeight);
 }
 
+// Helper function implementations to reduce code duplication
+UIColor* getSystemBackgroundColor(void) {
+    if (@available(iOS 13.0, *)) {
+        UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
+        return (currentStyle == UIUserInterfaceStyleDark) ? [UIColor blackColor] : [UIColor systemBackgroundColor];
+    }
+    return [UIColor whiteColor];
+}
+
+void configureScrollViewForWebView(UIScrollView* scrollView) {
+    if (@available(iOS 11.0, *)) {
+        scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+    }
+    scrollView.contentInset = UIEdgeInsetsZero;
+    scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
+    scrollView.bounces = NO;
+    scrollView.alwaysBounceVertical = NO;
+    scrollView.alwaysBounceHorizontal = NO;
+}
+
+UIRectCorner getCornersToRoundForPosition(CGFloat verticalPosition, BOOL isiPad) {
+    if (isiPad) {
+        return UIRectCornerAllCorners;
+    }
+    if (verticalPosition < 0.1) {
+        return UIRectCornerBottomLeft | UIRectCornerBottomRight;
+    } else if (verticalPosition > 0.9) {
+        return UIRectCornerTopLeft | UIRectCornerTopRight;
+    }
+    return UIRectCornerAllCorners;
+}
+
+void setWebViewBackgroundColor(WKWebView* webView, UIColor* color) {
+    webView.backgroundColor = color;
+    webView.scrollView.backgroundColor = color;
+    for (UIView *subview in webView.subviews) {
+        subview.backgroundColor = color;
+        subview.opaque = YES;
+    }
+    for (UIView *subview in webView.scrollView.subviews) {
+        subview.backgroundColor = color;
+        subview.opaque = YES;
+    }
+}
+
+CAShapeLayer* createCornerRadiusMask(CGRect bounds, UIRectCorner corners, CGFloat radius) {
+    UIBezierPath *maskPath = [UIBezierPath bezierPathWithRoundedRect:bounds
+                                                  byRoundingCorners:corners
+                                                        cornerRadii:CGSizeMake(radius, radius)];
+    CAShapeLayer *maskLayer = [[CAShapeLayer alloc] init];
+    maskLayer.frame = bounds;
+    maskLayer.path = maskPath.CGPath;
+    return maskLayer;
+}
+
 - (void)expandCardToFullScreen {
     if (!self.currentPresentedVC) return;
     
@@ -876,27 +966,11 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
             ]];
             
             // Force WebView background to match system background during expansion
-            if (@available(iOS 13.0, *)) {
-                UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
-                UIColor *backgroundColor = (currentStyle == UIUserInterfaceStyleDark) ? [UIColor blackColor] : [UIColor systemBackgroundColor];
-                webView.backgroundColor = backgroundColor;
-                webView.scrollView.backgroundColor = backgroundColor;
-            } else {
-                webView.backgroundColor = [UIColor whiteColor];
-                webView.scrollView.backgroundColor = [UIColor whiteColor];
-            }
+            UIColor *backgroundColor = getSystemBackgroundColor();
+            setWebViewBackgroundColor(webView, backgroundColor);
             
             // Configure WebView for full screen - prevent black bars with proper scroll behavior
-            if (@available(iOS 11.0, *)) {
-                webView.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
-            }
-            webView.scrollView.contentInset = UIEdgeInsetsZero;
-            webView.scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
-            
-            // Prevent overscroll bounce to avoid black bars in expanded state
-            webView.scrollView.bounces = NO;
-            webView.scrollView.alwaysBounceVertical = NO;
-            webView.scrollView.alwaysBounceHorizontal = NO;
+            configureScrollViewForWebView(webView.scrollView);
             
             // Configure scrollbar visibility
             webView.scrollView.showsVerticalScrollIndicator = _showScrollbar;
@@ -971,21 +1045,10 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
         }
         
         // Ensure card background matches system background
-        if (@available(iOS 13.0, *)) {
-            UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
-            cardView.backgroundColor = (currentStyle == UIUserInterfaceStyleDark) ? [UIColor blackColor] : [UIColor systemBackgroundColor];
-        } else {
-            cardView.backgroundColor = [UIColor whiteColor];
-        }
+        cardView.backgroundColor = getSystemBackgroundColor();
     } completion:^(BOOL finished) {
         // Add iOS-style rounded corners at top for full screen
-        UIBezierPath *maskPath = [UIBezierPath bezierPathWithRoundedRect:cardView.bounds
-                                                      byRoundingCorners:UIRectCornerTopLeft | UIRectCornerTopRight
-                                                            cornerRadii:CGSizeMake(16.0, 16.0)]; // iOS standard corner radius
-        
-        CAShapeLayer *maskLayer = [[CAShapeLayer alloc] init];
-        maskLayer.frame = cardView.bounds;
-        maskLayer.path = maskPath.CGPath;
+        CAShapeLayer *maskLayer = createCornerRadiusMask(cardView.bounds, UIRectCornerTopLeft | UIRectCornerTopRight, 16.0);
         cardView.layer.mask = maskLayer;
     }];
 }
@@ -1025,24 +1088,10 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
                 [webView.bottomAnchor constraintEqualToAnchor:cardView.bottomAnchor]
             ]];
             
-            if (@available(iOS 13.0, *)) {
-                UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
-                UIColor *backgroundColor = (currentStyle == UIUserInterfaceStyleDark) ? [UIColor blackColor] : [UIColor systemBackgroundColor];
-                webView.backgroundColor = backgroundColor;
-                webView.scrollView.backgroundColor = backgroundColor;
-            } else {
-                webView.backgroundColor = [UIColor whiteColor];
-                webView.scrollView.backgroundColor = [UIColor whiteColor];
-            }
+            UIColor *backgroundColor = getSystemBackgroundColor();
+            setWebViewBackgroundColor(webView, backgroundColor);
             
-            if (@available(iOS 11.0, *)) {
-                webView.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
-            }
-            webView.scrollView.contentInset = UIEdgeInsetsZero;
-            webView.scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
-            webView.scrollView.bounces = NO;
-            webView.scrollView.alwaysBounceVertical = NO;
-            webView.scrollView.alwaysBounceHorizontal = NO;
+            configureScrollViewForWebView(webView.scrollView);
             
             webView.scrollView.showsVerticalScrollIndicator = _showScrollbar;
             webView.scrollView.showsHorizontalScrollIndicator = NO;
@@ -1077,20 +1126,10 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
         overlayView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.6];
     }
     
-    if (@available(iOS 13.0, *)) {
-        UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
-        cardView.backgroundColor = (currentStyle == UIUserInterfaceStyleDark) ? [UIColor blackColor] : [UIColor systemBackgroundColor];
-    } else {
-        cardView.backgroundColor = [UIColor whiteColor];
-    }
+    cardView.backgroundColor = getSystemBackgroundColor();
     
     // Add rounded corners at top
-    UIBezierPath *maskPath = [UIBezierPath bezierPathWithRoundedRect:cardView.bounds
-                                                  byRoundingCorners:UIRectCornerTopLeft | UIRectCornerTopRight
-                                                        cornerRadii:CGSizeMake(16.0, 16.0)];
-    CAShapeLayer *maskLayer = [[CAShapeLayer alloc] init];
-    maskLayer.frame = cardView.bounds;
-    maskLayer.path = maskPath.CGPath;
+    CAShapeLayer *maskLayer = createCornerRadiusMask(cardView.bounds, UIRectCornerTopLeft | UIRectCornerTopRight, 16.0);
     cardView.layer.mask = maskLayer;
 }
 
@@ -1173,34 +1212,13 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     // Update corner radius based on progress
     if (progress > 0.8) {
         // Near full screen - iOS style top corners only
-        UIBezierPath *maskPath = [UIBezierPath bezierPathWithRoundedRect:cardView.bounds
-                                                      byRoundingCorners:UIRectCornerTopLeft | UIRectCornerTopRight
-                                                            cornerRadii:CGSizeMake(16.0, 16.0)];
-        CAShapeLayer *maskLayer = [[CAShapeLayer alloc] init];
-        maskLayer.frame = cardView.bounds;
-        maskLayer.path = maskPath.CGPath;
+        CAShapeLayer *maskLayer = createCornerRadiusMask(cardView.bounds, UIRectCornerTopLeft | UIRectCornerTopRight, 16.0);
         cardView.layer.mask = maskLayer;
     } else {
         // Collapsed - original corner style
-        UIRectCorner cornersToRound;
-        if (isRunningOniPad()) {
-            cornersToRound = UIRectCornerAllCorners;
-        } else {
-            if (_originalCardVerticalPosition < 0.1) {
-                cornersToRound = UIRectCornerBottomLeft | UIRectCornerBottomRight;
-            } else if (_originalCardVerticalPosition > 0.9) {
-                cornersToRound = UIRectCornerTopLeft | UIRectCornerTopRight;
-            } else {
-                cornersToRound = UIRectCornerAllCorners;
-            }
-        }
+        UIRectCorner cornersToRound = getCornersToRoundForPosition(_originalCardVerticalPosition, isRunningOniPad());
         
-        UIBezierPath *maskPath = [UIBezierPath bezierPathWithRoundedRect:cardView.bounds
-                                                      byRoundingCorners:cornersToRound
-                                                            cornerRadii:CGSizeMake(12.0, 12.0)];
-        CAShapeLayer *maskLayer = [[CAShapeLayer alloc] init];
-        maskLayer.frame = cardView.bounds;
-        maskLayer.path = maskPath.CGPath;
+        CAShapeLayer *maskLayer = createCornerRadiusMask(cardView.bounds, cornersToRound, 12.0);
         cardView.layer.mask = maskLayer;
     }
     
@@ -1291,16 +1309,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
             ]];
             
             // Configure WebView for collapsed state - maintain consistent settings to prevent overscroll
-            if (@available(iOS 11.0, *)) {
-                webView.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
-            }
-            webView.scrollView.contentInset = UIEdgeInsetsZero;
-            webView.scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
-            
-            // Prevent overscroll bounce to avoid black bars (keep consistent with initial setup)
-            webView.scrollView.bounces = NO;
-            webView.scrollView.alwaysBounceVertical = NO;
-            webView.scrollView.alwaysBounceHorizontal = NO;
+            configureScrollViewForWebView(webView.scrollView);
             
             // Inject CSS to prevent web-level overscroll behaviors in collapsed state too
             NSString *preventOverscrollScript = @"(function() {"
@@ -1378,29 +1387,9 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
         }
     } completion:^(BOOL finished) {
         // Restore corner radius mask (always apply for consistency)
-        UIRectCorner cornersToRound;
+        UIRectCorner cornersToRound = getCornersToRoundForPosition(_originalCardVerticalPosition, isRunningOniPad());
         
-        if (isRunningOniPad()) {
-            // iPad: always round all corners for aesthetic appeal
-            cornersToRound = UIRectCornerAllCorners;
-        } else {
-            // iPhone: round corners based on original position
-            if (_originalCardVerticalPosition < 0.1) {
-                cornersToRound = UIRectCornerBottomLeft | UIRectCornerBottomRight;
-            } else if (_originalCardVerticalPosition > 0.9) {
-                cornersToRound = UIRectCornerTopLeft | UIRectCornerTopRight;
-            } else {
-                cornersToRound = UIRectCornerAllCorners;
-            }
-        }
-        
-        UIBezierPath *maskPath = [UIBezierPath bezierPathWithRoundedRect:cardView.bounds
-                                                      byRoundingCorners:cornersToRound
-                                                            cornerRadii:CGSizeMake(12.0, 12.0)];
-        
-        CAShapeLayer *maskLayer = [[CAShapeLayer alloc] init];
-        maskLayer.frame = cardView.bounds;
-        maskLayer.path = maskPath.CGPath;
+        CAShapeLayer *maskLayer = createCornerRadiusMask(cardView.bounds, cornersToRound, 12.0);
         cardView.layer.mask = maskLayer;
         
     }];
@@ -2025,15 +2014,6 @@ extern "C" {
         _pageLoadedCallback = callback;
     }
 
-    void _StashPayCardSetCardConfiguration(float heightRatio, float verticalPosition) {
-        _cardHeightRatio = heightRatio < 0.1 ? 0.1 : (heightRatio > 0.9 ? 0.9 : heightRatio);
-        _cardVerticalPosition = verticalPosition < 0.0 ? 0.0 : (verticalPosition > 1.0 ? 1.0 : verticalPosition);
-        _originalCardHeightRatio = _cardHeightRatio;
-        _originalCardVerticalPosition = _cardVerticalPosition;
-        _originalCardWidthRatio = _cardWidthRatio;
-        _isCardExpanded = NO;
-    }
-
     void _StashPayCardSetCardConfigurationWithWidth(float heightRatio, float verticalPosition, float widthRatio) {
         _cardHeightRatio = heightRatio < 0.1 ? 0.1 : (heightRatio > 1.0 ? 1.0 : heightRatio);
         _cardVerticalPosition = verticalPosition < 0.0 ? 0.0 : (verticalPosition > 1.0 ? 1.0 : verticalPosition);
@@ -2116,12 +2096,7 @@ extern "C" {
             containerVC.enforcePortrait = !_usePopupPresentation;
             
             // Set container background immediately to prevent black flash
-            if (@available(iOS 13.0, *)) {
-                UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
-                containerVC.view.backgroundColor = (currentStyle == UIUserInterfaceStyleDark) ? [UIColor blackColor] : [UIColor systemBackgroundColor];
-            } else {
-                containerVC.view.backgroundColor = [UIColor whiteColor];
-            }
+            containerVC.view.backgroundColor = getSystemBackgroundColor();
             
             // Try to create the web view
             Class webViewClass = NSClassFromString(@"WKWebView");
@@ -2141,6 +2116,11 @@ extern "C" {
                 
                 // Use optimized process pool for faster loading
                 config.processPool = [WKProcessPool new];
+                
+                // Enable cookies and persistent storage for payment flows (PayPal, etc.)
+                if (@available(iOS 11.0, *)) {
+                    config.websiteDataStore = [WKWebsiteDataStore defaultDataStore];
+                }
                 
                 // Enable autofill and form features for payment data
                 if (@available(iOS 11.0, *)) {
@@ -2192,74 +2172,8 @@ extern "C" {
                                                                     injectionTime:WKUserScriptInjectionTimeAtDocumentStart
                                                                  forMainFrameOnly:YES];
                 [userContentController addUserScript:styleInjection];
-                
-
-                
-                // JavaScript code to override window.open() to prevent new windows
-                NSString *windowOpenOverrideScript = @"(function() {"
-                    "var originalOpen = window.open;"
-                    "window.open = function(url, name, features) {"
-                        "// Instead of opening a new window, navigate in the current window"
-                        "if (url) {"
-                            "window.location.href = url;"
-                        "}"
-                        "return window;"
-                    "};"
-                "})();";
-                
-                WKUserScript *windowOpenInjection = [[WKUserScript alloc] initWithSource:windowOpenOverrideScript 
-                                                                       injectionTime:WKUserScriptInjectionTimeAtDocumentStart 
-                                                                    forMainFrameOnly:YES];
-                [userContentController addUserScript:windowOpenInjection];
-                
-                // JavaScript code to handle target="_blank" links and force them to open in same window
-                NSString *targetBlankOverrideScript = @"(function() {"
-                    "function removeTargetBlank() {"
-                        "var links = document.querySelectorAll('a[target=\"_blank\"]');"
-                        "for (var i = 0; i < links.length; i++) {"
-                            "links[i].removeAttribute('target');"
-                        "}"
-                    "}"
-                    ""
-                    "// Remove target=\"_blank\" from existing links"
-                    "if (document.readyState === 'loading') {"
-                        "document.addEventListener('DOMContentLoaded', removeTargetBlank);"
-                    "} else {"
-                        "removeTargetBlank();"
-                    "}"
-                    ""
-                    "// Monitor for dynamically added links"
-                    "var observer = new MutationObserver(function(mutations) {"
-                        "mutations.forEach(function(mutation) {"
-                            "if (mutation.type === 'childList') {"
-                                "mutation.addedNodes.forEach(function(node) {"
-                                    "if (node.nodeType === 1) {"
-                                        "if (node.tagName === 'A' && node.getAttribute('target') === '_blank') {"
-                                            "node.removeAttribute('target');"
-                                        "}"
-                                        "var blankLinks = node.querySelectorAll && node.querySelectorAll('a[target=\"_blank\"]');"
-                                        "if (blankLinks) {"
-                                            "for (var i = 0; i < blankLinks.length; i++) {"
-                                                "blankLinks[i].removeAttribute('target');"
-                                            "}"
-                                        "}"
-                                    "}"
-                                "});"
-                            "}"
-                        "});"
-                    "});"
-                    ""
-                    "observer.observe(document.body || document.documentElement, {"
-                        "childList: true,"
-                        "subtree: true"
-                    "});"
-                "})();";
-                
-                WKUserScript *targetBlankInjection = [[WKUserScript alloc] initWithSource:targetBlankOverrideScript 
-                                                                        injectionTime:WKUserScriptInjectionTimeAtDocumentEnd 
-                                                                     forMainFrameOnly:YES];
-                [userContentController addUserScript:targetBlankInjection];
-                
+            
+                          
                 // JavaScript code to set up Stash SDK functions
                 NSString *stashSDKScript = @"(function() {"
                     "window.stash_sdk = window.stash_sdk || {};"
@@ -2294,43 +2208,19 @@ extern "C" {
                 WKWebView *webView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:config];
                 
                 // Set background to match system background immediately to prevent black flash
-                UIColor *systemBackgroundColor;
-                if (@available(iOS 13.0, *)) {
-                    UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
-                    systemBackgroundColor = (currentStyle == UIUserInterfaceStyleDark) ? [UIColor blackColor] : [UIColor systemBackgroundColor];
-                } else {
-                    systemBackgroundColor = [UIColor whiteColor];
-                }
+                UIColor *systemBackgroundColor = getSystemBackgroundColor();
                 
                 webView.opaque = YES;
-                webView.backgroundColor = systemBackgroundColor;
-                webView.scrollView.backgroundColor = systemBackgroundColor;
-                webView.scrollView.opaque = YES;
                 webView.hidden = NO; // Keep visible but at 0 alpha for immediate cross-fade
                 webView.alpha = 0.0; // Start at 0 opacity for seamless cross-fade
                 webView.translatesAutoresizingMaskIntoConstraints = NO;
                 
-                // Force all subviews to have solid background
-                for (UIView *subview in webView.subviews) {
-                    subview.backgroundColor = systemBackgroundColor;
-                    subview.opaque = YES;
-                }
-                for (UIView *subview in webView.scrollView.subviews) {
-                    subview.backgroundColor = systemBackgroundColor;
-                    subview.opaque = YES;
-                }
+                // Set webview and subviews background color
+                setWebViewBackgroundColor(webView, systemBackgroundColor);
+                webView.scrollView.opaque = YES;
                 
-                // Disable scroll bounce and content insets
-                webView.scrollView.bounces = NO;
-                webView.scrollView.alwaysBounceVertical = NO;
-                webView.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
-                
-                // Remove any automatic margins or safe area insets
-                if (@available(iOS 11.0, *)) {
-                    webView.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
-                    webView.scrollView.contentInset = UIEdgeInsetsZero;
-                    webView.scrollView.scrollIndicatorInsets = UIEdgeInsetsZero;
-                }
+                // Configure scroll view
+                configureScrollViewForWebView(webView.scrollView);
                 
                 // Enable scrolling for popup mode
                 webView.scrollView.scrollEnabled = YES;
@@ -2400,7 +2290,6 @@ extern "C" {
                 NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url 
                                                                     cachePolicy:NSURLRequestReturnCacheDataElseLoad
                                                                 timeoutInterval:15.0];
-                [request setValue:@"Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1" forHTTPHeaderField:@"User-Agent"];
                 [request setValue:@"gzip, deflate, br" forHTTPHeaderField:@"Accept-Encoding"];
                 
                 // Record page load start time in the delegate
@@ -2600,29 +2489,11 @@ extern "C" {
                 objc_setAssociatedObject(containerVC, "overlayView", overlayView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 
                 // Apply corner radius - split logic for iPhone and iPad
-                UIRectCorner cornersToRound;
-                if (isRunningOniPad()) {
-                    // iPad: always all corners rounded
-                    cornersToRound = UIRectCornerAllCorners;
-                } else {
-                    // iPhone: based on vertical position
-                if (_cardVerticalPosition < 0.1) {
-                    cornersToRound = UIRectCornerBottomLeft | UIRectCornerBottomRight;
-                } else if (_cardVerticalPosition > 0.9) {
-                    cornersToRound = UIRectCornerTopLeft | UIRectCornerTopRight;
-                } else {
-                    cornersToRound = UIRectCornerAllCorners;
-                }
-                }
+                UIRectCorner cornersToRound = getCornersToRoundForPosition(_cardVerticalPosition, isRunningOniPad());
                 
                 // Apply corner radius mask (use customFrame size to ensure correct bounds)
                 CGRect maskBounds = CGRectMake(0, 0, containerVC.customFrame.size.width, containerVC.customFrame.size.height);
-                UIBezierPath *maskPath = [UIBezierPath bezierPathWithRoundedRect:maskBounds
-                                                              byRoundingCorners:cornersToRound
-                                                                    cornerRadii:CGSizeMake(12.0, 12.0)];
-                CAShapeLayer *maskLayer = [[CAShapeLayer alloc] init];
-                maskLayer.frame = maskBounds;
-                maskLayer.path = maskPath.CGPath;
+                CAShapeLayer *maskLayer = createCornerRadiusMask(maskBounds, cornersToRound, 12.0);
                 containerVC.view.layer.mask = maskLayer;
                 
                 CGFloat overlayOpacity = isRunningOniPad() ? 0.25 : 0.4;

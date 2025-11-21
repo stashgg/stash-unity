@@ -20,6 +20,7 @@ import android.view.ViewOutlineProvider;
 import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.view.WindowManager;
+import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
@@ -384,6 +385,12 @@ public class StashPayCardPlugin {
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
         settings.setSupportZoom(false);
+        
+        // Enable cookies for payment flows (PayPal, etc.)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
+        }
+        CookieManager.getInstance().setAcceptCookie(true);
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             settings.setForceDark(isDarkTheme() ? WebSettings.FORCE_DARK_ON : WebSettings.FORCE_DARK_OFF);

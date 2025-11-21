@@ -162,9 +162,6 @@ namespace StashPopup
         private static extern void _StashPayCardSetPageLoadedCallback(PageLoadedCallback callback);
         
         [DllImport("__Internal")]
-        private static extern void _StashPayCardSetCardConfiguration(float heightRatio, float verticalPosition);
-        
-        [DllImport("__Internal")]
         private static extern void _StashPayCardSetCardConfigurationWithWidth(float heightRatio, float verticalPosition, float widthRatio);
         
         [DllImport("__Internal")]
