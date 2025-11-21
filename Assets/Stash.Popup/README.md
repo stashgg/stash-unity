@@ -4,7 +4,6 @@
 |:--:|:--:|
 | Phone Presentation | Tablet Presentation |
 
-
 Unity plugin for integrating Stash Pay checkout flows using native WebViews on iOS and Android.
 The plugin also provides SFSafariViewController and Chrome Custom Tabs mode as a fallback or alternative flow.
 
