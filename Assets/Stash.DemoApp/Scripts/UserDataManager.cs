@@ -71,8 +71,6 @@ namespace Stash.Samples
             try
             {
                 Dictionary<string, string> claims = DecodeJwtToken(idToken);
-                
-                // Extracted claims from ID token
 
                 // Create new user data
                 _userData = new UserData
@@ -95,8 +93,6 @@ namespace Stash.Samples
                 {
                     _userData.Attributes[claim.Key] = claim.Value;
                 }
-
-                // User data extracted successfully
             }
             catch (Exception ex)
             {
@@ -122,7 +118,6 @@ namespace Stash.Samples
         public void ClearUserData()
         {
             _userData = new UserData();
-            // User data cleared
         }
 
         /// <summary>
@@ -148,7 +143,6 @@ namespace Stash.Samples
             }
 
             PlayerPrefs.Save();
-            // User data saved to storage
         }
 
         /// <summary>
@@ -159,7 +153,6 @@ namespace Stash.Samples
         {
             if (!PlayerPrefs.HasKey(KEY_USER_DATA_ID))
             {
-                // No saved user data found
                 return false;
             }
 
@@ -173,9 +166,7 @@ namespace Stash.Samples
             // Restore all saved user attributes
             RestoreUserAttributes();
 
-            bool hasData = HasUserData;
-            // User data loaded from storage
-            return hasData;
+            return HasUserData;
         }
 
         /// <summary>
@@ -191,7 +182,6 @@ namespace Stash.Samples
             ClearSavedAttributes();
 
             PlayerPrefs.Save();
-            // Saved user data cleared
         }
         #endregion
 

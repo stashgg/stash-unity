@@ -167,43 +167,14 @@ namespace Stash.Samples
         /// </summary>
         private void SetupEventHandlers()
         {
-            // Set up tab button handlers using RegisterCallback for better reliability
-            userTabButton.RegisterCallback<ClickEvent>(evt => {
-                // User tab clicked
-                SelectTab("user");
-            });
-            
-            storeTabButton.RegisterCallback<ClickEvent>(evt => {
-                // Store tab clicked
-                SelectTab("store");
-            });
-            
-            webshopTabButton.RegisterCallback<ClickEvent>(evt => {
-                // Webshop tab clicked
-                SelectTab("webshop");
-            });
+            // Set up tab button handlers
+            userTabButton.clicked += () => SelectTab("user");
+            storeTabButton.clicked += () => SelectTab("store");
+            webshopTabButton.clicked += () => SelectTab("webshop");
 
             // Set up help description close button
-            helpDescriptionCloseButton.RegisterCallback<ClickEvent>(evt => {
-                // Help description closed
-                HideHelpDescription();
-            });
-            
-            // Also add the clicked event as a backup
-            userTabButton.clicked += () => {
-                Debug.Log("[TabController] User tab button clicked via clicked event");
-                SelectTab("user");
-            };
-            
-            storeTabButton.clicked += () => {
-                Debug.Log("[TabController] Store tab button clicked via clicked event");
-                SelectTab("store");
-            };
-            
-            webshopTabButton.clicked += () => {
-                Debug.Log("[TabController] Webshop tab button clicked via clicked event");
-                SelectTab("webshop");
-            };
+            if (helpDescriptionCloseButton != null)
+                helpDescriptionCloseButton.clicked += HideHelpDescription;
         }
         #endregion
 
@@ -293,19 +264,16 @@ namespace Stash.Samples
                 case "user":
                     userTabButton.AddToClassList("tab-selected");
                     userTabContent.style.display = DisplayStyle.Flex;
-                    Debug.Log("[TabController] User tab selected and activated");
                     break;
                     
                 case "store":
                     storeTabButton.AddToClassList("tab-selected");
                     storeTabContent.style.display = DisplayStyle.Flex;
-                    Debug.Log("[TabController] Store tab selected and activated");
                     break;
                     
                 case "webshop":
                     webshopTabButton.AddToClassList("tab-selected");
                     webshopTabContent.style.display = DisplayStyle.Flex;
-                    Debug.Log("[TabController] Webshop tab selected and activated");
                     break;
                     
                 default:
@@ -322,12 +290,6 @@ namespace Stash.Samples
             userTabButton.MarkDirtyRepaint();
             storeTabButton.MarkDirtyRepaint();
             webshopTabButton.MarkDirtyRepaint();
-            
-            // Log current display states for debugging
-            Debug.Log($"[TabController] After switching - " +
-                     $"User Tab Display: {userTabContent.style.display}, " +
-                     $"Store Tab Display: {storeTabContent.style.display}, " +
-                     $"Webshop Tab Display: {webshopTabContent.style.display}");
         }
         #endregion
 

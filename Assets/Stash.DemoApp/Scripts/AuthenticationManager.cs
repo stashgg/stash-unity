@@ -5,13 +5,9 @@ using System.Security.Cryptography;
 using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
-using Stash.Core;
+using Stash.Webshop;
 using Stash.Models;
-using Stash.Scripts.Core;
 using System.Threading.Tasks;
-using UnityEngine.UI;
-using Canvas = UnityEngine.Canvas;
-using CanvasScaler = UnityEngine.UI.CanvasScaler;
 
 namespace Stash.Samples
 {
@@ -103,11 +99,8 @@ namespace Stash.Samples
             // Validate and fix redirect scheme format
             if (!redirectScheme.EndsWith("://"))
             {
-                Debug.LogWarning($"[Auth] Fixing redirect scheme format: {redirectScheme}");
                 redirectScheme = $"{redirectScheme.TrimEnd(':')}://";
             }
-
-            // AuthenticationManager initialized
 
             // Register for deep link handling
             Application.deepLinkActivated += OnDeepLinkActivated;
@@ -143,8 +136,6 @@ namespace Stash.Samples
         /// </summary>
         public void OpenLoginUI()
         {
-            // Opening authentication UI
-
             // Generate PKCE codes for secure OAuth flow
             GeneratePKCECodes();
 
@@ -160,7 +151,6 @@ namespace Stash.Samples
                              $"code_challenge={_codeChallenge}&" +
                              $"code_challenge_method=S256";
 
-            // Opening login URL
             Application.OpenURL(loginUrl);
         }
 
@@ -169,8 +159,6 @@ namespace Stash.Samples
         /// </summary>
         public void Logout()
         {
-            // Logging out user
-
             // Clear tokens and user data
             _tokenManager?.ClearTokens();
             _tokenManager?.ClearSavedTokens();
@@ -203,7 +191,6 @@ namespace Stash.Samples
         public void SetAutoRefresh(bool enabled)
         {
             _autoRefreshEnabled = enabled;
-            // Auto-refresh setting updated
         }
 
         /// <summary>
@@ -211,11 +198,7 @@ namespace Stash.Samples
         /// </summary>
         public void SetRefreshThreshold(float seconds)
         {
-            if (_tokenManager != null)
-            {
-                _tokenManager.RefreshThreshold = seconds;
-                // Refresh threshold updated
-            }
+            _tokenManager?.SetRefreshThreshold(seconds);
         }
         #endregion
 
@@ -227,7 +210,6 @@ namespace Stash.Samples
         {
             _tokenManager = new TokenManager();
             _userDataManager = new UserDataManager();
-            // Component managers initialized
         }
 
         /// <summary>
@@ -235,31 +217,19 @@ namespace Stash.Samples
         /// </summary>
         private void TryRestoreAuthenticationState()
         {
-            // Attempting to restore authentication state
-
-            // Try to load tokens
             bool tokensLoaded = _tokenManager.LoadTokens();
             bool userDataLoaded = _userDataManager.LoadUserData();
 
             if (tokensLoaded && userDataLoaded)
             {
-                // Authentication state restored successfully
-                
-                // Check if token refresh is needed
                 if (_tokenManager.ShouldRefreshToken())
                 {
-                    // Token expiring soon, will refresh
                     RefreshToken();
                 }
                 else
                 {
-                    // Fire login success event
                     StartCoroutine(InvokeEventOnMainThread(() => OnLoginSuccess?.Invoke()));
                 }
-            }
-            else
-            {
-                // No valid authentication state found
             }
         }
 
@@ -279,8 +249,7 @@ namespace Stash.Samples
             }
 
             // Store verifier for token exchange
-            PlayerPrefs.SetString("PKCE_CODE_VERIFIER", _codeVerifier);
-            // PKCE codes generated
+            PlayerPrefs.SetString(DemoAppConstants.PREF_PKCE_CODE_VERIFIER, _codeVerifier);
         }
 
         /// <summary>
@@ -321,8 +290,6 @@ namespace Stash.Samples
         /// </summary>
         private async void OnDeepLinkActivated(string url)
         {
-            // Deep link activated
-
             try
             {
                 // Check if this is a Stash login callback
@@ -359,7 +326,6 @@ namespace Stash.Samples
             }
 
             string code = url.Substring(codeIndex + 5);
-            // Processing Stash login with authorization code
 
             if (!IsAuthenticated())
             {
@@ -403,7 +369,6 @@ namespace Stash.Samples
 
                     if (request.result == UnityWebRequest.Result.Success)
                     {
-                        // Stash login successful
                         ShowPopup("Account Linked", "Account linked successfully. Navigate back to the web shop.", true);
                         OnLoginSuccess?.Invoke();
                     }
@@ -434,10 +399,8 @@ namespace Stash.Samples
             // Check for authorization code (success)
             if (queryParams.TryGetValue("code", out string authCode))
             {
-                // Received authorization code
-                
                 // Get stored code verifier
-                string codeVerifier = PlayerPrefs.GetString("PKCE_CODE_VERIFIER", "");
+                string codeVerifier = PlayerPrefs.GetString(DemoAppConstants.PREF_PKCE_CODE_VERIFIER, "");
                 if (string.IsNullOrEmpty(codeVerifier))
                 {
                     Debug.LogError("[Auth] Code verifier not found");
@@ -467,8 +430,6 @@ namespace Stash.Samples
         /// </summary>
         private IEnumerator ExchangeAuthCodeForTokens(string authCode, string codeVerifier)
         {
-            // Exchanging authorization code for tokens
-
             string tokenEndpoint = $"https://{cognitoDomain}/oauth2/token";
             string redirectUri = redirectScheme + redirectHost;
 
@@ -513,7 +474,6 @@ namespace Stash.Samples
                     _tokenManager.SaveTokens();
                     _userDataManager.SaveUserData();
 
-                    // Authentication successful
                     OnLoginSuccess?.Invoke();
                 }
                 catch (Exception ex)
@@ -535,8 +495,6 @@ namespace Stash.Samples
             }
 
             _refreshInProgress = true;
-            // Starting token refresh
-            
             StartCoroutine(RequestTokenRefresh());
         }
 
@@ -595,7 +553,6 @@ namespace Stash.Samples
                     _tokenManager.SaveTokens();
                     _userDataManager.SaveUserData();
 
-                    // Token refresh successful
                     OnLoginSuccess?.Invoke();
                 }
                 catch (Exception ex)
@@ -642,75 +599,8 @@ namespace Stash.Samples
         /// </summary>
         private void ShowPopup(string title, string message, bool withConfetti = false)
         {
-            var popup = new GameObject("AuthPopup");
-            var popupScript = popup.AddComponent<AuthPopup>();
-            popupScript.Show(title, message);
-
-            if (withConfetti)
-            {
-                // Create confetti effect
-                CreateConfettiEffect();
-            }
-        }
-
-        /// <summary>
-        /// Creates a confetti particle effect
-        /// </summary>
-        private void CreateConfettiEffect()
-        {
-            GameObject confettiGO = new GameObject("ConfettiSystem");
-            
-            Canvas confettiCanvas = confettiGO.AddComponent<Canvas>();
-            confettiCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            confettiCanvas.sortingOrder = 1000;
-
-            CanvasScaler scaler = confettiGO.AddComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920, 1080);
-
-            // Create multiple confetti emitters
-            for (int i = 0; i < 5; i++)
-            {
-                GameObject emitter = new GameObject($"ConfettiEmitter_{i}");
-                emitter.transform.SetParent(confettiGO.transform, false);
-                
-                ParticleSystem confetti = emitter.AddComponent<ParticleSystem>();
-                ConfigureConfettiParticles(confetti, i);
-            }
-
-            // Auto-destroy after 5 seconds
-            Destroy(confettiGO, 5f);
-        }
-
-        /// <summary>
-        /// Configures a confetti particle system
-        /// </summary>
-        private void ConfigureConfettiParticles(ParticleSystem confetti, int index)
-        {
-            var main = confetti.main;
-            main.startLifetime = 4.0f;
-            main.startSpeed = 300.0f;
-            main.startSize = 20.0f;
-            main.startColor = GetConfettiColor(index);
-            main.maxParticles = 40;
-
-            var emission = confetti.emission;
-            emission.rateOverTime = 0;
-            emission.SetBursts(new ParticleSystem.Burst[] {
-                new ParticleSystem.Burst(index * 0.1f, 20),
-                new ParticleSystem.Burst(index * 0.1f + 0.3f, 25)
-            });
-
-            confetti.Play();
-        }
-
-        /// <summary>
-        /// Gets a confetti color based on index
-        /// </summary>
-        private Color GetConfettiColor(int index)
-        {
-            Color[] colors = { Color.yellow, Color.magenta, Color.cyan, Color.green, Color.red };
-            return colors[index % colors.Length];
+            Debug.Log($"[Auth] {title}: {message}");
+            // Popup display can be implemented using UI Toolkit if needed
         }
         #endregion
     }
@@ -727,55 +617,6 @@ namespace Stash.Samples
         public string refresh_token;
         public int expires_in;
         public string token_type;
-    }
-
-    /// <summary>
-    /// Simple popup for authentication messages
-    /// </summary>
-    public class AuthPopup : MonoBehaviour
-    {
-        private string title;
-        private string message;
-        private bool isShowing = false;
-        private Rect windowRect;
-
-        public void Show(string title, string message)
-        {
-            this.title = title;
-            this.message = message;
-            isShowing = true;
-
-            float width = Screen.width * 0.8f;
-            float height = Screen.height * 0.3f;
-            windowRect = new Rect((Screen.width - width) / 2, (Screen.height - height) / 2, width, height);
-
-            Destroy(gameObject, 3f);
-        }
-
-        private void OnGUI()
-        {
-            if (isShowing)
-            {
-                GUI.Box(windowRect, "");
-                GUILayout.BeginArea(windowRect);
-                GUILayout.FlexibleSpace();
-                
-                GUIStyle titleStyle = new GUIStyle { fontSize = 24, fontStyle = FontStyle.Bold };
-                titleStyle.normal.textColor = Color.white;
-                titleStyle.alignment = TextAnchor.MiddleCenter;
-                
-                GUIStyle messageStyle = new GUIStyle { fontSize = 16 };
-                messageStyle.normal.textColor = Color.gray;
-                messageStyle.alignment = TextAnchor.MiddleCenter;
-
-                GUILayout.Label(title, titleStyle);
-                GUILayout.Space(10);
-                GUILayout.Label(message, messageStyle);
-                
-                GUILayout.FlexibleSpace();
-                GUILayout.EndArea();
-            }
-        }
     }
     #endregion
 } 

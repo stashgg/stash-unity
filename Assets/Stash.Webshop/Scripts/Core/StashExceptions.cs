@@ -1,6 +1,6 @@
 using System;
 
-namespace Stash.Core.Exceptions
+namespace Stash.Webshop.Exceptions
 {
     /// <summary>
     /// Thrown when any error occurs while processing a request on the Stash API.

@@ -88,7 +88,6 @@ namespace StashPopup
             {
                 navigationBlocker.style.display = DisplayStyle.Flex;
                 navigationBlocker.AddToClassList("visible");
-                Debug.Log("Navigation blocked");
             }
         }
 
@@ -104,7 +103,6 @@ namespace StashPopup
                 navigationBlocker.schedule.Execute(() => {
                     navigationBlocker.style.display = DisplayStyle.None;
                 }).StartingIn(200); // 200ms matches transition-duration in CSS
-                Debug.Log("Navigation unblocked");
             }
         }
     }

@@ -20,9 +20,7 @@ namespace Stash.Samples
     public class StoreUIAuthController : MonoBehaviour
     {
         #region Constants
-        private const string API_KEY = "p0SVSU3awmdDv8VUPFZ_adWz_uC81xXsEY95Gg7WSwx9TZAJ5_ch-ePXK2Xh3B6o";
         private const string WEBSHOP_URL_ENDPOINT = "https://test-api.stash.gg/sdk/server/generate_url";
-        private const string HELP_DISMISSED_PREFIX = "help_dismissed_";
         #endregion
 
         #region Fields
@@ -79,9 +77,9 @@ namespace Stash.Samples
             // Initializing Store Authentication UI
             
             // Reset help dialog dismissal settings for this session
-            PlayerPrefs.DeleteKey(HELP_DISMISSED_PREFIX + "user");
-            PlayerPrefs.DeleteKey(HELP_DISMISSED_PREFIX + "store");
-            PlayerPrefs.DeleteKey(HELP_DISMISSED_PREFIX + "webshop");
+            PlayerPrefs.DeleteKey(DemoAppConstants.PREF_HELP_DISMISSED + "user");
+            PlayerPrefs.DeleteKey(DemoAppConstants.PREF_HELP_DISMISSED + "store");
+            PlayerPrefs.DeleteKey(DemoAppConstants.PREF_HELP_DISMISSED + "webshop");
             PlayerPrefs.Save();
         }
         
@@ -374,7 +372,7 @@ namespace Stash.Samples
             string activeTab = GetActiveTab();
             if (!string.IsNullOrEmpty(activeTab))
             {
-                PlayerPrefs.SetInt(HELP_DISMISSED_PREFIX + activeTab, 1);
+                PlayerPrefs.SetInt(DemoAppConstants.PREF_HELP_DISMISSED + activeTab, 1);
                 PlayerPrefs.Save();
             }
         }
@@ -591,7 +589,7 @@ namespace Stash.Samples
             yield return new WaitForSeconds(0.3f);
             
             // Check if help was dismissed for this tab
-            if (PlayerPrefs.GetInt(HELP_DISMISSED_PREFIX + tabName.ToLower(), 0) == 1)
+            if (PlayerPrefs.GetInt(DemoAppConstants.PREF_HELP_DISMISSED + tabName.ToLower(), 0) == 1)
                 yield break;
 
             if (helpDescriptionDialog != null && helpDescriptionText != null)
@@ -708,7 +706,13 @@ namespace Stash.Samples
                     webRequest.uploadHandler = new UploadHandlerRaw(bodyRaw);
                     webRequest.downloadHandler = new DownloadHandlerBuffer();
                     webRequest.SetRequestHeader("Content-Type", "application/json");
-                    webRequest.SetRequestHeader("x-stash-api-key", API_KEY);
+                    string apiKey = PlayerPrefs.GetString(DemoAppConstants.PREF_STASH_API_KEY, "");
+                    if (string.IsNullOrEmpty(apiKey))
+                    {
+                        Debug.LogError("[StoreAuth] API key not found. Please configure it in settings.");
+                        return;
+                    }
+                    webRequest.SetRequestHeader("x-stash-api-key", apiKey);
 
                     var operation = webRequest.SendWebRequest();
                     while (!operation.isDone)

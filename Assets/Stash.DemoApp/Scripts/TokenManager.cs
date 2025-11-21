@@ -46,12 +46,16 @@ namespace Stash.Samples
         public DateTime TokenExpiryTime => _tokenExpiryTime;
 
         /// <summary>
-        /// Gets or sets the token refresh threshold in seconds
+        /// Gets the token refresh threshold in seconds
         /// </summary>
-        public float RefreshThreshold
+        public float RefreshThreshold => _tokenRefreshThreshold;
+
+        /// <summary>
+        /// Sets the token refresh threshold in seconds
+        /// </summary>
+        public void SetRefreshThreshold(float seconds)
         {
-            get => _tokenRefreshThreshold;
-            set => _tokenRefreshThreshold = Math.Max(60f, value); // Minimum 1 minute
+            _tokenRefreshThreshold = Math.Max(60f, seconds); // Minimum 1 minute
         }
 
         /// <summary>
@@ -91,8 +95,6 @@ namespace Stash.Samples
             _idToken = idToken ?? "";
             _refreshToken = refreshToken ?? "";
             _tokenExpiryTime = DateTime.Now.AddSeconds(expiresInSeconds);
-
-            // Tokens set successfully
         }
 
         /// <summary>
@@ -106,8 +108,6 @@ namespace Stash.Samples
             _accessToken = accessToken ?? "";
             _idToken = idToken ?? "";
             _tokenExpiryTime = DateTime.Now.AddSeconds(expiresInSeconds);
-
-            // Tokens updated successfully
         }
 
         /// <summary>
@@ -119,8 +119,6 @@ namespace Stash.Samples
             _idToken = "";
             _refreshToken = "";
             _tokenExpiryTime = DateTime.MinValue;
-
-            // All tokens cleared
         }
 
         /// <summary>
@@ -139,8 +137,6 @@ namespace Stash.Samples
             PlayerPrefs.SetString(KEY_REFRESH_TOKEN, _refreshToken);
             PlayerPrefs.SetString(KEY_TOKEN_EXPIRY, _tokenExpiryTime.Ticks.ToString());
             PlayerPrefs.Save();
-
-            // Tokens saved to persistent storage
         }
 
         /// <summary>
@@ -152,7 +148,6 @@ namespace Stash.Samples
             if (!PlayerPrefs.HasKey(KEY_ACCESS_TOKEN) || !PlayerPrefs.HasKey(KEY_ID_TOKEN) ||
                 !PlayerPrefs.HasKey(KEY_REFRESH_TOKEN) || !PlayerPrefs.HasKey(KEY_TOKEN_EXPIRY))
             {
-                // No saved tokens found
                 return false;
             }
 
@@ -172,10 +167,7 @@ namespace Stash.Samples
                 return false;
             }
 
-            bool isValid = IsTokenValid();
-            // Tokens loaded from storage
-
-            return isValid;
+            return IsTokenValid();
         }
 
         /// <summary>
@@ -188,8 +180,6 @@ namespace Stash.Samples
             PlayerPrefs.DeleteKey(KEY_REFRESH_TOKEN);
             PlayerPrefs.DeleteKey(KEY_TOKEN_EXPIRY);
             PlayerPrefs.Save();
-
-            // Saved tokens cleared from storage
         }
         #endregion
     }
