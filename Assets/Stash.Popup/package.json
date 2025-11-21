@@ -1,0 +1,11 @@
+{
+    "name": "gg.stash.popup",
+    "version": "1.0.0",
+    "displayName": "Stash Popup",
+    "description": "Unity plugin for integrating Stash Pay checkout flows using native WebViews on iOS and Android.",
+    "unity": "2022.3",
+    "author": {
+      "name": "Stash Interactive Inc.",
+      "email": "developers@stash.gg"
+    }
+  }
