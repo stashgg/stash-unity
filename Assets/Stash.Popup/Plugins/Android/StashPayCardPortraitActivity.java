@@ -28,6 +28,7 @@ import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.net.Uri;
 import com.unity3d.player.UnityPlayer;
 
 public class StashPayCardPortraitActivity extends Activity {
@@ -48,6 +49,7 @@ public class StashPayCardPortraitActivity extends Activity {
     private boolean wasLandscapeBeforePortrait;
     private boolean isDismissing;
     private boolean callbackSent;
+    private boolean googlePayRedirectHandled;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -417,6 +419,7 @@ public class StashPayCardPortraitActivity extends Activity {
                 showLoading();
                 injectSDK(view);
                 checkProvider(url);
+                checkGooglePayRedirect(url);
             }
             
             @Override
@@ -425,6 +428,7 @@ public class StashPayCardPortraitActivity extends Activity {
                 hideLoading();
                 injectSDK(view);
                 checkProvider(url);
+                checkGooglePayRedirect(url);
             }
             
             @Override
@@ -493,6 +497,43 @@ public class StashPayCardPortraitActivity extends Activity {
         String lower = url.toLowerCase();
         boolean show = lower.contains("klarna") || lower.contains("paypal") || lower.contains("stripe");
         runOnUiThread(() -> homeButton.setVisibility(show ? View.VISIBLE : View.GONE));
+    }
+    
+    private void checkGooglePayRedirect(String url) {
+        if (url == null || googlePayRedirectHandled || initialURL == null || initialURL.isEmpty()) {
+            return;
+        }
+        
+        String lower = url.toLowerCase();
+        if (lower.contains("pay.google.com")) {
+            googlePayRedirectHandled = true;
+            Log.d(TAG, "Google Pay detected, opening initial URL in system browser: " + initialURL);
+            openInSystemBrowser(initialURL);
+        }
+    }
+    
+    private void openInSystemBrowser(String url) {
+        try {
+            // Add dpm=gpay query parameter
+            String urlWithParam = url;
+            if (url != null && !url.isEmpty()) {
+                Uri uri = Uri.parse(url);
+                String existingQuery = uri.getQuery();
+                if (existingQuery != null && !existingQuery.isEmpty()) {
+                    urlWithParam = url + "&dpm=gpay";
+                } else {
+                    urlWithParam = url + "?dpm=gpay";
+                }
+            }
+            
+            Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(urlWithParam));
+            browserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(browserIntent);
+            // Dismiss the card after opening browser
+            dismissWithAnimation();
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to open URL in system browser: " + e.getMessage());
+        }
     }
     
     private void showLoading() {
