@@ -1,6 +1,6 @@
 # Stash.Popup
 
-| <img src="https://github.com/stashgg/stash-unity/blob/main/.github/popup_phone.png?raw=true" width="400px" /> | <img src="https://github.com/stashgg/stash-unity/blob/main/.github/popup_tablet.png?raw=true" width="400px" /> |
+| <img src="https://github.com/stashgg/stash-unity/blob/main/.github/popup_phone.png?raw=true" width="300px" /> | <img src="https://github.com/stashgg/stash-unity/blob/main/.github/popup_tablet.png?raw=true" width="400px" /> |
 |:--:|:--:|
 | Phone Presentation | Tablet Presentation |
 
@@ -158,11 +158,12 @@ void OpenInBrowser(string url)
 
 ## Unity Editor Testing 
 
-| <img src="https://github.com/stashgg/stash-unity/blob/main/.github/popup_editor.png?raw=true" width="500px" /> |
-|:--:|
-| Unity Editor Simulation |
-
-
+<div align="center">
+  <img src="https://github.com/stashgg/stash-unity/blob/main/.github/popup_editor.png?raw=true" width="800px" /><br/>
+  <em>Unity Editor Simulation</em>
+</div>
+</br>
+</br>
 
 The plugin includes an Unity editor extension that allows you to test StashPayCard popups and checkout dialogs directly in the Unity Editor without building to a device.
 
