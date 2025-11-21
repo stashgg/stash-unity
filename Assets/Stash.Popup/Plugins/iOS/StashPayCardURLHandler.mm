@@ -284,18 +284,31 @@ CGSize calculateiPadCardSize(CGRect screenBounds);
         return UIInterfaceOrientationMaskPortrait;
     }
     
-    // Allow all orientations for popup mode or iPad card mode
-    if (_usePopupPresentation || isRunningOniPad()) {
+    // Get current orientation from underlying app
+    UIInterfaceOrientation currentOrientation = [[UIApplication sharedApplication] statusBarOrientation];
+    
+    // On iPad, both popup and card mode inherit orientation from underlying app (no rotation)
+    if (isRunningOniPad()) {
+        return (1 << currentOrientation);
+    }
+    
+    // On iPhone, allow all orientations for popup mode
+    if (_usePopupPresentation) {
         return UIInterfaceOrientationMaskAll;
     }
     
-    UIInterfaceOrientation currentOrientation = [[UIApplication sharedApplication] statusBarOrientation];
+    // For iPhone card mode, lock to current orientation
     return (1 << currentOrientation);
 }
 
 - (BOOL)shouldAutorotate {
-    // Allow rotation for popup mode or iPad card mode
-    return _usePopupPresentation || isRunningOniPad();
+    // On iPad, both popup and card mode inherit orientation from underlying Unity app (no rotation)
+    if (isRunningOniPad()) {
+        return NO;
+    }
+    
+    // On iPhone, allow rotation for popup mode only
+    return _usePopupPresentation;
 }
 
 - (UIInterfaceOrientation)preferredInterfaceOrientationForPresentation {
