@@ -1,5 +1,10 @@
 # Stash.Popup
 
+| <img src="https://github.com/stashgg/stash-unity/blob/main/.github/popup_phone.png?raw=true" width="400px" /> | <img src="https://github.com/stashgg/stash-unity/blob/main/.github/popup_tablet.png?raw=true" width="400px" /> |
+|:--:|:--:|
+| Phone Presentation | Tablet Presentation |
+
+
 Unity plugin for integrating Stash Pay checkout flows using native WebViews on iOS and Android.
 The plugin also provides SFSafariViewController and Chrome Custom Tabs mode as a fallback or alternative flow.
 
@@ -152,6 +157,12 @@ void OpenInBrowser(string url)
 ```
 
 ## Unity Editor Testing 
+
+| <img src="https://github.com/stashgg/stash-unity/blob/main/.github/popup_editor.png?raw=true" width="500px" /> |
+|:--:|
+| Unity Editor Simulation |
+
+
 
 The plugin includes an Unity editor extension that allows you to test StashPayCard popups and checkout dialogs directly in the Unity Editor without building to a device.
 
