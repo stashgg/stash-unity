@@ -19,7 +19,7 @@ namespace StashPopup
     }
 
     /// <summary>
-    /// Cross-platform wrapper for Stash Pay checkout.
+    /// Cross-platform wrapper for Stash Pay in-app checkout.
     /// </summary>
     public class StashPayCard : MonoBehaviour
     {
@@ -28,6 +28,19 @@ namespace StashPopup
         private const string FLAGSMITH_API_KEY = "ZmnWzYYR29AHDYwMVXtw68";
         private const string FLAGSMITH_API_URL = "https://edge.api.flagsmith.com/api/v1/identities/";
 
+        /// <summary>
+        /// Gets the singleton instance of StashPayCard.
+        /// 
+        /// This property provides access to the single instance of StashPayCard in your application.
+        /// If no instance exists, one will be automatically created as a persistent GameObject that
+        /// survives scene loads.
+        /// 
+        /// Use this property to access StashPayCard functionality throughout your application:
+        /// <code>
+        /// StashPayCard.Instance.OpenCheckout(url, onDismiss, onSuccess, onFailure);
+        /// </code>
+        /// </summary>
+        /// <value>The singleton StashPayCard instance.</value>
         public static StashPayCard Instance
         {
             get
@@ -97,31 +110,51 @@ namespace StashPopup
             }
         }
         
-        // Android callback: payment succeeded
+        /// <summary>
+        /// Android native callback invoked when a payment transaction completes successfully.
+        /// This method is called by the native Android plugin and triggers the OnPaymentSuccess event.
+        /// </summary>
+        /// <param name="message">Optional message from the native plugin (currently unused).</param>
         public void OnAndroidPaymentSuccess(string message)
         {
             OnPaymentSuccess?.Invoke();
         }
         
-        // Android callback: payment failed
+        /// <summary>
+        /// Android native callback invoked when a payment transaction fails or encounters an error.
+        /// This method is called by the native Android plugin and triggers the OnPaymentFailure event.
+        /// </summary>
+        /// <param name="message">Optional error message from the native plugin (currently unused).</param>
         public void OnAndroidPaymentFailure(string message)
         {
             OnPaymentFailure?.Invoke();
         }
         
-        // Android callback: dialog dismissed
+        /// <summary>
+        /// Android native callback invoked when the checkout dialog is dismissed by the user.
+        /// This method is called by the native Android plugin and triggers the OnSafariViewDismissed event.
+        /// </summary>
+        /// <param name="message">Optional message from the native plugin (currently unused).</param>
         public void OnAndroidDialogDismissed(string message)
         {
             OnSafariViewDismissed?.Invoke();
         }
         
-        // Android callback: opt-in response
+        /// <summary>
+        /// Android native callback invoked when an opt-in response is received from the payment flow.
+        /// This method is called by the native Android plugin and triggers the OnOptinResponse event.
+        /// </summary>
+        /// <param name="optinType">The type of opt-in response received from the payment flow.</param>
         public void OnAndroidOptinResponse(string optinType)
         {
             OnOptinResponse?.Invoke(optinType);
         }
         
-        // Android callback: page loaded
+        /// <summary>
+        /// Android native callback invoked when a page finishes loading in the checkout view.
+        /// This method is called by the native Android plugin and triggers the OnPageLoaded event with the load time.
+        /// </summary>
+        /// <param name="loadTimeMs">The page load time in milliseconds as a string.</param>
         public void OnAndroidPageLoaded(string loadTimeMs)
         {
             if (double.TryParse(loadTimeMs, out double loadTime))
@@ -192,7 +225,26 @@ namespace StashPopup
         }
 
         /// <summary>
-        /// Opens a Stash Pay checkout URL in a sliding card view from the bottom of the screen.
+        /// Opens a Stash Pay checkout URL in a in-game dialog card.
+        ///
+        /// This method displays a Stash Pay checkout page using the native presentation for your platform.
+        /// - On iOS and Android devices, this shows the checkout UI as an animated card sliding up from the bottom.
+        /// - On desktop in the Unity Editor (when using the StashPayCardEditor package), this opens a simulated test window.
+        ///
+        /// <param name="url">The Stash Pay checkout URL to load. (Must be HTTPS)</param>
+        /// <param name="dismissCallback">Called when the checkout card is dismissed/closed.</param>
+        /// <param name="successCallback">Called if the purchase completes successfully.</param>
+        /// <param name="failureCallback">Called if the purchase fails or errors.</param>
+        /// 
+        /// Usage example:
+        /// <code>
+        /// StashPayCard.Instance.OpenCheckout(
+        ///     "https://your-stash-pay-checkout-link.com",
+        ///     () => Debug.Log("Dismissed"),
+        ///     () => Debug.Log("Success"),
+        ///     () => Debug.Log("Failed")
+        /// );
+        /// </code>
         /// </summary>
         public void OpenCheckout(string url, Action dismissCallback = null, Action successCallback = null, Action failureCallback = null)
         {
@@ -318,21 +370,54 @@ namespace StashPopup
         }
 
         /// <summary>
-        /// Opens a URL in a centered modal popup.
-        /// Uses platform-specific default sizing if no custom size is provided.
-        /// Modal behavior: close button only, no drag gestures or tap-outside-to-dismiss.
+        /// Opens a URL in a centered modal popup window.
+        /// 
+        /// This method displays a Stash Pay popup using platform-specific native presentation.
+        /// - On iOS and Android devices, this shows a modal popup with platform-specific default sizing.
+        /// - On desktop in the Unity Editor, this opens a simulated test window.
+        /// 
+        /// If no custom size is provided, the popup uses platform-specific default dimensions.
         /// </summary>
-        /// <param name="url">The URL to open in the popup</param>
-        /// <param name="dismissCallback">Called when the popup is dismissed</param>
-        /// <param name="successCallback">Called when payment succeeds (if applicable)</param>
-        /// <param name="failureCallback">Called when payment fails (if applicable)</param>
-        /// <param name="customSize">Optional custom size configuration. If not provided, uses platform-specific defaults.</param>
+        /// <param name="url">The Stash Pay URL to load in the popup. Get your opt-in URL from Stash Studio.</param>
+        /// <param name="dismissCallback">Optional callback invoked when the popup is dismissed by the user.</param>
+        /// <param name="successCallback">Optional callback invoked when a payment transaction completes successfully.</param>
+        /// <param name="failureCallback">Optional callback invoked when a payment transaction fails or encounters an error.</param>
+        /// <param name="customSize">Optional custom size configuration for portrait and landscape orientations. If null, uses platform-specific defaults.</param>
+        /// 
+        /// <example>
+        /// <code>
+        /// var customSize = new PopupSizeConfig
+        /// {
+        ///     portraitWidthMultiplier = 0.9f,
+        ///     portraitHeightMultiplier = 0.8f,
+        ///     landscapeWidthMultiplier = 0.85f,
+        ///     landscapeHeightMultiplier = 0.75f
+        /// };
+        /// 
+        /// StashPayCard.Instance.OpenPopup(
+        ///     "https://your-stash-pay-popup-link.com",
+        ///     () => Debug.Log("Popup dismissed"),
+        ///     () => Debug.Log("Payment succeeded"),
+        ///     () => Debug.Log("Payment failed"),
+        ///     customSize
+        /// );
+        /// </code>
+        /// </example>
         public void OpenPopup(string url, Action dismissCallback = null, Action successCallback = null, Action failureCallback = null, PopupSizeConfig? customSize = null)
         {
             StartCoroutine(OpenURLWithFlagsmithConfig(url, dismissCallback, successCallback, failureCallback, true, customSize));
         }
 
-        // Resets and dismisses any currently presented card
+        /// <summary>
+        /// Resets and dismisses any currently presented checkout card or popup.
+        /// 
+        /// This method programmatically closes any active Stash Pay checkout UI that is currently
+        /// displayed on screen. It is useful for cleanup scenarios or when you need to force-dismiss
+        /// the checkout interface.
+        /// 
+        /// Note: This method only has effect on iOS and Android devices. In the Unity Editor,
+        /// it has no effect.
+        /// </summary>
         public void ResetPresentationState()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -342,6 +427,14 @@ namespace StashPopup
 #endif
         }
 
+        /// <summary>
+        /// Gets a value indicating whether a Stash Pay checkout card or popup is currently displayed.
+        /// 
+        /// This property allows you to check if there is an active checkout UI presentation
+        /// before attempting to open a new one, which can help prevent multiple overlapping
+        /// checkout interfaces.
+        /// </summary>
+        /// <value>True if a checkout card or popup is currently visible; otherwise, false.</value>
         public bool IsCurrentlyPresented
         {
             get
@@ -357,8 +450,16 @@ namespace StashPopup
         }
 
         /// <summary>
-        /// Forces native browser instead of custom card UI (Safari on iOS, Chrome Custom Tabs on Android).
+        /// Gets or sets a value that forces the use of native browser-based checkout instead of the custom card UI.
+        /// 
+        /// When set to true, checkout URLs will open in the platform's native browser interface:
+        /// - On iOS: Opens in Safari View Controller (SFSafariViewController)
+        /// - On Android: Opens in Chrome Custom Tabs
+        /// 
+        /// When set to false (default), checkout URLs use the in-app checkout card presentation.
+        /// 
         /// </summary>
+        /// <value>True to force native browser checkout; false to use custom card UI (default).</value>
         public bool ForceWebBasedCheckout
         {
             get
@@ -381,6 +482,21 @@ namespace StashPopup
             }
         }
 
+        /// <summary>
+        /// Gets or sets the height ratio of the checkout card relative to the screen height.
+        /// 
+        /// This property controls how tall the sliding checkout card appears when using
+        /// the custom card UI presentation (not applicable when ForceWebBasedCheckout is true).
+        /// 
+        /// The value is clamped between 0.0 and 1.0, where:
+        /// - 0.0 = Minimum height (card barely visible)
+        /// - 1.0 = Full screen height
+        /// - Default: 0.6 (60% of screen height)
+        /// 
+        /// Changes to this property are immediately applied to any currently displayed card
+        /// and will affect future card presentations.
+        /// </summary>
+        /// <value>The height ratio between 0.0 and 1.0. Default is 0.6.</value>
         public float CardHeightRatio
         {
             get { return _cardHeightRatio; }
@@ -391,6 +507,21 @@ namespace StashPopup
             }
         }
 
+        /// <summary>
+        /// Gets or sets the vertical position of the checkout card's anchor point.
+        /// 
+        /// This property controls where the checkout card is positioned vertically on the screen
+        /// when using the custom card UI presentation (not applicable when ForceWebBasedCheckout is true).
+        /// 
+        /// The value is clamped between 0.0 and 1.0, where:
+        /// - 0.0 = Bottom of the screen
+        /// - 1.0 = Top of the screen
+        /// - Default: 1.0 (card slides up from bottom)
+        /// 
+        /// Changes to this property are immediately applied to any currently displayed card
+        /// and will affect future card presentations.
+        /// </summary>
+        /// <value>The vertical position ratio between 0.0 and 1.0. Default is 1.0.</value>
         public float CardVerticalPosition
         {
             get { return _cardVerticalPosition; }
@@ -401,6 +532,21 @@ namespace StashPopup
             }
         }
 
+        /// <summary>
+        /// Gets or sets the width ratio of the checkout card relative to the screen width.
+        /// 
+        /// This property controls how wide the sliding checkout card appears when using
+        /// the custom card UI presentation (not applicable when ForceWebBasedCheckout is true).
+        /// 
+        /// The value is clamped between 0.0 and 1.0, where:
+        /// - 0.0 = Minimum width (card barely visible)
+        /// - 1.0 = Full screen width
+        /// - Default: 1.0 (full width)
+        /// 
+        /// Changes to this property are immediately applied to any currently displayed card
+        /// and will affect future card presentations.
+        /// </summary>
+        /// <value>The width ratio between 0.0 and 1.0. Default is 1.0.</value>
         public float CardWidthRatio
         {
             get { return _cardWidthRatio; }
@@ -524,22 +670,38 @@ namespace StashPopup
 #endif
 
 #if UNITY_EDITOR
-        // Editor-only callback methods for testing
+        /// <summary>
+        /// Editor-only callback method invoked when a payment transaction completes successfully in the test window.
+        /// This method is called by the StashPayCardEditorWindow and triggers the OnPaymentSuccess event.
+        /// </summary>
         public void OnEditorPaymentSuccess()
         {
             OnPaymentSuccess?.Invoke();
         }
         
+        /// <summary>
+        /// Editor-only callback method invoked when a payment transaction fails in the test window.
+        /// This method is called by the StashPayCardEditorWindow and triggers the OnPaymentFailure event.
+        /// </summary>
         public void OnEditorPaymentFailure()
         {
             OnPaymentFailure?.Invoke();
         }
         
+        /// <summary>
+        /// Editor-only callback method invoked when an opt-in response is received in the test window.
+        /// This method is called by the StashPayCardEditorWindow and triggers the OnOptinResponse event.
+        /// </summary>
+        /// <param name="optinType">The type of opt-in response received from the payment flow.</param>
         public void OnEditorOptinResponse(string optinType)
         {
             OnOptinResponse?.Invoke(optinType);
         }
         
+        /// <summary>
+        /// Editor-only callback method invoked when the checkout dialog is dismissed in the test window.
+        /// This method is called by the StashPayCardEditorWindow and triggers the OnSafariViewDismissed event.
+        /// </summary>
         public void OnEditorDismissCatalog()
         {
             OnSafariViewDismissed?.Invoke();

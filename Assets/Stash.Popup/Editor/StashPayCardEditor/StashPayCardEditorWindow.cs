@@ -59,10 +59,10 @@ namespace StashPopup.Editor
         
         private static StashPayCardEditorWindow instance;
         
-        [MenuItem("Window/Stash/StashPayCard Test Window")]
+        [MenuItem("Window/Stash/Stash Pay - Test Window")]
         public static void ShowWindow()
         {
-            instance = GetWindow<StashPayCardEditorWindow>("StashPayCard Test");
+            instance = GetWindow<StashPayCardEditorWindow>("Stash Pay - Test Window");
             instance.minSize = new Vector2(320, 300);
             instance.maxSize = new Vector2(320, 300);
         }
@@ -110,6 +110,10 @@ namespace StashPopup.Editor
         {
             EditorGUILayout.Space(5);
             
+            // Info callout
+            EditorGUILayout.HelpBox("You can test Stash Pay purchases in the preview window. Callbacks will be triggered as if you were running on a device. You can also simulate callback events using the buttons below.", MessageType.Info);
+            EditorGUILayout.Space(5);
+            
             // Mode indicator
             EditorGUILayout.LabelField($"Mode: {(isPopupMode ? "Popup" : "Checkout")}", EditorStyles.boldLabel);
             
@@ -120,7 +124,7 @@ namespace StashPopup.Editor
             EditorGUILayout.Space(5);
             
             // Device size selector
-            EditorGUILayout.LabelField("Device Size:", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Preview Size:", EditorStyles.boldLabel);
             int newDeviceSize = EditorGUILayout.Popup((int)currentDeviceSize, DeviceSizeNames);
             if (newDeviceSize != (int)currentDeviceSize)
             {
@@ -174,14 +178,9 @@ namespace StashPopup.Editor
             
             EditorGUILayout.BeginHorizontal();
             
-            if (GUILayout.Button("Opt-in Response", GUILayout.Height(22)))
+            if (GUILayout.Button("Dismiss Dialog", GUILayout.Height(22)))
             {
-                OnWebViewOptinResponse("test_payment_method");
-            }
-            
-            if (GUILayout.Button("Dismiss Catalog", GUILayout.Height(22)))
-            {
-                OnWebViewDismissCatalog();
+                OnWebViewDismissDialog();
             }
             
             EditorGUILayout.EndHorizontal();
@@ -292,9 +291,9 @@ namespace StashPopup.Editor
             CloseEditorWindow();
         }
         
-        private void OnWebViewDismissCatalog()
+        private void OnWebViewDismissDialog()
         {
-            Debug.Log("[StashPayCard Editor] Dismiss Catalog callback received");
+            Debug.Log("[StashPayCard Editor] Dismiss Dialog callback received");
             if (StashPayCard.Instance != null)
             {
                 StashPayCard.Instance.OnEditorDismissCatalog();

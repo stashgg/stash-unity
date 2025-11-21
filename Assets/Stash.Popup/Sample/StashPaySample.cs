@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.UI;
 using UnityEngine.Networking;
 using System.Text;
 using StashPopup;
@@ -8,6 +9,8 @@ public class StashPaySample : MonoBehaviour
     // This is our test API key so you can test the checkout flow right away.
     // You can find your API key in the Stash Studio to run tests on your own Stash instance.
     private const string API_KEY = "p0SVSU3awmdDv8VUPFZ_adWz_uC81xXsEY95Gg7WSwx9TZAJ5_ch-ePXK2Xh3B6o";
+    
+    [SerializeField] private Text statusText; // Reference to the Text (legacy) component in the scene
     
     void Start()
     {
@@ -109,23 +112,34 @@ public class StashPaySample : MonoBehaviour
     
     void OnCheckoutDismissed()
     {
-        Debug.Log("Checkout dismissed.");
+        Debug.Log("Dialog dismissed");
+        // Checkout dialog was dismissed. This is called when the dialog is dismissed by the user
+        // or when the dialog is closed automatically after purchase success or failure.
     }
     
     void OnPaymentSuccess()
     {
         Debug.Log("Payment success - verifying on backend");
-        // Always verify purchase on backend via Stash webhooks.
+        // Always verify purchase on backend via Stash webhooks or order status API.
+        if (statusText != null)
+        {
+            statusText.text = "Payment success - verifying on backend";
+        }
     }
     
     void OnPaymentFailure()
     {
         Debug.Log("Payment failed");
-        // Show error message to user
+        // Show error message to user. Purchase failed and was not completed.
+        if (statusText != null)
+        {
+            statusText.text = "Payment failed";
+        }
     }
     
     void OnChannelSelected(string channel)
     {
+        // Optional
         // Receives "native_iap" or "stash_pay", based on the response from the optin popup.
         string paymentMethod = channel.ToUpper();
         
@@ -133,6 +147,10 @@ public class StashPaySample : MonoBehaviour
         PlayerPrefs.Save();
         
         Debug.Log($"User selected payment method: {paymentMethod}");
+        if (statusText != null)
+        {
+            statusText.text = $"User selected payment method: {paymentMethod}";
+        }
     }
     
     // These are the request and response classes for the checkout link generation API.
