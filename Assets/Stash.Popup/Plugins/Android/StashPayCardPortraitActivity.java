@@ -357,6 +357,33 @@ public class StashPayCardPortraitActivity extends Activity {
         isExpanded = true;
     }
     
+    private void animateCollapse() {
+        if (cardContainer == null || !isExpanded) return;
+        DisplayMetrics metrics = getResources().getDisplayMetrics();
+        int collapsedHeight = (int)(metrics.heightPixels * CARD_HEIGHT_NORMAL);
+        
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams)cardContainer.getLayoutParams();
+        android.animation.ValueAnimator animator = android.animation.ValueAnimator.ofInt(params.height, collapsedHeight);
+        animator.setDuration(380);
+        animator.setInterpolator(new SpringInterpolator());
+        animator.addUpdateListener(animation -> {
+            params.height = (Integer)animation.getAnimatedValue();
+            cardContainer.setLayoutParams(params);
+        });
+        animator.start();
+        
+        cardContainer.animate()
+            .translationY(0)
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(380)
+            .setInterpolator(new SpringInterpolator())
+            .start();
+        
+        isExpanded = false;
+    }
+    
     private void animateSnapBack() {
         if (cardContainer == null) return;
         DisplayMetrics metrics = getResources().getDisplayMetrics();
@@ -496,6 +523,8 @@ public class StashPayCardPortraitActivity extends Activity {
             "window.stash_sdk.onPaymentFailure=function(){try{StashAndroid.onPaymentFailure()}catch(e){}};" +
             "window.stash_sdk.onPurchaseProcessing=function(){try{StashAndroid.onPurchaseProcessing()}catch(e){}};" +
             "window.stash_sdk.setPaymentChannel=function(t){try{StashAndroid.setPaymentChannel(t||'')}catch(e){}};" +
+            "window.stash_sdk.expand=function(){try{StashAndroid.expand()}catch(e){}};" +
+            "window.stash_sdk.collapse=function(){try{StashAndroid.collapse()}catch(e){}};" +
             "})();", null);
     }
     
@@ -709,6 +738,24 @@ public class StashPayCardPortraitActivity extends Activity {
                 UnityPlayer.UnitySendMessage("StashPayCard", "OnAndroidOptinResponse", 
                     optinType != null ? optinType : "");
                 dismissWithAnimation();
+            });
+        }
+        
+        @JavascriptInterface
+        public void expand() {
+            runOnUiThread(() -> {
+                if (!isTablet() && !usePopup && !isExpanded) {
+                    animateExpand();
+                }
+            });
+        }
+        
+        @JavascriptInterface
+        public void collapse() {
+            runOnUiThread(() -> {
+                if (!isTablet() && !usePopup && isExpanded) {
+                    animateCollapse();
+                }
             });
         }
     }

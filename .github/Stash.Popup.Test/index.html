@@ -50,6 +50,23 @@
             background: #e8e8e8;
         }
         
+        input[type="text"] {
+            width: 100%;
+            padding: 8px 12px;
+            font-size: 13px;
+            font-weight: 400;
+            border: 1px solid #d0d0d0;
+            border-radius: 4px;
+            background: #fff;
+            color: #000;
+            margin-bottom: 12px;
+            outline: none;
+        }
+        
+        input[type="text"]:focus {
+            border-color: #000;
+        }
+        
         .status {
             margin-top: 16px;
             padding: 8px;
@@ -57,6 +74,16 @@
             border-radius: 4px;
             font-size: 11px;
             color: #666;
+            text-align: center;
+        }
+        
+        .theme-info {
+            margin-top: 8px;
+            padding: 6px;
+            border: 1px solid #d0d0d0;
+            border-radius: 4px;
+            font-size: 10px;
+            color: #999;
             text-align: center;
         }
         
@@ -83,9 +110,25 @@
                 background: #3a3a3c;
             }
             
+            input[type="text"] {
+                background: #1c1c1e;
+                color: #fff;
+                border-color: #3a3a3c;
+            }
+            
+            input[type="text"]:focus {
+                border-color: #fff;
+            }
+            
             .status {
                 background: #1c1c1e;
                 color: #8e8e93;
+                border-color: #3a3a3c;
+            }
+            
+            .theme-info {
+                background: #1c1c1e;
+                color: #5e5e63;
                 border-color: #3a3a3c;
             }
         }
@@ -95,6 +138,8 @@
     <div class="container">
         <h1>Stash Callback Test</h1>
         
+        <input type="text" placeholder="Sample text input" />
+        
         <button onclick="triggerSuccess()">Payment Success</button>
         <button onclick="triggerFailure()">Payment Failure</button>
         <button onclick="triggerProcessing()">Purchase Processing</button>
@@ -102,11 +147,23 @@
         <button onclick="triggerCollapse()">Collapse</button>
         
         <div id="status" class="status">Ready</div>
+        <div id="theme-info" class="theme-info"></div>
     </div>
     
     <script>
         function updateStatus(message) {
             document.getElementById('status').textContent = message;
+        }
+        
+        function updateThemeInfo() {
+            const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+            document.getElementById('theme-info').textContent = 'System Theme: ' + (isDark ? 'Dark' : 'Light');
+        }
+        
+        updateThemeInfo();
+        
+        if (window.matchMedia) {
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', updateThemeInfo);
         }
         
         function triggerSuccess() {

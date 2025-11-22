@@ -40,6 +40,7 @@ namespace Stash.Samples
         private Button settingsButton;
         private Button settingsPopupCloseButton;
         private Button stashSdkSettingsCloseButton;
+        private Button openTestCardButton;
         private Label deviceIdLabel;
         private Label stashLogoLabel;
 
@@ -180,6 +181,7 @@ namespace Stash.Samples
             popupLandscapeWidthInput = root.Q<TextField>("popup-landscape-width-input");
             popupLandscapeHeightInput = root.Q<TextField>("popup-landscape-height-input");
             stashSdkSettingsCloseButton = root.Q<Button>("stash-sdk-settings-close-button");
+            openTestCardButton = root.Q<Button>("open-test-card-button");
 
             if (stashSdkSettingsPopup != null)
             {
@@ -220,6 +222,11 @@ namespace Stash.Samples
             if (stashSdkSettingsCloseButton != null)
             {
                 stashSdkSettingsCloseButton.clicked += HideStashSdkSettingsPopup;
+            }
+
+            if (openTestCardButton != null)
+            {
+                openTestCardButton.clicked += OpenTestCard;
             }
 
             SetupPopupSizeInputs();
@@ -501,6 +508,26 @@ namespace Stash.Samples
             }
 
             return customPopupSize;
+        }
+
+        private void OpenTestCard()
+        {
+            const string testUrl = "https://htmlpreview.github.io/?https://raw.githubusercontent.com/stashgg/stash-unity/refs/heads/main/.github/Stash.Popup.Test/index.html";
+            
+            UINotificationSystem.ShowToast("Test Card", "Opening test card...", 2f, root);
+            
+            StashPayCard.Instance.OpenCheckout(
+                testUrl,
+                dismissCallback: () => {
+                    UINotificationSystem.ShowToast("Dismissed", "Card was dismissed", 2f, root);
+                },
+                successCallback: () => {
+                    UINotificationSystem.ShowToast("Success", "Payment successful!", 3f, root);
+                },
+                failureCallback: () => {
+                    UINotificationSystem.ShowToast("Failure", "Payment failed", 3f, root);
+                }
+            );
         }
     }
 }

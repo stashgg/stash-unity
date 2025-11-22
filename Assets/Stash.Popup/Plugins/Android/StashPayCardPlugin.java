@@ -108,6 +108,14 @@ public class StashPayCardPlugin {
                 }
             });
         }
+        
+        @JavascriptInterface
+        public void expand() {
+        }
+        
+        @JavascriptInterface
+        public void collapse() {
+        }
     }
     
     public static StashPayCardPlugin getInstance() {
@@ -462,6 +470,12 @@ public class StashPayCardPlugin {
             "  };" +
             "  window.stash_sdk.setPaymentChannel = function(optinType) {" +
             "    try { StashAndroid.setPaymentChannel(optinType || ''); } catch(e) {}" +
+            "  };" +
+            "  window.stash_sdk.expand = function() {" +
+            "    try { StashAndroid.expand(); } catch(e) {}" +
+            "  };" +
+            "  window.stash_sdk.collapse = function() {" +
+            "    try { StashAndroid.collapse(); } catch(e) {}" +
             "  };" +
             "})();";
         

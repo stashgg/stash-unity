@@ -673,6 +673,8 @@ static SafariViewDismissedCallback GetGlobalSafariViewDismissedCallback() {
                 [webView.configuration.userContentController removeScriptMessageHandlerForName:@"stashPaymentFailure"];
                 [webView.configuration.userContentController removeScriptMessageHandlerForName:@"stashPurchaseProcessing"];
                 [webView.configuration.userContentController removeScriptMessageHandlerForName:@"stashOptin"];
+                [webView.configuration.userContentController removeScriptMessageHandlerForName:@"stashExpand"];
+                [webView.configuration.userContentController removeScriptMessageHandlerForName:@"stashCollapse"];
                 [webView.configuration.userContentController removeAllUserScripts];
                 
                 [webView loadHTMLString:@"" baseURL:nil];
@@ -1828,7 +1830,6 @@ CAShapeLayer* createCornerRadiusMask(CGRect bounds, UIRectCorner corners, CGFloa
         NSString *optinType = [message.body isKindOfClass:[NSString class]] ? (NSString *)message.body : @"";
         
         if (_optinResponseCallback != NULL) {
-            // Copy the string to ensure it remains valid in the async block
             NSString *optinTypeCopy = [optinType copy];
             dispatch_async(dispatch_get_main_queue(), ^{
                 const char *optinTypeCStr = [optinTypeCopy UTF8String];
@@ -1836,10 +1837,63 @@ CAShapeLayer* createCornerRadiusMask(CGRect bounds, UIRectCorner corners, CGFloa
             });
         }
         
-        // Automatically close the popup after opt-in selection
         if (self.currentPresentedVC) {
             [self dismissWithAnimation:^{
                 [self cleanupCardInstance];
+            }];
+        }
+    }
+    else if ([message.name isEqualToString:@"stashExpand"]) {
+        if (!isRunningOniPad() && !_usePopupPresentation && !_isCardExpanded && self.currentPresentedVC) {
+            UIView *cardView = self.currentPresentedVC.view;
+            
+            if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
+                OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
+                containerVC.skipLayoutDuringInitialSetup = YES;
+            }
+            
+            [UIView animateWithDuration:0.4 
+                                  delay:0 
+                 usingSpringWithDamping:0.9 
+                  initialSpringVelocity:0.2 
+                                options:UIViewAnimationOptionCurveEaseOut 
+                             animations:^{
+                [self updateCardExpansionProgress:1.0 cardView:cardView];
+            } completion:^(BOOL finished) {
+                _isCardExpanded = YES;
+                [self expandCardToFullScreen];
+                
+                if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
+                    OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
+                    containerVC.skipLayoutDuringInitialSetup = NO;
+                }
+            }];
+        }
+    }
+    else if ([message.name isEqualToString:@"stashCollapse"]) {
+        if (!isRunningOniPad() && !_usePopupPresentation && _isCardExpanded && self.currentPresentedVC) {
+            UIView *cardView = self.currentPresentedVC.view;
+            
+            if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
+                OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
+                containerVC.skipLayoutDuringInitialSetup = YES;
+            }
+            
+            [UIView animateWithDuration:0.38 
+                                  delay:0 
+                 usingSpringWithDamping:0.9 
+                  initialSpringVelocity:0.0 
+                                options:UIViewAnimationOptionCurveEaseOut 
+                             animations:^{
+                [self updateCardExpansionProgress:0.0 cardView:cardView];
+            } completion:^(BOOL finished) {
+                _isCardExpanded = NO;
+                [self collapseCardToOriginal];
+                
+                if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
+                    OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
+                    containerVC.skipLayoutDuringInitialSetup = NO;
+                }
             }];
         }
     }
@@ -2089,6 +2143,12 @@ extern "C" {
                     "window.stash_sdk.setPaymentChannel = function(optinType) {"
                         "window.webkit.messageHandlers.stashOptin.postMessage(optinType || '');"
                     "};"
+                    "window.stash_sdk.expand = function() {"
+                        "window.webkit.messageHandlers.stashExpand.postMessage({});"
+                    "};"
+                    "window.stash_sdk.collapse = function() {"
+                        "window.webkit.messageHandlers.stashCollapse.postMessage({});"
+                    "};"
                 "})();";
                 
                 WKUserScript *stashSDKInjection = [[WKUserScript alloc] initWithSource:stashSDKScript 
@@ -2101,6 +2161,8 @@ extern "C" {
                 [userContentController addScriptMessageHandler:[StashPayCardSafariDelegate sharedInstance] name:@"stashPaymentFailure"];
                 [userContentController addScriptMessageHandler:[StashPayCardSafariDelegate sharedInstance] name:@"stashPurchaseProcessing"];
                 [userContentController addScriptMessageHandler:[StashPayCardSafariDelegate sharedInstance] name:@"stashOptin"];
+                [userContentController addScriptMessageHandler:[StashPayCardSafariDelegate sharedInstance] name:@"stashExpand"];
+                [userContentController addScriptMessageHandler:[StashPayCardSafariDelegate sharedInstance] name:@"stashCollapse"];
                 
                 config.userContentController = userContentController;
                 
@@ -2613,6 +2675,3 @@ extern "C" {
         OpenPopupWithMultipliers(urlString, YES, portraitWidth, portraitHeight, landscapeWidth, landscapeHeight);
     }
 }
-
-
-
