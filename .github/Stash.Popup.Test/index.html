@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Stash Card Test Kit</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #fff;
+            padding: 30px 20px;
+        }
+        
+        .container {
+            max-width: 280px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            font-size: 16px;
+            font-weight: 500;
+            margin-bottom: 16px;
+            color: #000;
+        }
+        
+        button {
+            width: 100%;
+            padding: 8px 12px;
+            font-size: 13px;
+            font-weight: 400;
+            border: 1px solid #d0d0d0;
+            border-radius: 4px;
+            background: #fff;
+            color: #000;
+            cursor: pointer;
+            margin-bottom: 6px;
+        }
+        
+        button:hover {
+            background: #f5f5f5;
+        }
+        
+        button:active {
+            background: #e8e8e8;
+        }
+        
+        .status {
+            margin-top: 16px;
+            padding: 8px;
+            border: 1px solid #d0d0d0;
+            border-radius: 4px;
+            font-size: 11px;
+            color: #666;
+            text-align: center;
+        }
+        
+        @media (prefers-color-scheme: dark) {
+            body {
+                background: #000;
+            }
+            
+            h1 {
+                color: #fff;
+            }
+            
+            button {
+                background: #1c1c1e;
+                color: #fff;
+                border-color: #3a3a3c;
+            }
+            
+            button:hover {
+                background: #2c2c2e;
+            }
+            
+            button:active {
+                background: #3a3a3c;
+            }
+            
+            .status {
+                background: #1c1c1e;
+                color: #8e8e93;
+                border-color: #3a3a3c;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Stash Callback Test</h1>
+        
+        <button onclick="triggerSuccess()">Payment Success</button>
+        <button onclick="triggerFailure()">Payment Failure</button>
+        <button onclick="triggerProcessing()">Purchase Processing</button>
+        <button onclick="triggerExpand()">Expand</button>
+        <button onclick="triggerCollapse()">Collapse</button>
+        
+        <div id="status" class="status">Ready</div>
+    </div>
+    
+    <script>
+        function updateStatus(message) {
+            document.getElementById('status').textContent = message;
+        }
+        
+        function triggerSuccess() {
+            updateStatus('Called: onPaymentSuccess()');
+            if (window.stash_sdk && window.stash_sdk.onPaymentSuccess) {
+                window.stash_sdk.onPaymentSuccess({});
+            }
+        }
+        
+        function triggerFailure() {
+            updateStatus('Called: onPaymentFailure()');
+            if (window.stash_sdk && window.stash_sdk.onPaymentFailure) {
+                window.stash_sdk.onPaymentFailure({});
+            }
+        }
+        
+        function triggerProcessing() {
+            updateStatus('Called: onPurchaseProcessing()');
+            if (window.stash_sdk && window.stash_sdk.onPurchaseProcessing) {
+                window.stash_sdk.onPurchaseProcessing({});
+            }
+        }
+        
+        function triggerExpand() {
+            updateStatus('Called: expand()');
+            if (window.stash_sdk && window.stash_sdk.expand) {
+                window.stash_sdk.expand();
+            }
+        }
+        
+        function triggerCollapse() {
+            updateStatus('Called: collapse()');
+            if (window.stash_sdk && window.stash_sdk.collapse) {
+                window.stash_sdk.collapse();
+            }
+        }
+    </script>
+</body>
+</html>
