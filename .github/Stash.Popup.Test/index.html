@@ -87,50 +87,120 @@
             text-align: center;
         }
         
+        .user-agent-info {
+            margin-top: 8px;
+            padding: 6px;
+            border: 1px solid #d0d0d0;
+            border-radius: 4px;
+            font-size: 9px;
+            color: #999;
+            text-align: center;
+            word-break: break-all;
+            line-height: 1.3;
+        }
+        
+        /* Dark theme styles - applied when body has 'theme-dark' class */
+        body.theme-dark {
+            background: #000;
+        }
+        
+        body.theme-dark h1 {
+            color: #fff;
+        }
+        
+        body.theme-dark button {
+            background: #1c1c1e;
+            color: #fff;
+            border-color: #3a3a3c;
+        }
+        
+        body.theme-dark button:hover {
+            background: #2c2c2e;
+        }
+        
+        body.theme-dark button:active {
+            background: #3a3a3c;
+        }
+        
+        body.theme-dark input[type="text"] {
+            background: #1c1c1e;
+            color: #fff;
+            border-color: #3a3a3c;
+        }
+        
+        body.theme-dark input[type="text"]:focus {
+            border-color: #fff;
+        }
+        
+        body.theme-dark .status {
+            background: #1c1c1e;
+            color: #8e8e93;
+            border-color: #3a3a3c;
+        }
+        
+        body.theme-dark .theme-info {
+            background: #1c1c1e;
+            color: #5e5e63;
+            border-color: #3a3a3c;
+        }
+        
+        /* Fallback to system preference if no theme class is set */
         @media (prefers-color-scheme: dark) {
-            body {
+            body:not(.theme-light):not(.theme-dark) {
                 background: #000;
             }
             
-            h1 {
+            body:not(.theme-light):not(.theme-dark) h1 {
                 color: #fff;
             }
             
-            button {
+            body:not(.theme-light):not(.theme-dark) button {
                 background: #1c1c1e;
                 color: #fff;
                 border-color: #3a3a3c;
             }
             
-            button:hover {
+            body:not(.theme-light):not(.theme-dark) button:hover {
                 background: #2c2c2e;
             }
             
-            button:active {
+            body:not(.theme-light):not(.theme-dark) button:active {
                 background: #3a3a3c;
             }
             
-            input[type="text"] {
+            body:not(.theme-light):not(.theme-dark) input[type="text"] {
                 background: #1c1c1e;
                 color: #fff;
                 border-color: #3a3a3c;
             }
             
-            input[type="text"]:focus {
+            body:not(.theme-light):not(.theme-dark) input[type="text"]:focus {
                 border-color: #fff;
             }
             
-            .status {
+            body:not(.theme-light):not(.theme-dark) .status {
                 background: #1c1c1e;
                 color: #8e8e93;
                 border-color: #3a3a3c;
             }
             
-            .theme-info {
+            body:not(.theme-light):not(.theme-dark) .theme-info {
                 background: #1c1c1e;
                 color: #5e5e63;
                 border-color: #3a3a3c;
             }
+            
+            body:not(.theme-light):not(.theme-dark) .user-agent-info {
+                background: #1c1c1e;
+                color: #5e5e63;
+                border-color: #3a3a3c;
+            }
+        }
+        
+        body.theme-dark .user-agent-info {
+            background: #1c1c1e;
+            color: #5e5e63;
+            border-color: #3a3a3c;
         }
     </style>
 </head>
@@ -148,22 +218,69 @@
         
         <div id="status" class="status">Ready</div>
         <div id="theme-info" class="theme-info"></div>
+        <div id="user-agent-info" class="user-agent-info"></div>
     </div>
     
     <script>
+        // Read theme from URL query parameter
+        function getThemeFromURL() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const theme = urlParams.get('theme');
+            return theme ? theme.toLowerCase() : null;
+        }
+        
+        // Apply theme based on URL parameter
+        function applyTheme() {
+            const theme = getThemeFromURL();
+            const body = document.body;
+            
+            // Remove existing theme classes
+            body.classList.remove('theme-dark', 'theme-light');
+            
+            if (theme === 'dark') {
+                body.classList.add('theme-dark');
+            } else if (theme === 'light') {
+                body.classList.add('theme-light');
+            }
+            // If no theme parameter, rely on system preference (handled by CSS media query)
+        }
+        
         function updateStatus(message) {
             document.getElementById('status').textContent = message;
         }
         
         function updateThemeInfo() {
-            const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-            document.getElementById('theme-info').textContent = 'System Theme: ' + (isDark ? 'Dark' : 'Light');
+            const theme = getThemeFromURL();
+            const systemIsDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+            
+            let themeText = '';
+            if (theme) {
+                themeText = 'URL Theme: ' + theme.charAt(0).toUpperCase() + theme.slice(1);
+            } else {
+                themeText = 'System Theme: ' + (systemIsDark ? 'Dark' : 'Light') + ' (no theme param)';
+            }
+            
+            document.getElementById('theme-info').textContent = themeText;
         }
         
-        updateThemeInfo();
+        // Display user agent
+        function updateUserAgentInfo() {
+            const userAgent = navigator.userAgent || 'Unknown';
+            document.getElementById('user-agent-info').textContent = 'User Agent: ' + userAgent;
+        }
         
+        // Apply theme on page load
+        applyTheme();
+        updateThemeInfo();
+        updateUserAgentInfo();
+        
+        // Update theme info if system preference changes (only if no URL theme is set)
         if (window.matchMedia) {
-            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', updateThemeInfo);
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
+                if (!getThemeFromURL()) {
+                    updateThemeInfo();
+                }
+            });
         }
         
         function triggerSuccess() {
