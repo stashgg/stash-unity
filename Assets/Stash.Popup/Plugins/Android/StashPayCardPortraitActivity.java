@@ -333,24 +333,52 @@ public class StashPayCardPortraitActivity extends Activity {
     private void animateExpand() {
         if (cardContainer == null) return;
         DisplayMetrics metrics = getResources().getDisplayMetrics();
-        int expandedHeight = (int)(metrics.heightPixels * CARD_HEIGHT_EXPANDED);
+        boolean isTablet = isTablet();
         
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams)cardContainer.getLayoutParams();
-        android.animation.ValueAnimator animator = android.animation.ValueAnimator.ofInt(params.height, expandedHeight);
-        animator.setDuration(450);
-        animator.setInterpolator(new SpringInterpolator());
-        animator.addUpdateListener(animation -> {
+        
+        int expandedHeight = (int)(metrics.heightPixels * CARD_HEIGHT_EXPANDED);
+        int expandedWidth;
+        
+        if (isTablet) {
+            int normalWidth = Math.min(dpToPx(600), (int)(metrics.widthPixels * 0.7f));
+            expandedWidth = (int)(normalWidth * 1.25f);
+            expandedWidth = Math.min(expandedWidth, (int)(metrics.widthPixels * 0.85f));
+            
+            int normalHeight = params.height;
+            expandedHeight = (int)(normalHeight * 1.25f);
+            expandedHeight = Math.min(expandedHeight, (int)(metrics.heightPixels * 0.85f));
+        } else {
+            expandedWidth = params.width;
+        }
+        
+        android.animation.ValueAnimator heightAnimator = android.animation.ValueAnimator.ofInt(params.height, expandedHeight);
+        heightAnimator.setDuration(isTablet ? 350 : 450);
+        heightAnimator.setInterpolator(new SpringInterpolator());
+        
+        if (isTablet) {
+            android.animation.ValueAnimator widthAnimator = android.animation.ValueAnimator.ofInt(params.width, expandedWidth);
+            widthAnimator.setDuration(350);
+            widthAnimator.setInterpolator(new SpringInterpolator());
+            widthAnimator.addUpdateListener(animation -> {
+                params.width = (Integer)animation.getAnimatedValue();
+                cardContainer.setLayoutParams(params);
+            });
+            widthAnimator.start();
+        }
+        
+        heightAnimator.addUpdateListener(animation -> {
             params.height = (Integer)animation.getAnimatedValue();
             cardContainer.setLayoutParams(params);
         });
-        animator.start();
+        heightAnimator.start();
         
         cardContainer.animate()
             .translationY(0)
             .alpha(1f)
             .scaleX(1f)
             .scaleY(1f)
-            .setDuration(450)
+            .setDuration(isTablet ? 350 : 450)
             .setInterpolator(new SpringInterpolator())
             .start();
         
@@ -360,24 +388,45 @@ public class StashPayCardPortraitActivity extends Activity {
     private void animateCollapse() {
         if (cardContainer == null || !isExpanded) return;
         DisplayMetrics metrics = getResources().getDisplayMetrics();
-        int collapsedHeight = (int)(metrics.heightPixels * CARD_HEIGHT_NORMAL);
+        boolean isTablet = isTablet();
         
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams)cardContainer.getLayoutParams();
-        android.animation.ValueAnimator animator = android.animation.ValueAnimator.ofInt(params.height, collapsedHeight);
-        animator.setDuration(380);
-        animator.setInterpolator(new SpringInterpolator());
-        animator.addUpdateListener(animation -> {
+        
+        int collapsedHeight;
+        int collapsedWidth;
+        
+        if (isTablet) {
+            collapsedWidth = Math.min(dpToPx(600), (int)(metrics.widthPixels * 0.7f));
+            collapsedHeight = (int)(metrics.heightPixels * CARD_HEIGHT_NORMAL);
+            
+            android.animation.ValueAnimator widthAnimator = android.animation.ValueAnimator.ofInt(params.width, collapsedWidth);
+            widthAnimator.setDuration(320);
+            widthAnimator.setInterpolator(new SpringInterpolator());
+            widthAnimator.addUpdateListener(animation -> {
+                params.width = (Integer)animation.getAnimatedValue();
+                cardContainer.setLayoutParams(params);
+            });
+            widthAnimator.start();
+        } else {
+            collapsedHeight = (int)(metrics.heightPixels * CARD_HEIGHT_NORMAL);
+            collapsedWidth = params.width;
+        }
+        
+        android.animation.ValueAnimator heightAnimator = android.animation.ValueAnimator.ofInt(params.height, collapsedHeight);
+        heightAnimator.setDuration(isTablet ? 320 : 380);
+        heightAnimator.setInterpolator(new SpringInterpolator());
+        heightAnimator.addUpdateListener(animation -> {
             params.height = (Integer)animation.getAnimatedValue();
             cardContainer.setLayoutParams(params);
         });
-        animator.start();
+        heightAnimator.start();
         
         cardContainer.animate()
             .translationY(0)
             .alpha(1f)
             .scaleX(1f)
             .scaleY(1f)
-            .setDuration(380)
+            .setDuration(isTablet ? 320 : 380)
             .setInterpolator(new SpringInterpolator())
             .start();
         
@@ -744,7 +793,7 @@ public class StashPayCardPortraitActivity extends Activity {
         @JavascriptInterface
         public void expand() {
             runOnUiThread(() -> {
-                if (!isTablet() && !usePopup && !isExpanded) {
+                if (!usePopup && !isExpanded) {
                     animateExpand();
                 }
             });
@@ -753,7 +802,7 @@ public class StashPayCardPortraitActivity extends Activity {
         @JavascriptInterface
         public void collapse() {
             runOnUiThread(() -> {
-                if (!isTablet() && !usePopup && isExpanded) {
+                if (!usePopup && isExpanded) {
                     animateCollapse();
                 }
             });

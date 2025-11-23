@@ -59,6 +59,7 @@ static BOOL _showScrollbar = NO;
 - (void)expandCardToFullScreen;
 - (void)collapseCardToOriginal;
 - (void)updateCardExpansionProgress:(CGFloat)progress cardView:(UIView *)cardView;
+- (void)updateCardExpansionProgressForiPad:(CGFloat)progress cardView:(UIView *)cardView;
 - (UIView *)createDragTray:(CGFloat)cardWidth;
 - (void)startKeyboardObserving;
 - (void)stopKeyboardObserving;
@@ -1152,13 +1153,84 @@ CAShapeLayer* createCornerRadiusMask(CGRect bounds, UIRectCorner corners, CGFloa
         CGFloat radius = 20.0 + (progress * 18.0);
         CAShapeLayer *maskLayer = createCornerRadiusMask(cardView.bounds, cornersToRound, radius);
         cardView.layer.mask = maskLayer;
-    } else {
+    } else if (progress > 0.001) {
         UIRectCorner cornersToRound = getCornersToRoundForPosition(_originalCardVerticalPosition, isRunningOniPad());
         CGFloat radius = 20.0 + (progress * 8.0);
         CAShapeLayer *maskLayer = createCornerRadiusMask(cardView.bounds, cornersToRound, radius);
         cardView.layer.mask = maskLayer;
     }
     
+}
+
+- (void)updateCardExpansionProgressForiPad:(CGFloat)progress cardView:(UIView *)cardView {
+    if (!cardView) return;
+    
+    progress = MAX(0.0, MIN(1.0, progress));
+    
+    CGRect screenBounds = [UIScreen mainScreen].bounds;
+    
+    // Calculate collapsed dimensions (same as initial presentation)
+    CGFloat collapsedWidth = fmin(400.0, screenBounds.size.width * 0.9);
+    CGFloat collapsedHeight = screenBounds.size.height * _cardHeightRatio;
+    CGFloat collapsedX = (screenBounds.size.width - collapsedWidth) / 2;
+    CGFloat collapsedY = (screenBounds.size.height - collapsedHeight) / 2;
+    
+    // Calculate expanded dimensions (25% larger, centered)
+    CGFloat expandedWidth = collapsedWidth * 1.25;
+    CGFloat expandedHeight = collapsedHeight * 1.25;
+    expandedWidth = fmin(expandedWidth, screenBounds.size.width * 0.95);
+    expandedHeight = fmin(expandedHeight, screenBounds.size.height * 0.85);
+    
+    CGFloat expandedX = (screenBounds.size.width - expandedWidth) / 2;
+    CGFloat expandedY = (screenBounds.size.height - expandedHeight) / 2;
+    
+    // Interpolate between collapsed and expanded
+    CGFloat currentWidth = collapsedWidth + (expandedWidth - collapsedWidth) * progress;
+    CGFloat currentHeight = collapsedHeight + (expandedHeight - collapsedHeight) * progress;
+    CGFloat currentX = collapsedX + (expandedX - collapsedX) * progress;
+    CGFloat currentY = collapsedY + (expandedY - collapsedY) * progress;
+    
+    // Update card frame
+    cardView.frame = CGRectMake(currentX, currentY, currentWidth, currentHeight);
+    
+    // Force webview to resize with frame-based layout for smooth resizing
+    for (UIView *subview in cardView.subviews) {
+        if ([subview isKindOfClass:NSClassFromString(@"WKWebView")]) {
+            WKWebView *webView = (WKWebView *)subview;
+            if (!webView.translatesAutoresizingMaskIntoConstraints) {
+                webView.translatesAutoresizingMaskIntoConstraints = YES;
+            }
+            webView.frame = cardView.bounds;
+            break;
+        }
+    }
+    
+    // Update customFrame
+    if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
+        OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
+        containerVC.customFrame = cardView.frame;
+    }
+    
+    // Update drag tray and handle position
+    UIView *dragTray = [cardView viewWithTag:8888];
+    if (dragTray) {
+        dragTray.frame = CGRectMake(0, 0, currentWidth, 44);
+        
+        CAGradientLayer *gradientLayer = (CAGradientLayer*)dragTray.layer.sublayers.firstObject;
+        if (gradientLayer && [gradientLayer isKindOfClass:[CAGradientLayer class]]) {
+            gradientLayer.frame = dragTray.bounds;
+        }
+        
+        UIView *handle = [dragTray viewWithTag:8889];
+        if (handle) {
+            handle.frame = CGRectMake((currentWidth / 2.0) - 18.0, 8, 36, 5);
+        }
+    }
+    
+    // Update corner radius based on progress
+    CGFloat cornerRadius = 20.0 + (24.0 - 20.0) * progress;
+    CAShapeLayer *maskLayer = createCornerRadiusMask(cardView.bounds, UIRectCornerAllCorners, cornerRadius);
+    cardView.layer.mask = maskLayer;
 }
 
 - (void)updateButtonPositionsForProgress:(CGFloat)progress cardView:(UIView *)cardView safeAreaInsets:(UIEdgeInsets)safeAreaInsets {
@@ -1844,57 +1916,109 @@ CAShapeLayer* createCornerRadiusMask(CGRect bounds, UIRectCorner corners, CGFloa
         }
     }
     else if ([message.name isEqualToString:@"stashExpand"]) {
-        if (!isRunningOniPad() && !_usePopupPresentation && !_isCardExpanded && self.currentPresentedVC) {
+        if (!_usePopupPresentation && !_isCardExpanded && self.currentPresentedVC) {
             UIView *cardView = self.currentPresentedVC.view;
             
+            OrientationLockedViewController *containerVC = nil;
             if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
-                OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
+                containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
                 containerVC.skipLayoutDuringInitialSetup = YES;
             }
             
-            [UIView animateWithDuration:0.4 
-                                  delay:0 
-                 usingSpringWithDamping:0.9 
-                  initialSpringVelocity:0.2 
-                                options:UIViewAnimationOptionCurveEaseOut 
-                             animations:^{
-                [self updateCardExpansionProgress:1.0 cardView:cardView];
-            } completion:^(BOOL finished) {
-                _isCardExpanded = YES;
-                [self expandCardToFullScreen];
-                
-                if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
-                    OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
-                    containerVC.skipLayoutDuringInitialSetup = NO;
+            if (isRunningOniPad()) {
+                if (containerVC) {
+                    containerVC.skipLayoutDuringInitialSetup = YES;
                 }
-            }];
+                
+                _isCardExpanded = YES;
+                
+                [UIView animateWithDuration:0.35 
+                                      delay:0 
+                     usingSpringWithDamping:0.88 
+                      initialSpringVelocity:0.3 
+                                    options:UIViewAnimationOptionCurveEaseOut
+                                 animations:^{
+                    [self updateCardExpansionProgressForiPad:1.0 cardView:cardView];
+                } completion:^(BOOL finished) {
+                    if (containerVC) {
+                        containerVC.customFrame = cardView.frame;
+                        containerVC.skipLayoutDuringInitialSetup = NO;
+                    }
+                    
+                    CAShapeLayer *maskLayer = createCornerRadiusMask(cardView.bounds, UIRectCornerAllCorners, 24.0);
+                    cardView.layer.mask = maskLayer;
+                }];
+            } else {
+                [UIView animateWithDuration:0.4 
+                                      delay:0 
+                     usingSpringWithDamping:0.9 
+                      initialSpringVelocity:0.2 
+                                    options:UIViewAnimationOptionCurveEaseOut 
+                                 animations:^{
+                    [self updateCardExpansionProgress:1.0 cardView:cardView];
+                } completion:^(BOOL finished) {
+                    _isCardExpanded = YES;
+                    [self expandCardToFullScreen];
+                    
+                    if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
+                        OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
+                        containerVC.skipLayoutDuringInitialSetup = NO;
+                    }
+                }];
+            }
         }
     }
     else if ([message.name isEqualToString:@"stashCollapse"]) {
-        if (!isRunningOniPad() && !_usePopupPresentation && _isCardExpanded && self.currentPresentedVC) {
+        if (!_usePopupPresentation && _isCardExpanded && self.currentPresentedVC) {
             UIView *cardView = self.currentPresentedVC.view;
             
+            OrientationLockedViewController *containerVC = nil;
             if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
-                OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
+                containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
                 containerVC.skipLayoutDuringInitialSetup = YES;
             }
             
-            [UIView animateWithDuration:0.38 
-                                  delay:0 
-                 usingSpringWithDamping:0.9 
-                  initialSpringVelocity:0.0 
-                                options:UIViewAnimationOptionCurveEaseOut 
-                             animations:^{
-                [self updateCardExpansionProgress:0.0 cardView:cardView];
-            } completion:^(BOOL finished) {
-                _isCardExpanded = NO;
-                [self collapseCardToOriginal];
-                
-                if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
-                    OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
-                    containerVC.skipLayoutDuringInitialSetup = NO;
+            if (isRunningOniPad()) {
+                if (containerVC) {
+                    containerVC.skipLayoutDuringInitialSetup = YES;
                 }
-            }];
+                
+                [UIView animateWithDuration:0.35 
+                                      delay:0 
+                     usingSpringWithDamping:0.88 
+                      initialSpringVelocity:0.3 
+                                    options:UIViewAnimationOptionCurveEaseOut
+                                 animations:^{
+                    [self updateCardExpansionProgressForiPad:0.0 cardView:cardView];
+                } completion:^(BOOL finished) {
+                    _isCardExpanded = NO;
+                    
+                    if (containerVC) {
+                        containerVC.customFrame = cardView.frame;
+                        containerVC.skipLayoutDuringInitialSetup = NO;
+                    }
+                    
+                    CAShapeLayer *maskLayer = createCornerRadiusMask(cardView.bounds, UIRectCornerAllCorners, 20.0);
+                    cardView.layer.mask = maskLayer;
+                }];
+            } else {
+                [UIView animateWithDuration:0.38 
+                                      delay:0 
+                     usingSpringWithDamping:0.9 
+                      initialSpringVelocity:0.0 
+                                    options:UIViewAnimationOptionCurveEaseOut 
+                                 animations:^{
+                    [self updateCardExpansionProgress:0.0 cardView:cardView];
+                } completion:^(BOOL finished) {
+                    _isCardExpanded = NO;
+                    [self collapseCardToOriginal];
+                    
+                    if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
+                        OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
+                        containerVC.skipLayoutDuringInitialSetup = NO;
+                    }
+                }];
+            }
         }
     }
 }
@@ -2104,28 +2228,16 @@ extern "C" {
                 // Add JavaScript handler for window.close() interception
                 WKUserContentController *userContentController = [[WKUserContentController alloc] init];
                 
-                // Add viewport meta tag and transparent background styles
+                // Add viewport meta tag
                 NSString *viewportScript = @"var meta = document.createElement('meta'); \
                     meta.name = 'viewport'; \
                     meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover'; \
-                    document.head.appendChild(meta); \
-                    document.documentElement.style.backgroundColor = 'transparent'; \
-                    document.body.style.backgroundColor = 'transparent';";
+                    document.head.appendChild(meta);";
                 
                 WKUserScript *viewportInjection = [[WKUserScript alloc] initWithSource:viewportScript
                                                                        injectionTime:WKUserScriptInjectionTimeAtDocumentEnd
                                                                     forMainFrameOnly:YES];
                 [userContentController addUserScript:viewportInjection];
-                
-                // Add transparent background styles
-                NSString *transparencyStyles = @"body, html { background-color: transparent !important; } \
-                    :root { background-color: transparent !important; }";
-                WKUserScript *styleInjection = [[WKUserScript alloc] initWithSource:[NSString stringWithFormat:@"var style = document.createElement('style'); \
-                    style.innerHTML = '%@'; \
-                    document.head.appendChild(style);", transparencyStyles]
-                                                                    injectionTime:WKUserScriptInjectionTimeAtDocumentStart
-                                                                 forMainFrameOnly:YES];
-                [userContentController addUserScript:styleInjection];
             
                           
                 // JavaScript code to set up Stash SDK functions
