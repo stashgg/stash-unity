@@ -82,6 +82,7 @@ jobs:
       
       # Cache Unity Library folder
       - name: Cache Unity Library
+        continue-on-error: true
         uses: actions/cache@v3
         with:
           path: Library
