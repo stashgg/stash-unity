@@ -94,6 +94,13 @@ public class StashPayCardPlugin {
         @JavascriptInterface
         public void onPurchaseProcessing() {
             isPurchaseProcessing = true;
+            // Update dialog dismissibility on UI thread
+            new Handler(Looper.getMainLooper()).post(() -> {
+                if (currentDialog != null && currentDialog.isShowing()) {
+                    currentDialog.setCanceledOnTouchOutside(false);
+                    currentDialog.setCancelable(false);
+                }
+            });
         }
         
         @JavascriptInterface
@@ -186,6 +193,10 @@ public class StashPayCardPlugin {
         return forceSafariViewController;
     }
     
+    public boolean isPurchaseProcessing() {
+        return isPurchaseProcessing;
+    }
+    
     private void openURLInternal(String url) {
         if (activity == null || url == null || url.isEmpty()) {
             Log.e(TAG, "Invalid activity or URL");
@@ -247,6 +258,13 @@ public class StashPayCardPlugin {
 
             FrameLayout mainFrame = new FrameLayout(activity);
             mainFrame.setBackgroundColor(Color.parseColor("#20000000"));
+            // Handle tap-outside dismissal (only if not processing)
+            mainFrame.setOnClickListener(v -> {
+                // Only dismiss if not processing and click is on the background (not the container)
+                if (!isPurchaseProcessing && currentDialog != null && currentDialog.isShowing() && v == mainFrame) {
+                    currentDialog.dismiss();
+                }
+            });
             
             int[] dimensions = calculatePopupDimensions();
             currentContainer = new FrameLayout(activity);
@@ -336,6 +354,10 @@ public class StashPayCardPlugin {
             }
             
             currentContainer.setOnClickListener(v -> {});
+            
+            // Prevent dismissal when purchase is processing
+            currentDialog.setCanceledOnTouchOutside(!isPurchaseProcessing);
+            currentDialog.setCancelable(!isPurchaseProcessing);
 
             currentDialog.setOnDismissListener(dialog -> {
                 if (!paymentSuccessHandled) {
@@ -389,6 +411,10 @@ public class StashPayCardPlugin {
     
     private void setupPopupWebView(WebView webView, String url) {
         WebSettings settings = webView.getSettings();
+        // Security: Disable file access to prevent local file attacks
+        settings.setAllowFileAccess(false);
+        settings.setAllowContentAccess(false);
+        
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setLoadWithOverviewMode(true);
@@ -431,6 +457,14 @@ public class StashPayCardPlugin {
                     hideLoadingIndicator();
                     view.setVisibility(View.VISIBLE);
                 }, 300);
+            }
+            
+            @Override
+            public void onReceivedError(WebView view, android.webkit.WebResourceRequest request, 
+                                        android.webkit.WebResourceError error) {
+                super.onReceivedError(view, request, error);
+                // Log only if strictly necessary for debugging production issues
+                Log.e(TAG, "WebView error: " + error.getDescription());
             }
         });
         

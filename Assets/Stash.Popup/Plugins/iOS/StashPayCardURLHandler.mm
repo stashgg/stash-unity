@@ -499,7 +499,6 @@ NSString* appendThemeQueryParameter(NSString* url);
         return;
     }
     
-    NSLog(@"StashPayCard: Navigation failed with error: %@", error.localizedDescription);
     [[StashPayCardSafariDelegate sharedInstance] dismissWithAnimation:^{
         [[StashPayCardSafariDelegate sharedInstance] cleanupCardInstance];
         [[StashPayCardSafariDelegate sharedInstance] callUnityCallbackOnce];
@@ -511,7 +510,6 @@ NSString* appendThemeQueryParameter(NSString* url);
         return;
     }
     
-    NSLog(@"StashPayCard: Provisional navigation failed with error: %@", error.localizedDescription);
     [[StashPayCardSafariDelegate sharedInstance] dismissWithAnimation:^{
         [[StashPayCardSafariDelegate sharedInstance] cleanupCardInstance];
         [[StashPayCardSafariDelegate sharedInstance] callUnityCallbackOnce];
@@ -1143,29 +1141,40 @@ NSString* appendThemeQueryParameter(NSString* url) {
     }
     CGFloat safeTop = safeAreaInsets.top;
     
-    // Calculate collapsed dimensions
+    // Calculate collapsed and expanded dimensions
     CGFloat collapsedWidth, collapsedHeight, collapsedX, collapsedY;
+    CGFloat expandedWidth, expandedHeight, expandedX, expandedY;
+    
     if (isRunningOniPad()) {
         CGSize cardSize = calculateiPadCardSize(screenBounds);
         collapsedWidth = cardSize.width;
         collapsedHeight = cardSize.height;
         collapsedX = (screenBounds.size.width - collapsedWidth) / 2;
         collapsedY = (screenBounds.size.height - collapsedHeight) / 2;
+        
+        // iPad expanded: 25% larger, centered
+        expandedWidth = collapsedWidth * 1.25;
+        expandedHeight = collapsedHeight * 1.25;
+        expandedWidth = fmin(expandedWidth, screenBounds.size.width * 0.95);
+        expandedHeight = fmin(expandedHeight, screenBounds.size.height * 0.85);
+        expandedX = (screenBounds.size.width - expandedWidth) / 2;
+        expandedY = (screenBounds.size.height - expandedHeight) / 2;
     } else {
+        // iPhone collapsed
         collapsedWidth = screenBounds.size.width * _originalCardWidthRatio;
         collapsedHeight = screenBounds.size.height * _originalCardHeightRatio;
         collapsedX = (screenBounds.size.width - collapsedWidth) / 2;
         collapsedY = screenBounds.size.height * _originalCardVerticalPosition - collapsedHeight;
         if (collapsedY < 0) collapsedY = 0;
+        
+        // iPhone expanded: Full screen
+        expandedWidth = screenBounds.size.width;
+        expandedHeight = screenBounds.size.height - safeTop;
+        expandedX = 0;
+        expandedY = safeTop;
     }
     
-    // Calculate expanded dimensions
-    CGFloat expandedWidth = screenBounds.size.width;
-    CGFloat expandedHeight = screenBounds.size.height - safeTop;
-    CGFloat expandedX = 0;
-    CGFloat expandedY = safeTop;
-    
-    // Interpolate between collapsed and expanded
+    // Interpolate
     CGFloat currentWidth = collapsedWidth + (expandedWidth - collapsedWidth) * progress;
     CGFloat currentHeight = collapsedHeight + (expandedHeight - collapsedHeight) * progress;
     CGFloat currentX = collapsedX + (expandedX - collapsedX) * progress;
@@ -1178,11 +1187,9 @@ NSString* appendThemeQueryParameter(NSString* url) {
     for (UIView *subview in cardView.subviews) {
         if ([subview isKindOfClass:NSClassFromString(@"WKWebView")]) {
             WKWebView *webView = (WKWebView *)subview;
-            // Temporarily use frame-based layout for smooth, direct updates
             if (!webView.translatesAutoresizingMaskIntoConstraints) {
                 webView.translatesAutoresizingMaskIntoConstraints = YES;
             }
-            // Update webview frame to match card bounds immediately
             webView.frame = cardView.bounds;
             break;
         }
@@ -1199,110 +1206,40 @@ NSString* appendThemeQueryParameter(NSString* url) {
     if (dragTray) {
         dragTray.frame = CGRectMake(0, 0, currentWidth, 44);
         
-        // Update gradient layer
         CAGradientLayer *gradientLayer = (CAGradientLayer*)dragTray.layer.sublayers.firstObject;
         if (gradientLayer && [gradientLayer isKindOfClass:[CAGradientLayer class]]) {
             gradientLayer.frame = dragTray.bounds;
         }
         
-        // Update handle position to always be centered
         UIView *handle = [dragTray viewWithTag:8889];
         if (handle) {
-            // Always center the handle based on current drag tray width
             CGFloat handleX = (currentWidth / 2.0) - 18.0;
             handle.frame = CGRectMake(handleX, 8, 36, 5);
         }
     }
     
-    if (progress > 0.9) {
-        CGFloat radius = 20.0;
-        CAShapeLayer *maskLayer = createCornerRadiusMask(cardView.bounds, UIRectCornerTopLeft | UIRectCornerTopRight, radius);
+    // Update corner radius
+    if (isRunningOniPad()) {
+        CAShapeLayer *maskLayer = createCornerRadiusMask(cardView.bounds, UIRectCornerAllCorners, 20.0);
         cardView.layer.mask = maskLayer;
-    } else if (progress > 0.5) {
-        UIRectCorner cornersToRound = UIRectCornerTopLeft | UIRectCornerTopRight;
-        CGFloat radius = 20.0;
-        CAShapeLayer *maskLayer = createCornerRadiusMask(cardView.bounds, cornersToRound, radius);
-        cardView.layer.mask = maskLayer;
-    } else if (progress > 0.001) {
-        UIRectCorner cornersToRound = getCornersToRoundForPosition(_originalCardVerticalPosition, isRunningOniPad());
-        CGFloat radius = 20.0;
-        CAShapeLayer *maskLayer = createCornerRadiusMask(cardView.bounds, cornersToRound, radius);
-        cardView.layer.mask = maskLayer;
+    } else {
+        if (progress > 0.9) {
+            CGFloat radius = 20.0;
+            CAShapeLayer *maskLayer = createCornerRadiusMask(cardView.bounds, UIRectCornerTopLeft | UIRectCornerTopRight, radius);
+            cardView.layer.mask = maskLayer;
+        } else if (progress > 0.5) {
+            UIRectCorner cornersToRound = UIRectCornerTopLeft | UIRectCornerTopRight;
+            CGFloat radius = 20.0;
+            CAShapeLayer *maskLayer = createCornerRadiusMask(cardView.bounds, cornersToRound, radius);
+            cardView.layer.mask = maskLayer;
+        } else if (progress > 0.001) {
+            UIRectCorner cornersToRound = getCornersToRoundForPosition(_originalCardVerticalPosition, isRunningOniPad());
+            CGFloat radius = 20.0;
+            CAShapeLayer *maskLayer = createCornerRadiusMask(cardView.bounds, cornersToRound, radius);
+            cardView.layer.mask = maskLayer;
+        }
     }
-    
 }
-
-- (void)updateCardExpansionProgressForiPad:(CGFloat)progress cardView:(UIView *)cardView {
-    if (!cardView) return;
-    
-    progress = MAX(0.0, MIN(1.0, progress));
-    
-    CGRect screenBounds = [UIScreen mainScreen].bounds;
-    
-    // Calculate collapsed dimensions (same as initial presentation)
-    CGFloat collapsedWidth = fmin(400.0, screenBounds.size.width * 0.9);
-    CGFloat collapsedHeight = screenBounds.size.height * _cardHeightRatio;
-    CGFloat collapsedX = (screenBounds.size.width - collapsedWidth) / 2;
-    CGFloat collapsedY = (screenBounds.size.height - collapsedHeight) / 2;
-    
-    // Calculate expanded dimensions (25% larger, centered)
-    CGFloat expandedWidth = collapsedWidth * 1.25;
-    CGFloat expandedHeight = collapsedHeight * 1.25;
-    expandedWidth = fmin(expandedWidth, screenBounds.size.width * 0.95);
-    expandedHeight = fmin(expandedHeight, screenBounds.size.height * 0.85);
-    
-    CGFloat expandedX = (screenBounds.size.width - expandedWidth) / 2;
-    CGFloat expandedY = (screenBounds.size.height - expandedHeight) / 2;
-    
-    // Interpolate between collapsed and expanded
-    CGFloat currentWidth = collapsedWidth + (expandedWidth - collapsedWidth) * progress;
-    CGFloat currentHeight = collapsedHeight + (expandedHeight - collapsedHeight) * progress;
-    CGFloat currentX = collapsedX + (expandedX - collapsedX) * progress;
-    CGFloat currentY = collapsedY + (expandedY - collapsedY) * progress;
-    
-    // Update card frame
-    cardView.frame = CGRectMake(currentX, currentY, currentWidth, currentHeight);
-    
-    // Force webview to resize with frame-based layout for smooth resizing
-    for (UIView *subview in cardView.subviews) {
-        if ([subview isKindOfClass:NSClassFromString(@"WKWebView")]) {
-            WKWebView *webView = (WKWebView *)subview;
-            if (!webView.translatesAutoresizingMaskIntoConstraints) {
-                webView.translatesAutoresizingMaskIntoConstraints = YES;
-            }
-            webView.frame = cardView.bounds;
-            break;
-        }
-    }
-    
-    // Update customFrame
-    if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
-        OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
-        containerVC.customFrame = cardView.frame;
-    }
-    
-    // Update drag tray and handle position
-    UIView *dragTray = [cardView viewWithTag:8888];
-    if (dragTray) {
-        dragTray.frame = CGRectMake(0, 0, currentWidth, 44);
-        
-        CAGradientLayer *gradientLayer = (CAGradientLayer*)dragTray.layer.sublayers.firstObject;
-        if (gradientLayer && [gradientLayer isKindOfClass:[CAGradientLayer class]]) {
-            gradientLayer.frame = dragTray.bounds;
-        }
-        
-        UIView *handle = [dragTray viewWithTag:8889];
-        if (handle) {
-            handle.frame = CGRectMake((currentWidth / 2.0) - 18.0, 8, 36, 5);
-        }
-    }
-    
-    // Update corner radius based on progress
-    CGFloat cornerRadius = 20.0;
-    CAShapeLayer *maskLayer = createCornerRadiusMask(cardView.bounds, UIRectCornerAllCorners, cornerRadius);
-    cardView.layer.mask = maskLayer;
-}
-
 - (void)updateButtonPositionsForProgress:(CGFloat)progress cardView:(UIView *)cardView safeAreaInsets:(UIEdgeInsets)safeAreaInsets {
 }
 
@@ -2046,7 +1983,7 @@ NSString* appendThemeQueryParameter(NSString* url) {
                       initialSpringVelocity:0.3 
                                     options:UIViewAnimationOptionCurveEaseOut
                                  animations:^{
-                    [self updateCardExpansionProgressForiPad:1.0 cardView:cardView];
+                    [self updateCardExpansionProgress:1.0 cardView:cardView];
                 } completion:^(BOOL finished) {
                     if (containerVC) {
                         containerVC.customFrame = cardView.frame;
@@ -2097,7 +2034,7 @@ NSString* appendThemeQueryParameter(NSString* url) {
                       initialSpringVelocity:0.3 
                                     options:UIViewAnimationOptionCurveEaseOut
                                  animations:^{
-                    [self updateCardExpansionProgressForiPad:0.0 cardView:cardView];
+                    [self updateCardExpansionProgress:0.0 cardView:cardView];
                 } completion:^(BOOL finished) {
                     _isCardExpanded = NO;
                     
@@ -2221,7 +2158,6 @@ extern "C" {
     // Opens a checkout URL in Safari View Controller with delegation
     void _StashPayCardOpenCheckoutInSafariVC(const char* urlString) {
         if (urlString == NULL) {
-            NSLog(@"Error: URL is null");
             return;
         }
         
@@ -2231,7 +2167,6 @@ extern "C" {
         NSURL* url = [NSURL URLWithString:nsUrlStr];
         
         if (url == nil) {
-            NSLog(@"Error: Invalid URL format");
             return;
         }
         

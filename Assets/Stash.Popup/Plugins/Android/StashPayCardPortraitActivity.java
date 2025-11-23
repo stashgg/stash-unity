@@ -51,6 +51,7 @@ public class StashPayCardPortraitActivity extends Activity {
     private boolean isDismissing;
     private boolean callbackSent;
     private boolean googlePayRedirectHandled;
+    private boolean isPurchaseProcessing;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -113,7 +114,7 @@ public class StashPayCardPortraitActivity extends Activity {
         
         if (!usePopup) {
             rootLayout.setOnClickListener(v -> {
-                if (!isDismissing && v == rootLayout) {
+                if (!isDismissing && v == rootLayout && !isPurchaseProcessing) {
                     dismissWithAnimation();
                 }
             });
@@ -251,6 +252,11 @@ public class StashPayCardPortraitActivity extends Activity {
             public boolean onTouch(View v, MotionEvent event) {
                 if (cardContainer == null) return false;
                 
+                // Check if purchase is processing - prevent drag dismissal
+                if (isPurchaseProcessing) {
+                    return false; // Don't handle drag when purchase is processing
+                }
+                
                 boolean isTablet = isTablet();
                 
                 switch (event.getAction()) {
@@ -316,6 +322,8 @@ public class StashPayCardPortraitActivity extends Activity {
     
     private void animateDismiss() {
         if (cardContainer == null) return;
+        // Prevent dismissal when purchase is processing
+        if (isPurchaseProcessing) return;
         int height = cardContainer.getHeight();
         if (height == 0) {
             height = (int)(getResources().getDisplayMetrics().heightPixels * CARD_HEIGHT_NORMAL);
@@ -477,6 +485,10 @@ public class StashPayCardPortraitActivity extends Activity {
         
         webView = new WebView(this);
         WebSettings settings = webView.getSettings();
+        // Security: Disable file access
+        settings.setAllowFileAccess(false);
+        settings.setAllowContentAccess(false);
+        
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setLoadWithOverviewMode(true);
@@ -570,15 +582,29 @@ public class StashPayCardPortraitActivity extends Activity {
     }
     
     private void injectSDK(WebView view) {
-        view.evaluateJavascript("(function(){" +
-            "window.stash_sdk=window.stash_sdk||{};" +
-            "window.stash_sdk.onPaymentSuccess=function(){try{StashAndroid.onPaymentSuccess()}catch(e){}};" +
-            "window.stash_sdk.onPaymentFailure=function(){try{StashAndroid.onPaymentFailure()}catch(e){}};" +
-            "window.stash_sdk.onPurchaseProcessing=function(){try{StashAndroid.onPurchaseProcessing()}catch(e){}};" +
-            "window.stash_sdk.setPaymentChannel=function(t){try{StashAndroid.setPaymentChannel(t||'')}catch(e){}};" +
-            "window.stash_sdk.expand=function(){try{StashAndroid.expand()}catch(e){}};" +
-            "window.stash_sdk.collapse=function(){try{StashAndroid.collapse()}catch(e){}};" +
-            "})();", null);
+        String script = "(function() {" +
+            "  window.stash_sdk = window.stash_sdk || {};" +
+            "  window.stash_sdk.onPaymentSuccess = function(data) {" +
+            "    try { StashAndroid.onPaymentSuccess(); } catch(e) {}" +
+            "  };" +
+            "  window.stash_sdk.onPaymentFailure = function(data) {" +
+            "    try { StashAndroid.onPaymentFailure(); } catch(e) {}" +
+            "  };" +
+            "  window.stash_sdk.onPurchaseProcessing = function(data) {" +
+            "    try { StashAndroid.onPurchaseProcessing(); } catch(e) {}" +
+            "  };" +
+            "  window.stash_sdk.setPaymentChannel = function(optinType) {" +
+            "    try { StashAndroid.setPaymentChannel(optinType || ''); } catch(e) {}" +
+            "  };" +
+            "  window.stash_sdk.expand = function() {" +
+            "    try { StashAndroid.expand(); } catch(e) {}" +
+            "  };" +
+            "  window.stash_sdk.collapse = function() {" +
+            "    try { StashAndroid.collapse(); } catch(e) {}" +
+            "  };" +
+            "})();";
+            
+        view.evaluateJavascript(script, null);
     }
     
     private void checkProvider(String url) {
@@ -596,7 +622,6 @@ public class StashPayCardPortraitActivity extends Activity {
         String lower = url.toLowerCase();
         if (lower.contains("pay.google.com")) {
             googlePayRedirectHandled = true;
-            Log.d(TAG, "Google Pay detected, opening initial URL in system browser: " + initialURL);
             openInSystemBrowser(initialURL);
         }
     }
@@ -769,6 +794,7 @@ public class StashPayCardPortraitActivity extends Activity {
         @JavascriptInterface
         public void onPaymentSuccess() {
             runOnUiThread(() -> {
+                isPurchaseProcessing = false; // Reset flag on payment completion
                 UnityPlayer.UnitySendMessage("StashPayCard", "OnAndroidPaymentSuccess", "");
                 dismissWithAnimation();
             });
@@ -777,13 +803,18 @@ public class StashPayCardPortraitActivity extends Activity {
         @JavascriptInterface
         public void onPaymentFailure() {
             runOnUiThread(() -> {
+                isPurchaseProcessing = false; // Reset flag on payment failure
                 UnityPlayer.UnitySendMessage("StashPayCard", "OnAndroidPaymentFailure", "");
                 dismissWithAnimation();
             });
         }
         
         @JavascriptInterface
-        public void onPurchaseProcessing() {}
+        public void onPurchaseProcessing() {
+            runOnUiThread(() -> {
+                isPurchaseProcessing = true;
+            });
+        }
         
         @JavascriptInterface
         public void setPaymentChannel(String optinType) {
@@ -846,6 +877,10 @@ public class StashPayCardPortraitActivity extends Activity {
     
     @Override
     public void onBackPressed() {
+        // Prevent dismissal when purchase is processing
+        if (isPurchaseProcessing) {
+            return; // Don't allow back button to dismiss when purchase is processing
+        }
         dismissWithAnimation();
     }
     
@@ -858,6 +893,22 @@ public class StashPayCardPortraitActivity extends Activity {
             if (isTablet) {
                 rootLayout.removeAllViews();
                 createUI();
+            } else {
+                // For phones: if launched from landscape, always ensure card is expanded after rotation
+                if (wasLandscapeBeforePortrait) {
+                    // Always expand the card after rotation if it was launched from landscape
+                    if (!isExpanded) {
+                        // Expand the card to match the expanded state it should have
+                        animateExpand();
+                    } else {
+                        // Card is already expanded, but update dimensions to match new screen size
+                        DisplayMetrics metrics = getResources().getDisplayMetrics();
+                        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) cardContainer.getLayoutParams();
+                        int expandedHeight = (int)(metrics.heightPixels * CARD_HEIGHT_EXPANDED);
+                        params.height = expandedHeight;
+                        cardContainer.setLayoutParams(params);
+                    }
+                }
             }
         }
     }
