@@ -53,6 +53,20 @@ public class StashPayCardPortraitActivity extends Activity {
     private boolean googlePayRedirectHandled;
     private boolean isPurchaseProcessing;
     
+    private static final String COLOR_BACKGROUND_DIM = "#20000000";
+    private static final String COLOR_DARK_BG = "#1C1C1E";
+    private static final String COLOR_LIGHT_BG = "#F2F2F7"; // Apple system gray 6
+    private static final String COLOR_DARK_STROKE = "#38383A";
+    private static final String COLOR_LIGHT_STROKE = "#E5E5EA";
+    private static final String COLOR_DRAG_HANDLE = "#D1D1D6";
+    private static final String COLOR_HOME_TEXT = "#8E8E93";
+    
+    private static final int ANIMATION_DURATION_SHORT = 200;
+    private static final int ANIMATION_DURATION_MEDIUM = 300;
+    private static final int ANIMATION_DURATION_LONG = 400;
+    private static final float CORNER_RADIUS_DP = 12f;
+    private static final float ELEVATION_DP = 24f;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -103,7 +117,7 @@ public class StashPayCardPortraitActivity extends Activity {
         if (wasLandscapeBeforePortrait && !isTablet && !usePopup) {
             rootLayout.setBackgroundColor(Color.BLACK);
         } else {
-            rootLayout.setBackgroundColor(Color.parseColor("#20000000"));
+            rootLayout.setBackgroundColor(Color.parseColor(COLOR_BACKGROUND_DIM));
         }
         
         if (usePopup) {
@@ -124,6 +138,39 @@ public class StashPayCardPortraitActivity extends Activity {
         setContentView(rootLayout);
     }
     
+    private void configureCardContainer(boolean isTablet, int cardWidth, int cardHeight) {
+        cardContainer = new FrameLayout(this);
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(cardWidth, cardHeight);
+        params.gravity = isTablet ? Gravity.CENTER : (Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        cardContainer.setLayoutParams(params);
+        
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(isDarkTheme() ? Color.parseColor(COLOR_DARK_BG) : Color.WHITE);
+        float radius = dpToPx((int)CORNER_RADIUS_DP);
+        
+        if (isTablet) {
+            bg.setCornerRadius(radius);
+        } else {
+            bg.setCornerRadii(new float[]{radius, radius, radius, radius, 0, 0, 0, 0});
+        }
+        cardContainer.setBackground(bg);
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            cardContainer.setElevation(dpToPx((int)ELEVATION_DP));
+            cardContainer.setOutlineProvider(new ViewOutlineProvider() {
+                @Override
+                public void getOutline(View view, Outline outline) {
+                    if (isTablet) {
+                        outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), radius);
+                    } else {
+                        outline.setRoundRect(0, 0, view.getWidth(), view.getHeight() + (int)radius, radius);
+                    }
+                }
+            });
+            cardContainer.setClipToOutline(true);
+        }
+    }
+
     private void createCard() {
         DisplayMetrics metrics = getResources().getDisplayMetrics();
         boolean isTablet = isTablet();
@@ -141,36 +188,7 @@ public class StashPayCardPortraitActivity extends Activity {
         int cardWidth = isTablet ? Math.min(dpToPx(600), (int)(metrics.widthPixels * 0.7f)) 
                                   : FrameLayout.LayoutParams.MATCH_PARENT;
         
-        cardContainer = new FrameLayout(this);
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(cardWidth, cardHeight);
-        params.gravity = isTablet ? Gravity.CENTER : (Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-        cardContainer.setLayoutParams(params);
-        
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(isDarkTheme() ? Color.parseColor("#1C1C1E") : Color.WHITE);
-        float radius = dpToPx(12);
-        
-        if (isTablet) {
-            bg.setCornerRadius(radius);
-        } else {
-            bg.setCornerRadii(new float[]{radius, radius, radius, radius, 0, 0, 0, 0});
-        }
-        cardContainer.setBackground(bg);
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            cardContainer.setElevation(dpToPx(24));
-            cardContainer.setOutlineProvider(new ViewOutlineProvider() {
-                @Override
-                public void getOutline(View view, Outline outline) {
-                    if (isTablet) {
-                        outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), radius);
-                    } else {
-                        outline.setRoundRect(0, 0, view.getWidth(), view.getHeight() + (int)radius, radius);
-                    }
-                }
-            });
-            cardContainer.setClipToOutline(true);
-        }
+        configureCardContainer(isTablet, cardWidth, cardHeight);
         
         addWebView();
         addDragHandle();
@@ -194,13 +212,13 @@ public class StashPayCardPortraitActivity extends Activity {
         cardContainer.setLayoutParams(params);
         
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(isDarkTheme() ? Color.parseColor("#1C1C1E") : Color.WHITE);
-        float radius = dpToPx(12);
+        bg.setColor(isDarkTheme() ? Color.parseColor(COLOR_DARK_BG) : Color.WHITE);
+        float radius = dpToPx((int)CORNER_RADIUS_DP);
         bg.setCornerRadius(radius);
         cardContainer.setBackground(bg);
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            cardContainer.setElevation(dpToPx(24));
+            cardContainer.setElevation(dpToPx((int)ELEVATION_DP));
             cardContainer.setOutlineProvider(new ViewOutlineProvider() {
                 @Override
                 public void getOutline(View view, Outline outline) {
@@ -223,7 +241,7 @@ public class StashPayCardPortraitActivity extends Activity {
         
         View handle = new View(this);
         GradientDrawable handleBg = new GradientDrawable();
-        handleBg.setColor(Color.parseColor("#D1D1D6"));
+        handleBg.setColor(Color.parseColor(COLOR_DRAG_HANDLE));
         handleBg.setCornerRadius(dpToPx(2));
         handle.setBackground(handleBg);
         handle.setLayoutParams(new LinearLayout.LayoutParams(dpToPx(36), dpToPx(5)));
@@ -536,7 +554,7 @@ public class StashPayCardPortraitActivity extends Activity {
         
         webView.setWebChromeClient(new WebChromeClient());
         webView.addJavascriptInterface(new JSInterface(), "StashAndroid");
-        webView.setBackgroundColor(isDarkTheme() ? Color.parseColor("#1C1C1E") : Color.WHITE);
+        webView.setBackgroundColor(isDarkTheme() ? Color.parseColor(COLOR_DARK_BG) : Color.WHITE);
         
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT);
@@ -551,14 +569,14 @@ public class StashPayCardPortraitActivity extends Activity {
         homeButton = new Button(this);
         homeButton.setText("⌂");
         homeButton.setTextSize(18);
-        homeButton.setTextColor(Color.parseColor("#8E8E93"));
+        homeButton.setTextColor(Color.parseColor(COLOR_HOME_TEXT));
         homeButton.setGravity(Gravity.CENTER);
         homeButton.setPadding(0, 0, 0, 0);
         
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(isDarkTheme() ? Color.parseColor("#2C2C2E") : Color.parseColor("#F2F2F7"));
+        bg.setColor(isDarkTheme() ? Color.parseColor("#2C2C2E") : Color.parseColor(COLOR_LIGHT_BG));
         bg.setCornerRadius(dpToPx(20));
-        bg.setStroke(dpToPx(1), isDarkTheme() ? Color.parseColor("#38383A") : Color.parseColor("#E5E5EA"));
+        bg.setStroke(dpToPx(1), isDarkTheme() ? Color.parseColor(COLOR_DARK_STROKE) : Color.parseColor(COLOR_LIGHT_STROKE));
         homeButton.setBackground(bg);
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
