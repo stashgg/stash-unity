@@ -37,6 +37,8 @@ public class StashPayCardPortraitActivity extends Activity {
     private static final float CARD_HEIGHT_NORMAL = 0.68f;
     private static final float CARD_HEIGHT_EXPANDED = 0.95f;
     
+    // JS SDK Script moved to StashWebViewUtils
+
     private FrameLayout rootLayout;
     private FrameLayout cardContainer;
     private WebView webView;
@@ -53,8 +55,6 @@ public class StashPayCardPortraitActivity extends Activity {
     private boolean googlePayRedirectHandled;
     private boolean isPurchaseProcessing;
     
-    private static final String COLOR_BACKGROUND_DIM = "#20000000";
-    private static final String COLOR_DARK_BG = "#1C1C1E";
     private static final String COLOR_LIGHT_BG = "#F2F2F7"; // Apple system gray 6
     private static final String COLOR_DARK_STROKE = "#38383A";
     private static final String COLOR_LIGHT_STROKE = "#E5E5EA";
@@ -82,7 +82,7 @@ public class StashPayCardPortraitActivity extends Activity {
             return;
         }
         
-        boolean isTablet = isTablet();
+        boolean isTablet = StashWebViewUtils.isTablet(this);
         
         if (usePopup) {
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR);
@@ -112,12 +112,12 @@ public class StashPayCardPortraitActivity extends Activity {
     
     private void createUI() {
         rootLayout = new FrameLayout(this);
-        boolean isTablet = isTablet();
+        boolean isTablet = StashWebViewUtils.isTablet(this);
         
         if (wasLandscapeBeforePortrait && !isTablet && !usePopup) {
             rootLayout.setBackgroundColor(Color.BLACK);
         } else {
-            rootLayout.setBackgroundColor(Color.parseColor(COLOR_BACKGROUND_DIM));
+            rootLayout.setBackgroundColor(Color.parseColor(StashWebViewUtils.COLOR_BACKGROUND_DIM));
         }
         
         if (usePopup) {
@@ -145,8 +145,8 @@ public class StashPayCardPortraitActivity extends Activity {
         cardContainer.setLayoutParams(params);
         
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(isDarkTheme() ? Color.parseColor(COLOR_DARK_BG) : Color.WHITE);
-        float radius = dpToPx((int)CORNER_RADIUS_DP);
+        bg.setColor(StashWebViewUtils.isDarkTheme(this) ? Color.parseColor(StashWebViewUtils.COLOR_DARK_BG) : Color.WHITE);
+        float radius = StashWebViewUtils.dpToPx(this, (int)CORNER_RADIUS_DP);
         
         if (isTablet) {
             bg.setCornerRadius(radius);
@@ -156,7 +156,7 @@ public class StashPayCardPortraitActivity extends Activity {
         cardContainer.setBackground(bg);
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            cardContainer.setElevation(dpToPx((int)ELEVATION_DP));
+            cardContainer.setElevation(StashWebViewUtils.dpToPx(this, (int)ELEVATION_DP));
             cardContainer.setOutlineProvider(new ViewOutlineProvider() {
                 @Override
                 public void getOutline(View view, Outline outline) {
@@ -173,7 +173,7 @@ public class StashPayCardPortraitActivity extends Activity {
 
     private void createCard() {
         DisplayMetrics metrics = getResources().getDisplayMetrics();
-        boolean isTablet = isTablet();
+        boolean isTablet = StashWebViewUtils.isTablet(this);
         
         float effectiveHeightRatio;
         if (wasLandscapeBeforePortrait && !isTablet) {
@@ -185,7 +185,7 @@ public class StashPayCardPortraitActivity extends Activity {
         }
         
         int cardHeight = (int)(metrics.heightPixels * effectiveHeightRatio);
-        int cardWidth = isTablet ? Math.min(dpToPx(600), (int)(metrics.widthPixels * 0.7f)) 
+        int cardWidth = isTablet ? Math.min(StashWebViewUtils.dpToPx(this, 600), (int)(metrics.widthPixels * 0.7f)) 
                                   : FrameLayout.LayoutParams.MATCH_PARENT;
         
         configureCardContainer(isTablet, cardWidth, cardHeight);
@@ -206,27 +206,8 @@ public class StashPayCardPortraitActivity extends Activity {
         DisplayMetrics metrics = getResources().getDisplayMetrics();
         int size = (int)(Math.min(metrics.widthPixels, metrics.heightPixels) * 0.75f);
         
-        cardContainer = new FrameLayout(this);
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(size, size);
-        params.gravity = Gravity.CENTER;
-        cardContainer.setLayoutParams(params);
-        
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(isDarkTheme() ? Color.parseColor(COLOR_DARK_BG) : Color.WHITE);
-        float radius = dpToPx((int)CORNER_RADIUS_DP);
-        bg.setCornerRadius(radius);
-        cardContainer.setBackground(bg);
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            cardContainer.setElevation(dpToPx((int)ELEVATION_DP));
-            cardContainer.setOutlineProvider(new ViewOutlineProvider() {
-                @Override
-                public void getOutline(View view, Outline outline) {
-                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), radius);
-                }
-            });
-            cardContainer.setClipToOutline(true);
-        }
+        // Reuse configuration logic: isTablet=true forces CENTER gravity and rounded corners on all sides
+        configureCardContainer(true, size, size);
         
         addWebView();
         rootLayout.addView(cardContainer);
@@ -237,105 +218,107 @@ public class StashPayCardPortraitActivity extends Activity {
         LinearLayout dragArea = new LinearLayout(this);
         dragArea.setOrientation(LinearLayout.VERTICAL);
         dragArea.setGravity(Gravity.CENTER_HORIZONTAL);
-        dragArea.setPadding(dpToPx(20), dpToPx(16), dpToPx(20), dpToPx(16));
+        dragArea.setPadding(StashWebViewUtils.dpToPx(this, 20), StashWebViewUtils.dpToPx(this, 16), StashWebViewUtils.dpToPx(this, 20), StashWebViewUtils.dpToPx(this, 16));
         
         View handle = new View(this);
         GradientDrawable handleBg = new GradientDrawable();
         handleBg.setColor(Color.parseColor(COLOR_DRAG_HANDLE));
-        handleBg.setCornerRadius(dpToPx(2));
+        handleBg.setCornerRadius(StashWebViewUtils.dpToPx(this, 2));
         handle.setBackground(handleBg);
-        handle.setLayoutParams(new LinearLayout.LayoutParams(dpToPx(36), dpToPx(5)));
+        handle.setLayoutParams(new LinearLayout.LayoutParams(StashWebViewUtils.dpToPx(this, 36), StashWebViewUtils.dpToPx(this, 5)));
         dragArea.addView(handle);
         
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
-            dpToPx(120), FrameLayout.LayoutParams.WRAP_CONTENT);
+            StashWebViewUtils.dpToPx(this, 120), FrameLayout.LayoutParams.WRAP_CONTENT);
         params.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
         dragArea.setLayoutParams(params);
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            dragArea.setElevation(dpToPx(8));
+            dragArea.setElevation(StashWebViewUtils.dpToPx(this, 8));
         }
         
         addDragTouchHandling(dragArea);
         cardContainer.addView(dragArea);
     }
     
-    private void addDragTouchHandling(View dragArea) {
-        dragArea.setOnTouchListener(new View.OnTouchListener() {
-            private float initialY;
-            private float initialTranslationY;
-            private boolean isDragging;
+    private class DragHandleTouchListener implements View.OnTouchListener {
+        private float initialY;
+        private float initialTranslationY;
+        private boolean isDragging;
+        
+        @Override
+        public boolean onTouch(View v, MotionEvent event) {
+            if (cardContainer == null) return false;
             
-            @Override
-            public boolean onTouch(View v, MotionEvent event) {
-                if (cardContainer == null) return false;
+            // Check if purchase is processing - prevent drag dismissal
+            if (isPurchaseProcessing) {
+                return false; // Don't handle drag when purchase is processing
+            }
+            
+            boolean isTablet = StashWebViewUtils.isTablet(StashPayCardPortraitActivity.this);
+            
+            switch (event.getAction()) {
+                case MotionEvent.ACTION_DOWN:
+                    initialY = event.getRawY();
+                    initialTranslationY = cardContainer.getTranslationY();
+                    isDragging = false;
+                    return true;
                 
-                // Check if purchase is processing - prevent drag dismissal
-                if (isPurchaseProcessing) {
-                    return false; // Don't handle drag when purchase is processing
-                }
-                
-                boolean isTablet = isTablet();
-                
-                switch (event.getAction()) {
-                    case MotionEvent.ACTION_DOWN:
-                        initialY = event.getRawY();
-                        initialTranslationY = cardContainer.getTranslationY();
-                        isDragging = false;
-                        return true;
+                case MotionEvent.ACTION_MOVE:
+                    float deltaY = event.getRawY() - initialY;
                     
-                    case MotionEvent.ACTION_MOVE:
-                        float deltaY = event.getRawY() - initialY;
+                    if (Math.abs(deltaY) > StashWebViewUtils.dpToPx(StashPayCardPortraitActivity.this, 10)) {
+                        isDragging = true;
                         
-                        if (Math.abs(deltaY) > dpToPx(10)) {
-                            isDragging = true;
-                            
-                            if (deltaY > 0) {
-                                float newTranslationY = initialTranslationY + deltaY;
-                                cardContainer.setTranslationY(newTranslationY);
-                                DisplayMetrics metrics = getResources().getDisplayMetrics();
-                                float progress = Math.min(deltaY / metrics.heightPixels, 1.0f);
-                                cardContainer.setAlpha(1.0f - (progress * 0.5f));
-                            } else if (deltaY < 0 && !isTablet && !isExpanded && !wasLandscapeBeforePortrait) {
-                                DisplayMetrics metrics = getResources().getDisplayMetrics();
-                                float dragProgress = Math.min(Math.abs(deltaY) / dpToPx(100), 1.0f);
-                                cardContainer.setScaleX(1.0f + (dragProgress * 0.02f));
-                                cardContainer.setScaleY(1.0f + (dragProgress * 0.02f));
-                            }
-                        }
-                        return true;
-                    
-                    case MotionEvent.ACTION_UP:
-                    case MotionEvent.ACTION_CANCEL:
-                        if (isDragging) {
-                            float finalDeltaY = event.getRawY() - initialY;
+                        if (deltaY > 0) {
+                            float newTranslationY = initialTranslationY + deltaY;
+                            cardContainer.setTranslationY(newTranslationY);
                             DisplayMetrics metrics = getResources().getDisplayMetrics();
-                            
-                            if (finalDeltaY > 0) {
-                                int dismissThreshold = isTablet ? (int)(metrics.heightPixels * 0.2f) 
-                                                                 : (int)(metrics.heightPixels * 0.25f);
-                                if (finalDeltaY > dismissThreshold) {
-                                    animateDismiss();
-                                } else {
-                                    animateSnapBack();
-                                }
-                            } else if (finalDeltaY < 0 && !isTablet && !isExpanded && !wasLandscapeBeforePortrait) {
-                                if (Math.abs(finalDeltaY) > dpToPx(80)) {
-                                    animateExpand();
-                                } else {
-                                    animateSnapBack();
-                                }
+                            float progress = Math.min(deltaY / metrics.heightPixels, 1.0f);
+                            cardContainer.setAlpha(1.0f - (progress * 0.5f));
+                        } else if (deltaY < 0 && !isTablet && !isExpanded && !wasLandscapeBeforePortrait) {
+                            DisplayMetrics metrics = getResources().getDisplayMetrics();
+                            float dragProgress = Math.min(Math.abs(deltaY) / StashWebViewUtils.dpToPx(StashPayCardPortraitActivity.this, 100), 1.0f);
+                            cardContainer.setScaleX(1.0f + (dragProgress * 0.02f));
+                            cardContainer.setScaleY(1.0f + (dragProgress * 0.02f));
+                        }
+                    }
+                    return true;
+                
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    if (isDragging) {
+                        float finalDeltaY = event.getRawY() - initialY;
+                        DisplayMetrics metrics = getResources().getDisplayMetrics();
+                        
+                        if (finalDeltaY > 0) {
+                            int dismissThreshold = isTablet ? (int)(metrics.heightPixels * 0.2f) 
+                                                             : (int)(metrics.heightPixels * 0.25f);
+                            if (finalDeltaY > dismissThreshold) {
+                                animateDismiss();
                             } else {
-                                cardContainer.setScaleX(1.0f);
-                                cardContainer.setScaleY(1.0f);
                                 animateSnapBack();
                             }
+                        } else if (finalDeltaY < 0 && !isTablet && !isExpanded && !wasLandscapeBeforePortrait) {
+                            if (Math.abs(finalDeltaY) > StashWebViewUtils.dpToPx(StashPayCardPortraitActivity.this, 80)) {
+                                animateExpand();
+                            } else {
+                                animateSnapBack();
+                            }
+                        } else {
+                            cardContainer.setScaleX(1.0f);
+                            cardContainer.setScaleY(1.0f);
+                            animateSnapBack();
                         }
-                        return true;
-                }
-                return false;
+                    }
+                    return true;
             }
-        });
+            return false;
+        }
+    }
+
+    private void addDragTouchHandling(View dragArea) {
+        dragArea.setOnTouchListener(new DragHandleTouchListener());
     }
     
     private void animateDismiss() {
@@ -356,10 +339,34 @@ public class StashPayCardPortraitActivity extends Activity {
             .start();
     }
     
+    private void animateCardHeight(int targetHeight, int duration) {
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams)cardContainer.getLayoutParams();
+        android.animation.ValueAnimator heightAnimator = android.animation.ValueAnimator.ofInt(params.height, targetHeight);
+        heightAnimator.setDuration(duration);
+        heightAnimator.setInterpolator(new SpringInterpolator());
+        heightAnimator.addUpdateListener(animation -> {
+            params.height = (Integer)animation.getAnimatedValue();
+            cardContainer.setLayoutParams(params);
+        });
+        heightAnimator.start();
+    }
+
+    private void animateCardWidth(int targetWidth, int duration) {
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams)cardContainer.getLayoutParams();
+        android.animation.ValueAnimator widthAnimator = android.animation.ValueAnimator.ofInt(params.width, targetWidth);
+        widthAnimator.setDuration(duration);
+        widthAnimator.setInterpolator(new SpringInterpolator());
+        widthAnimator.addUpdateListener(animation -> {
+            params.width = (Integer)animation.getAnimatedValue();
+            cardContainer.setLayoutParams(params);
+        });
+        widthAnimator.start();
+    }
+
     private void animateExpand() {
         if (cardContainer == null) return;
         DisplayMetrics metrics = getResources().getDisplayMetrics();
-        boolean isTablet = isTablet();
+        boolean isTablet = StashWebViewUtils.isTablet(this);
         
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams)cardContainer.getLayoutParams();
         
@@ -367,7 +374,7 @@ public class StashPayCardPortraitActivity extends Activity {
         int expandedWidth;
         
         if (isTablet) {
-            int normalWidth = Math.min(dpToPx(600), (int)(metrics.widthPixels * 0.7f));
+            int normalWidth = Math.min(StashWebViewUtils.dpToPx(this, 600), (int)(metrics.widthPixels * 0.7f));
             expandedWidth = (int)(normalWidth * 1.25f);
             expandedWidth = Math.min(expandedWidth, (int)(metrics.widthPixels * 0.85f));
             
@@ -378,26 +385,11 @@ public class StashPayCardPortraitActivity extends Activity {
             expandedWidth = params.width;
         }
         
-        android.animation.ValueAnimator heightAnimator = android.animation.ValueAnimator.ofInt(params.height, expandedHeight);
-        heightAnimator.setDuration(isTablet ? 350 : 450);
-        heightAnimator.setInterpolator(new SpringInterpolator());
+        animateCardHeight(expandedHeight, isTablet ? 350 : 450);
         
         if (isTablet) {
-            android.animation.ValueAnimator widthAnimator = android.animation.ValueAnimator.ofInt(params.width, expandedWidth);
-            widthAnimator.setDuration(350);
-            widthAnimator.setInterpolator(new SpringInterpolator());
-            widthAnimator.addUpdateListener(animation -> {
-                params.width = (Integer)animation.getAnimatedValue();
-                cardContainer.setLayoutParams(params);
-            });
-            widthAnimator.start();
+            animateCardWidth(expandedWidth, 350);
         }
-        
-        heightAnimator.addUpdateListener(animation -> {
-            params.height = (Integer)animation.getAnimatedValue();
-            cardContainer.setLayoutParams(params);
-        });
-        heightAnimator.start();
         
         cardContainer.animate()
             .translationY(0)
@@ -414,7 +406,7 @@ public class StashPayCardPortraitActivity extends Activity {
     private void animateCollapse() {
         if (cardContainer == null || !isExpanded) return;
         DisplayMetrics metrics = getResources().getDisplayMetrics();
-        boolean isTablet = isTablet();
+        boolean isTablet = StashWebViewUtils.isTablet(this);
         
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams)cardContainer.getLayoutParams();
         
@@ -422,30 +414,16 @@ public class StashPayCardPortraitActivity extends Activity {
         int collapsedWidth;
         
         if (isTablet) {
-            collapsedWidth = Math.min(dpToPx(600), (int)(metrics.widthPixels * 0.7f));
+            collapsedWidth = Math.min(StashWebViewUtils.dpToPx(this, 600), (int)(metrics.widthPixels * 0.7f));
             collapsedHeight = (int)(metrics.heightPixels * CARD_HEIGHT_NORMAL);
             
-            android.animation.ValueAnimator widthAnimator = android.animation.ValueAnimator.ofInt(params.width, collapsedWidth);
-            widthAnimator.setDuration(320);
-            widthAnimator.setInterpolator(new SpringInterpolator());
-            widthAnimator.addUpdateListener(animation -> {
-                params.width = (Integer)animation.getAnimatedValue();
-                cardContainer.setLayoutParams(params);
-            });
-            widthAnimator.start();
+            animateCardWidth(collapsedWidth, 320);
         } else {
             collapsedHeight = (int)(metrics.heightPixels * CARD_HEIGHT_NORMAL);
             collapsedWidth = params.width;
         }
         
-        android.animation.ValueAnimator heightAnimator = android.animation.ValueAnimator.ofInt(params.height, collapsedHeight);
-        heightAnimator.setDuration(isTablet ? 320 : 380);
-        heightAnimator.setInterpolator(new SpringInterpolator());
-        heightAnimator.addUpdateListener(animation -> {
-            params.height = (Integer)animation.getAnimatedValue();
-            cardContainer.setLayoutParams(params);
-        });
-        heightAnimator.start();
+        animateCardHeight(collapsedHeight, isTablet ? 320 : 380);
         
         cardContainer.animate()
             .translationY(0)
@@ -462,7 +440,7 @@ public class StashPayCardPortraitActivity extends Activity {
     private void animateSnapBack() {
         if (cardContainer == null) return;
         DisplayMetrics metrics = getResources().getDisplayMetrics();
-        boolean isTablet = isTablet();
+        boolean isTablet = StashWebViewUtils.isTablet(this);
         
         int targetHeight;
         if (wasLandscapeBeforePortrait && !isTablet) {
@@ -476,14 +454,7 @@ public class StashPayCardPortraitActivity extends Activity {
         
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams)cardContainer.getLayoutParams();
         if (params.height != targetHeight) {
-            android.animation.ValueAnimator animator = android.animation.ValueAnimator.ofInt(params.height, targetHeight);
-            animator.setDuration(450);
-            animator.setInterpolator(new SpringInterpolator());
-            animator.addUpdateListener(animation -> {
-                params.height = (Integer)animation.getAnimatedValue();
-                cardContainer.setLayoutParams(params);
-            });
-            animator.start();
+            animateCardHeight(targetHeight, 450);
         }
         
         cardContainer.animate()
@@ -495,35 +466,14 @@ public class StashPayCardPortraitActivity extends Activity {
             .setInterpolator(new SpringInterpolator())
             .start();
     }
-    
+
     private void addWebView() {
         if (url == null || url.isEmpty() || cardContainer == null) {
             return;
         }
         
         webView = new WebView(this);
-        WebSettings settings = webView.getSettings();
-        // Security: Disable file access
-        settings.setAllowFileAccess(false);
-        settings.setAllowContentAccess(false);
-        
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-        settings.setLoadWithOverviewMode(true);
-        settings.setUseWideViewPort(true);
-        settings.setBuiltInZoomControls(false);
-        settings.setDisplayZoomControls(false);
-        settings.setSupportZoom(false);
-        
-        // Enable cookies for payment flows (PayPal, etc.)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
-        }
-        CookieManager.getInstance().setAcceptCookie(true);
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            settings.setForceDark(isDarkTheme() ? WebSettings.FORCE_DARK_ON : WebSettings.FORCE_DARK_OFF);
-        }
+        StashWebViewUtils.configureWebViewSettings(webView, StashWebViewUtils.isDarkTheme(this));
         
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -554,14 +504,14 @@ public class StashPayCardPortraitActivity extends Activity {
         
         webView.setWebChromeClient(new WebChromeClient());
         webView.addJavascriptInterface(new JSInterface(), "StashAndroid");
-        webView.setBackgroundColor(isDarkTheme() ? Color.parseColor(COLOR_DARK_BG) : Color.WHITE);
+        webView.setBackgroundColor(StashWebViewUtils.isDarkTheme(this) ? Color.parseColor(StashWebViewUtils.COLOR_DARK_BG) : Color.WHITE);
         
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT);
         webView.setLayoutParams(params);
         cardContainer.addView(webView);
         // Append theme query parameter before loading
-        String urlWithTheme = appendThemeQueryParameter(url);
+        String urlWithTheme = StashWebViewUtils.appendThemeQueryParameter(url, StashWebViewUtils.isDarkTheme(this));
         webView.loadUrl(urlWithTheme);
     }
     
@@ -574,24 +524,24 @@ public class StashPayCardPortraitActivity extends Activity {
         homeButton.setPadding(0, 0, 0, 0);
         
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(isDarkTheme() ? Color.parseColor("#2C2C2E") : Color.parseColor(COLOR_LIGHT_BG));
-        bg.setCornerRadius(dpToPx(20));
-        bg.setStroke(dpToPx(1), isDarkTheme() ? Color.parseColor(COLOR_DARK_STROKE) : Color.parseColor(COLOR_LIGHT_STROKE));
+        bg.setColor(StashWebViewUtils.isDarkTheme(this) ? Color.parseColor("#2C2C2E") : Color.parseColor(COLOR_LIGHT_BG));
+        bg.setCornerRadius(StashWebViewUtils.dpToPx(this, 20));
+        bg.setStroke(StashWebViewUtils.dpToPx(this, 1), StashWebViewUtils.isDarkTheme(this) ? Color.parseColor(COLOR_DARK_STROKE) : Color.parseColor(COLOR_LIGHT_STROKE));
         homeButton.setBackground(bg);
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            homeButton.setElevation(dpToPx(6));
+            homeButton.setElevation(StashWebViewUtils.dpToPx(this, 6));
         }
         
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dpToPx(36), dpToPx(36));
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(StashWebViewUtils.dpToPx(this, 36), StashWebViewUtils.dpToPx(this, 36));
         params.gravity = Gravity.TOP | Gravity.START;
-        params.setMargins(dpToPx(12), dpToPx(12), 0, 0);
+        params.setMargins(StashWebViewUtils.dpToPx(this, 12), StashWebViewUtils.dpToPx(this, 12), 0, 0);
         homeButton.setLayoutParams(params);
         homeButton.setVisibility(View.GONE);
         homeButton.setOnClickListener(v -> {
             if (initialURL != null && webView != null) {
                 // Append theme query parameter before loading
-                String urlWithTheme = appendThemeQueryParameter(initialURL);
+                String urlWithTheme = StashWebViewUtils.appendThemeQueryParameter(initialURL, StashWebViewUtils.isDarkTheme(this));
                 webView.loadUrl(urlWithTheme);
             }
         });
@@ -600,29 +550,7 @@ public class StashPayCardPortraitActivity extends Activity {
     }
     
     private void injectSDK(WebView view) {
-        String script = "(function() {" +
-            "  window.stash_sdk = window.stash_sdk || {};" +
-            "  window.stash_sdk.onPaymentSuccess = function(data) {" +
-            "    try { StashAndroid.onPaymentSuccess(); } catch(e) {}" +
-            "  };" +
-            "  window.stash_sdk.onPaymentFailure = function(data) {" +
-            "    try { StashAndroid.onPaymentFailure(); } catch(e) {}" +
-            "  };" +
-            "  window.stash_sdk.onPurchaseProcessing = function(data) {" +
-            "    try { StashAndroid.onPurchaseProcessing(); } catch(e) {}" +
-            "  };" +
-            "  window.stash_sdk.setPaymentChannel = function(optinType) {" +
-            "    try { StashAndroid.setPaymentChannel(optinType || ''); } catch(e) {}" +
-            "  };" +
-            "  window.stash_sdk.expand = function() {" +
-            "    try { StashAndroid.expand(); } catch(e) {}" +
-            "  };" +
-            "  window.stash_sdk.collapse = function() {" +
-            "    try { StashAndroid.collapse(); } catch(e) {}" +
-            "  };" +
-            "})();";
-            
-        view.evaluateJavascript(script, null);
+        view.evaluateJavascript(StashWebViewUtils.JS_SDK_SCRIPT, null);
     }
     
     private void checkProvider(String url) {
@@ -670,65 +598,26 @@ public class StashPayCardPortraitActivity extends Activity {
     
     private void showLoading() {
         runOnUiThread(() -> {
-            try {
+            // Remove existing if any
                 if (loadingIndicator != null && loadingIndicator.getParent() != null) {
                     ((ViewGroup)loadingIndicator.getParent()).removeView(loadingIndicator);
                 }
                 
-                loadingIndicator = new ProgressBar(getApplicationContext());
-                
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
-                    loadingIndicator.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-                }
-                
-                loadingIndicator.setIndeterminate(true);
-                
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    loadingIndicator.setIndeterminateTintList(
-                        android.content.res.ColorStateList.valueOf(isDarkTheme() ? Color.WHITE : Color.DKGRAY));
-                }
-                
-                FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dpToPx(48), dpToPx(48));
-                params.gravity = Gravity.CENTER;
-                loadingIndicator.setLayoutParams(params);
-                
                 if (cardContainer != null) {
-                    cardContainer.addView(loadingIndicator);
-                    loadingIndicator.bringToFront();
-                    loadingIndicator.post(() -> {
+                loadingIndicator = StashWebViewUtils.createAndShowLoading(getApplicationContext(), cardContainer);
+                // Ensure visibility if utils didn't set it (it does, but safe check or if we need to force layout)
                         if (loadingIndicator != null) {
                             loadingIndicator.setVisibility(View.VISIBLE);
                             loadingIndicator.requestLayout();
                         }
-                    });
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Error showing loading: " + e.getMessage());
             }
         });
     }
     
     private void hideLoading() {
         runOnUiThread(() -> {
-            if (loadingIndicator == null) return;
-            
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
-                loadingIndicator.animate()
-                    .alpha(0.0f)
-                    .setDuration(200)
-                    .withEndAction(() -> {
-                        if (loadingIndicator != null && loadingIndicator.getParent() != null) {
-                            ((ViewGroup)loadingIndicator.getParent()).removeView(loadingIndicator);
-                        }
+            StashWebViewUtils.hideLoading(loadingIndicator);
                         loadingIndicator = null;
-                    })
-                    .start();
-            } else {
-                if (loadingIndicator.getParent() != null) {
-                    ((ViewGroup)loadingIndicator.getParent()).removeView(loadingIndicator);
-                }
-                loadingIndicator = null;
-            }
         });
     }
     
@@ -808,23 +697,29 @@ public class StashPayCardPortraitActivity extends Activity {
         finish();
     }
     
+    private void notifyUnityAndDismiss(String messageName, String messageBody, boolean success) {
+        runOnUiThread(() -> {
+            if (success) {
+                // If success or failure (final state), we mark as sent so we don't fire dismiss callback in onDestroy
+                callbackSent = true;
+                isPurchaseProcessing = false;
+            }
+            StashUnityBridge.sendMessage(messageName, messageBody);
+            dismissWithAnimation();
+        });
+    }
+
     private class JSInterface {
         @JavascriptInterface
         public void onPaymentSuccess() {
-            runOnUiThread(() -> {
-                isPurchaseProcessing = false; // Reset flag on payment completion
-                UnityPlayer.UnitySendMessage("StashPayCard", "OnAndroidPaymentSuccess", "");
-                dismissWithAnimation();
-            });
+            // Mark processing as false (success)
+            notifyUnityAndDismiss(StashUnityBridge.MSG_ON_PAYMENT_SUCCESS, "", true);
         }
         
         @JavascriptInterface
         public void onPaymentFailure() {
-            runOnUiThread(() -> {
-                isPurchaseProcessing = false; // Reset flag on payment failure
-                UnityPlayer.UnitySendMessage("StashPayCard", "OnAndroidPaymentFailure", "");
-                dismissWithAnimation();
-            });
+            // Mark processing as false (failure is final)
+            notifyUnityAndDismiss(StashUnityBridge.MSG_ON_PAYMENT_FAILURE, "", true);
         }
         
         @JavascriptInterface
@@ -836,11 +731,7 @@ public class StashPayCardPortraitActivity extends Activity {
         
         @JavascriptInterface
         public void setPaymentChannel(String optinType) {
-            runOnUiThread(() -> {
-                UnityPlayer.UnitySendMessage("StashPayCard", "OnAndroidOptinResponse", 
-                    optinType != null ? optinType : "");
-                dismissWithAnimation();
-            });
+            notifyUnityAndDismiss(StashUnityBridge.MSG_ON_OPTIN_RESPONSE, optinType != null ? optinType : "", false);
         }
         
         @JavascriptInterface
@@ -889,7 +780,7 @@ public class StashPayCardPortraitActivity extends Activity {
         
         if (!callbackSent) {
             callbackSent = true;
-            UnityPlayer.UnitySendMessage("StashPayCard", "OnAndroidDialogDismissed", "");
+            StashUnityBridge.sendDialogDismissed();
         }
     }
     
@@ -907,7 +798,7 @@ public class StashPayCardPortraitActivity extends Activity {
         super.onConfigurationChanged(newConfig);
         
         if (!usePopup && cardContainer != null && rootLayout != null) {
-            boolean isTablet = isTablet();
+            boolean isTablet = StashWebViewUtils.isTablet(this);
             if (isTablet) {
                 rootLayout.removeAllViews();
                 createUI();
@@ -931,59 +822,4 @@ public class StashPayCardPortraitActivity extends Activity {
         }
     }
     
-    private boolean isDarkTheme() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            return (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) 
-                == Configuration.UI_MODE_NIGHT_YES;
-        }
-        return false;
-    }
-    
-    private boolean isTablet() {
-        DisplayMetrics metrics = getResources().getDisplayMetrics();
-        int smallerDimension = Math.min(metrics.widthPixels, metrics.heightPixels);
-        float smallerDp = smallerDimension / metrics.density;
-        
-        boolean isTabletBySize = smallerDp >= 600;
-        
-        boolean isTabletByConfig = false;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB_MR2) {
-            int screenSize = getResources().getConfiguration().screenLayout & Configuration.SCREENLAYOUT_SIZE_MASK;
-            isTabletByConfig = (screenSize == Configuration.SCREENLAYOUT_SIZE_LARGE || 
-                               screenSize == Configuration.SCREENLAYOUT_SIZE_XLARGE);
-        }
-        
-        float aspectRatio = (float)Math.max(metrics.widthPixels, metrics.heightPixels) / 
-                           Math.min(metrics.widthPixels, metrics.heightPixels);
-        boolean isTabletByAspect = aspectRatio < 2.0f && smallerDp >= 500;
-        
-        return isTabletBySize || isTabletByConfig || isTabletByAspect;
-    }
-    
-    private int dpToPx(int dp) {
-        return Math.round(dp * getResources().getDisplayMetrics().density);
-    }
-    
-    private String appendThemeQueryParameter(String url) {
-        if (url == null || url.isEmpty()) {
-            return url;
-        }
-        
-        try {
-            Uri uri = Uri.parse(url);
-            Uri.Builder builder = uri.buildUpon();
-            
-            // Append or replace theme parameter
-            String theme = isDarkTheme() ? "dark" : "light";
-            builder.appendQueryParameter("theme", theme);
-            
-            return builder.build().toString();
-        } catch (Exception e) {
-            Log.e(TAG, "Error appending theme parameter: " + e.getMessage());
-            // If URL parsing fails, try simple string append
-            String separator = url.contains("?") ? "&" : "?";
-            String theme = isDarkTheme() ? "dark" : "light";
-            return url + separator + "theme=" + theme;
-        }
-    }
 }

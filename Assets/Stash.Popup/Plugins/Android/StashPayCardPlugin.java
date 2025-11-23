@@ -36,7 +36,9 @@ public class StashPayCardPlugin {
     private static final String UNITY_GAME_OBJECT = "StashPayCard";
     private static StashPayCardPlugin instance;
     
-    private Activity activity;
+    // JS SDK Script moved to StashWebViewUtils
+
+
     private Dialog currentDialog;
     private WebView webView;
     private FrameLayout currentContainer;
@@ -68,7 +70,7 @@ public class StashPayCardPlugin {
 
             new Handler(Looper.getMainLooper()).post(() -> {
                 try {
-                    UnityPlayer.UnitySendMessage(UNITY_GAME_OBJECT, "OnAndroidPaymentSuccess", "");
+                    StashUnityBridge.sendPaymentSuccess();
                     dismissCurrentDialog();
                 } catch (Exception e) {
                     Log.e(TAG, "Error handling payment success: " + e.getMessage());
@@ -79,10 +81,12 @@ public class StashPayCardPlugin {
         
         @JavascriptInterface
         public void onPaymentFailure() {
+            if (paymentSuccessHandled) return;
+            paymentSuccessHandled = true; // Treat failure as a handled final state to prevent dismiss callback
             isPurchaseProcessing = false;
             new Handler(Looper.getMainLooper()).post(() -> {
                 try {
-                    UnityPlayer.UnitySendMessage(UNITY_GAME_OBJECT, "OnAndroidPaymentFailure", "");
+                    StashUnityBridge.sendPaymentFailure();
                     dismissCurrentDialog();
                 } catch (Exception e) {
                     Log.e(TAG, "Error handling payment failure: " + e.getMessage());
@@ -107,8 +111,7 @@ public class StashPayCardPlugin {
         public void setPaymentChannel(String optinType) {
             new Handler(Looper.getMainLooper()).post(() -> {
                 try {
-                    UnityPlayer.UnitySendMessage(UNITY_GAME_OBJECT, "OnAndroidOptinResponse", 
-                        optinType != null ? optinType : "");
+                    StashUnityBridge.sendOptInResponse(optinType != null ? optinType : "");
                     dismissCurrentDialog();
                 } catch (Exception e) {
                     Log.e(TAG, "Error handling payment channel: " + e.getMessage());
@@ -133,7 +136,6 @@ public class StashPayCardPlugin {
     }
     
     private StashPayCardPlugin() {
-        this.activity = UnityPlayer.currentActivity;
     }
     
     public void openCheckout(String url) {
@@ -159,6 +161,7 @@ public class StashPayCardPlugin {
     }
     
     public void dismissDialog() {
+        Activity activity = UnityPlayer.currentActivity;
         if (activity != null) {
             activity.runOnUiThread(() -> {
                 try {
@@ -198,6 +201,7 @@ public class StashPayCardPlugin {
     }
     
     private void openURLInternal(String url) {
+        Activity activity = UnityPlayer.currentActivity;
         if (activity == null || url == null || url.isEmpty()) {
             Log.e(TAG, "Invalid activity or URL");
             return;
@@ -208,22 +212,22 @@ public class StashPayCardPlugin {
         }
 
         // Append theme query parameter
-        url = appendThemeQueryParameter(url);
+        url = StashWebViewUtils.appendThemeQueryParameter(url, StashWebViewUtils.isDarkTheme(activity));
 
         final String finalUrl = url;
 
         activity.runOnUiThread(() -> {
             if (forceSafariViewController) {
-                openWithChromeCustomTabs(finalUrl);
+                openWithChromeCustomTabs(finalUrl, activity);
             } else if (usePopupPresentation) {
-                createAndShowPopupDialog(finalUrl);
+                createAndShowPopupDialog(finalUrl, activity);
             } else {
-                launchPortraitActivity(finalUrl);
+                launchPortraitActivity(finalUrl, activity);
             }
         });
     }
     
-    private void launchPortraitActivity(String url) {
+    private void launchPortraitActivity(String url, Activity activity) {
         try {
             android.view.Display display = activity.getWindowManager().getDefaultDisplay();
             int rotation = display.getRotation();
@@ -246,7 +250,51 @@ public class StashPayCardPlugin {
         }
     }
     
-    private void createAndShowPopupDialog(String url) {
+    private class PopupOrientationListener implements ViewTreeObserver.OnGlobalLayoutListener {
+        private final Activity activity;
+
+        PopupOrientationListener(Activity activity) {
+            this.activity = activity;
+        }
+
+        @Override
+        public void onGlobalLayout() {
+            if (currentContainer != null && currentDialog != null && currentDialog.isShowing()) {
+                int currentOrientation = activity.getResources().getConfiguration().orientation;
+                
+                if (currentOrientation != lastOrientation && currentOrientation != Configuration.ORIENTATION_UNDEFINED) {
+                    lastOrientation = currentOrientation;
+                    
+                    int[] newDimensions = calculatePopupDimensions(activity);
+                    FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) currentContainer.getLayoutParams();
+                    
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
+                        currentContainer.animate()
+                            .scaleX(0.95f)
+                            .scaleY(0.95f)
+                            .setDuration(100)
+                            .withEndAction(() -> {
+                                params.width = newDimensions[0];
+                                params.height = newDimensions[1];
+                                currentContainer.setLayoutParams(params);
+                                currentContainer.animate()
+                                    .scaleX(1.0f)
+                                    .scaleY(1.0f)
+                                    .setDuration(200)
+                                    .start();
+                            })
+                            .start();
+                    } else {
+                        params.width = newDimensions[0];
+                        params.height = newDimensions[1];
+                        currentContainer.setLayoutParams(params);
+                    }
+                }
+            }
+        }
+    }
+
+    private void createAndShowPopupDialog(String url, final Activity activity) {
         boolean preserveUseCustomSize = useCustomSize;
         cleanupAllViews();
         useCustomSize = preserveUseCustomSize;
@@ -257,7 +305,7 @@ public class StashPayCardPlugin {
             currentDialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
 
             FrameLayout mainFrame = new FrameLayout(activity);
-            mainFrame.setBackgroundColor(Color.parseColor("#20000000"));
+            mainFrame.setBackgroundColor(Color.parseColor(StashWebViewUtils.COLOR_BACKGROUND_DIM));
             // Handle tap-outside dismissal (only if not processing)
             mainFrame.setOnClickListener(v -> {
                 // Only dismiss if not processing and click is on the background (not the container)
@@ -266,7 +314,7 @@ public class StashPayCardPlugin {
                 }
             });
             
-            int[] dimensions = calculatePopupDimensions();
+            int[] dimensions = calculatePopupDimensions(activity);
             currentContainer = new FrameLayout(activity);
             FrameLayout.LayoutParams containerParams = new FrameLayout.LayoutParams(dimensions[0], dimensions[1]);
             containerParams.gravity = Gravity.CENTER;
@@ -274,53 +322,17 @@ public class StashPayCardPlugin {
             
             lastOrientation = activity.getResources().getConfiguration().orientation;
             
-            orientationChangeListener = new ViewTreeObserver.OnGlobalLayoutListener() {
-                @Override
-                public void onGlobalLayout() {
-                    if (currentContainer != null && currentDialog != null && currentDialog.isShowing()) {
-                        int currentOrientation = activity.getResources().getConfiguration().orientation;
-                        
-                        if (currentOrientation != lastOrientation && currentOrientation != Configuration.ORIENTATION_UNDEFINED) {
-                            lastOrientation = currentOrientation;
-                            
-                            int[] newDimensions = calculatePopupDimensions();
-                            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) currentContainer.getLayoutParams();
-                            
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
-                                currentContainer.animate()
-                                    .scaleX(0.95f)
-                                    .scaleY(0.95f)
-                                    .setDuration(100)
-                                    .withEndAction(() -> {
-                                        params.width = newDimensions[0];
-                                        params.height = newDimensions[1];
-                                        currentContainer.setLayoutParams(params);
-                                        currentContainer.animate()
-                                            .scaleX(1.0f)
-                                            .scaleY(1.0f)
-                                            .setDuration(200)
-                                            .start();
-                                    })
-                                    .start();
-                            } else {
-                                params.width = newDimensions[0];
-                                params.height = newDimensions[1];
-                                currentContainer.setLayoutParams(params);
-                            }
-                        }
-                    }
-                }
-            };
+            orientationChangeListener = new PopupOrientationListener(activity);
             mainFrame.getViewTreeObserver().addOnGlobalLayoutListener(orientationChangeListener);
             
             GradientDrawable popupBg = new GradientDrawable();
-            popupBg.setColor(getThemeBackgroundColor());
-            float radius = dpToPx(12);
+            popupBg.setColor(StashWebViewUtils.getThemeBackgroundColor(activity));
+            float radius = StashWebViewUtils.dpToPx(activity, 12);
             popupBg.setCornerRadius(radius);
             currentContainer.setBackground(popupBg);
             
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                currentContainer.setElevation(dpToPx(24));
+                currentContainer.setElevation(StashWebViewUtils.dpToPx(activity, 24));
                 currentContainer.setOutlineProvider(new ViewOutlineProvider() {
                     @Override
                     public void getOutline(View view, Outline outline) {
@@ -336,7 +348,7 @@ public class StashPayCardPlugin {
             webView.setLayoutParams(webViewParams);
             currentContainer.addView(webView);
             
-            setupPopupWebView(webView, url);
+            setupPopupWebView(webView, url, activity);
             
             mainFrame.addView(currentContainer);
             currentDialog.setContentView(mainFrame);
@@ -361,7 +373,7 @@ public class StashPayCardPlugin {
 
             currentDialog.setOnDismissListener(dialog -> {
                 if (!paymentSuccessHandled) {
-                    UnityPlayer.UnitySendMessage(UNITY_GAME_OBJECT, "OnAndroidDialogDismissed", "");
+                    StashUnityBridge.sendDialogDismissed();
                 }
                 cleanupAllViews();
                 isCurrentlyPresented = false;
@@ -409,36 +421,15 @@ public class StashPayCardPlugin {
         }
     }
     
-    private void setupPopupWebView(WebView webView, String url) {
-        WebSettings settings = webView.getSettings();
-        // Security: Disable file access to prevent local file attacks
-        settings.setAllowFileAccess(false);
-        settings.setAllowContentAccess(false);
-        
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-        settings.setLoadWithOverviewMode(true);
-        settings.setUseWideViewPort(true);
-        settings.setBuiltInZoomControls(false);
-        settings.setDisplayZoomControls(false);
-        settings.setSupportZoom(false);
-        
-        // Enable cookies for payment flows (PayPal, etc.)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
-        }
-        CookieManager.getInstance().setAcceptCookie(true);
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            settings.setForceDark(isDarkTheme() ? WebSettings.FORCE_DARK_ON : WebSettings.FORCE_DARK_OFF);
-        }
+    private void setupPopupWebView(WebView webView, String url, final Activity activity) {
+        StashWebViewUtils.configureWebViewSettings(webView, StashWebViewUtils.isDarkTheme(activity));
         
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
                 super.onPageStarted(view, url, favicon);
                 pageLoadStartTime = System.currentTimeMillis();
-                showLoadingIndicator();
+                showLoadingIndicator(activity);
                 injectStashSDKFunctions();
             }
             
@@ -448,13 +439,13 @@ public class StashPayCardPlugin {
                 
                 if (pageLoadStartTime > 0) {
                     long loadTimeMs = System.currentTimeMillis() - pageLoadStartTime;
-                    UnityPlayer.UnitySendMessage(UNITY_GAME_OBJECT, "OnAndroidPageLoaded", String.valueOf(loadTimeMs));
+                    StashUnityBridge.sendPageLoaded(loadTimeMs);
                     pageLoadStartTime = 0;
                 }
                 
                 injectStashSDKFunctions();
                 view.postDelayed(() -> {
-                    hideLoadingIndicator();
+                    hideLoadingIndicator(activity);
                     view.setVisibility(View.VISIBLE);
                 }, 300);
             }
@@ -494,97 +485,34 @@ public class StashPayCardPlugin {
             webView.evaluateJavascript(disableScrollScript, null);
         }
         
-        String script = "(function() {" +
-            "  window.stash_sdk = window.stash_sdk || {};" +
-            "  window.stash_sdk.onPaymentSuccess = function(data) {" +
-            "    try { StashAndroid.onPaymentSuccess(); } catch(e) {}" +
-            "  };" +
-            "  window.stash_sdk.onPaymentFailure = function(data) {" +
-            "    try { StashAndroid.onPaymentFailure(); } catch(e) {}" +
-            "  };" +
-            "  window.stash_sdk.onPurchaseProcessing = function(data) {" +
-            "    try { StashAndroid.onPurchaseProcessing(); } catch(e) {}" +
-            "  };" +
-            "  window.stash_sdk.setPaymentChannel = function(optinType) {" +
-            "    try { StashAndroid.setPaymentChannel(optinType || ''); } catch(e) {}" +
-            "  };" +
-            "  window.stash_sdk.expand = function() {" +
-            "    try { StashAndroid.expand(); } catch(e) {}" +
-            "  };" +
-            "  window.stash_sdk.collapse = function() {" +
-            "    try { StashAndroid.collapse(); } catch(e) {}" +
-            "  };" +
-            "})();";
-        
-        webView.evaluateJavascript(script, null);
+        webView.evaluateJavascript(StashWebViewUtils.JS_SDK_SCRIPT, null);
     }
     
-    private void showLoadingIndicator() {
+    private void showLoadingIndicator(Activity activity) {
         if (currentContainer == null || activity == null) return;
         activity.runOnUiThread(() -> {
-            try {
+            // Remove existing if any (cleanup)
                 if (loadingIndicator != null && loadingIndicator.getParent() != null) {
                     ((ViewGroup)loadingIndicator.getParent()).removeView(loadingIndicator);
                 }
-                
-                loadingIndicator = new ProgressBar(activity.getApplicationContext());
-                
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
-                    loadingIndicator.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-                }
-                
-                loadingIndicator.setIndeterminate(true);
-                
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    loadingIndicator.setIndeterminateTintList(
-                        android.content.res.ColorStateList.valueOf(isDarkTheme() ? Color.WHITE : Color.DKGRAY));
-                }
-                
-                FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dpToPx(48), dpToPx(48));
-                params.gravity = Gravity.CENTER;
-                loadingIndicator.setLayoutParams(params);
-                
-                currentContainer.addView(loadingIndicator);
-                loadingIndicator.bringToFront();
-            } catch (Exception e) {
-                Log.e(TAG, "Error showing loading: " + e.getMessage());
-            }
+            loadingIndicator = StashWebViewUtils.createAndShowLoading(activity, currentContainer);
         });
     }
     
-    private void hideLoadingIndicator() {
+    private void hideLoadingIndicator(Activity activity) {
         if (loadingIndicator == null || activity == null) return;
         activity.runOnUiThread(() -> {
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
-                    loadingIndicator.animate()
-                        .alpha(0.0f)
-                        .setDuration(200)
-                        .withEndAction(() -> {
-                            if (loadingIndicator != null && loadingIndicator.getParent() != null) {
-                                ((ViewGroup)loadingIndicator.getParent()).removeView(loadingIndicator);
-                            }
-                            loadingIndicator = null;
-                        })
-                        .start();
-                } else {
-                    if (loadingIndicator.getParent() != null) {
-                        ((ViewGroup)loadingIndicator.getParent()).removeView(loadingIndicator);
-                    }
+            StashWebViewUtils.hideLoading(loadingIndicator);
                     loadingIndicator = null;
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Error hiding loading: " + e.getMessage());
-            }
         });
     }
     
-    private void openWithChromeCustomTabs(String url) {
+    private void openWithChromeCustomTabs(String url, Activity activity) {
         try {
             if (isChromeCustomTabsAvailable()) {
-                openWithReflectionChromeCustomTabs(url);
+                openWithReflectionChromeCustomTabs(url, activity);
             } else {
-                openWithDefaultBrowser(url);
+                openWithDefaultBrowser(url, activity);
             }
         } catch (Exception e) {
             Log.e(TAG, "Failed to open browser: " + e.getMessage());
@@ -600,7 +528,7 @@ public class StashPayCardPlugin {
         }
     }
     
-    private void openWithReflectionChromeCustomTabs(String url) throws Exception {
+    private void openWithReflectionChromeCustomTabs(String url, Activity activity) throws Exception {
         Class<?> customTabsIntentClass = Class.forName("androidx.browser.customtabs.CustomTabsIntent");
         Class<?> builderClass = Class.forName("androidx.browser.customtabs.CustomTabsIntent$Builder");
 
@@ -620,18 +548,18 @@ public class StashPayCardPlugin {
 
         isCurrentlyPresented = true;
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            UnityPlayer.UnitySendMessage(UNITY_GAME_OBJECT, "OnAndroidDialogDismissed", "");
+            StashUnityBridge.sendDialogDismissed();
         }, 1000);
     }
     
-    private void openWithDefaultBrowser(String url) {
+    private void openWithDefaultBrowser(String url, Activity activity) {
         Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
         browserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         activity.startActivity(browserIntent);
         isCurrentlyPresented = true;
 
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            UnityPlayer.UnitySendMessage(UNITY_GAME_OBJECT, "OnAndroidDialogDismissed", "");
+            StashUnityBridge.sendDialogDismissed();
         }, 1000);
     }
     
@@ -701,36 +629,15 @@ public class StashPayCardPlugin {
         usePopupPresentation = false;
     }
     
-    private boolean isTablet() {
-        DisplayMetrics metrics = activity.getResources().getDisplayMetrics();
-        int smallerDimension = Math.min(metrics.widthPixels, metrics.heightPixels);
-        float smallerDp = smallerDimension / metrics.density;
-        
-        boolean isTabletBySize = smallerDp >= 600;
-        
-        boolean isTabletByConfig = false;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB_MR2) {
-            int screenSize = activity.getResources().getConfiguration().screenLayout & Configuration.SCREENLAYOUT_SIZE_MASK;
-            isTabletByConfig = (screenSize == Configuration.SCREENLAYOUT_SIZE_LARGE || 
-                               screenSize == Configuration.SCREENLAYOUT_SIZE_XLARGE);
-        }
-        
-        float aspectRatio = (float)Math.max(metrics.widthPixels, metrics.heightPixels) / 
-                           Math.min(metrics.widthPixels, metrics.heightPixels);
-        boolean isTabletByAspect = aspectRatio < 2.0f && smallerDp >= 500;
-        
-        return isTabletBySize || isTabletByConfig || isTabletByAspect;
-    }
-    
-    private int[] calculatePopupDimensions() {
+    private int[] calculatePopupDimensions(Activity activity) {
         DisplayMetrics metrics = activity.getResources().getDisplayMetrics();
         boolean isLandscape = activity.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
         
         int smallerDimension = Math.min(metrics.widthPixels, metrics.heightPixels);
-        boolean isTablet = isTablet();
+        boolean isTablet = StashWebViewUtils.isTablet(activity);
         int baseSize = Math.max(
-            isTablet ? dpToPx(400) : dpToPx(300),
-            Math.min(isTablet ? dpToPx(500) : dpToPx(500), (int)(smallerDimension * (isTablet ? 0.5f : 0.75f)))
+            isTablet ? StashWebViewUtils.dpToPx(activity, 400) : StashWebViewUtils.dpToPx(activity, 300),
+            Math.min(isTablet ? StashWebViewUtils.dpToPx(activity, 500) : StashWebViewUtils.dpToPx(activity, 500), (int)(smallerDimension * (isTablet ? 0.5f : 0.75f)))
         );
         
         float widthMultiplier = isLandscape ? 
@@ -744,44 +651,5 @@ public class StashPayCardPlugin {
         int popupHeight = (int)(baseSize * heightMultiplier);
 
         return new int[]{popupWidth, popupHeight};
-    }
-    
-    private int dpToPx(int dp) {
-        return Math.round(dp * activity.getResources().getDisplayMetrics().density);
-    }
-
-    private boolean isDarkTheme() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            int nightModeFlags = activity.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
-            return nightModeFlags == Configuration.UI_MODE_NIGHT_YES;
-        }
-        return false;
-    }
-
-    private int getThemeBackgroundColor() {
-        return isDarkTheme() ? Color.parseColor("#1C1C1E") : Color.WHITE;
-    }
-    
-    private String appendThemeQueryParameter(String url) {
-        if (url == null || url.isEmpty()) {
-            return url;
-        }
-        
-        try {
-            Uri uri = Uri.parse(url);
-            Uri.Builder builder = uri.buildUpon();
-            
-            // Append or replace theme parameter
-            String theme = isDarkTheme() ? "dark" : "light";
-            builder.appendQueryParameter("theme", theme);
-            
-            return builder.build().toString();
-        } catch (Exception e) {
-            Log.e(TAG, "Error appending theme parameter: " + e.getMessage());
-            // If URL parsing fails, try simple string append
-            String separator = url.contains("?") ? "&" : "?";
-            String theme = isDarkTheme() ? "dark" : "light";
-            return url + separator + "theme=" + theme;
-        }
     }
 }
