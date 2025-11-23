@@ -85,6 +85,34 @@ void configureScrollViewForWebView(UIScrollView* scrollView);
 UIRectCorner getCornersToRoundForPosition(CGFloat verticalPosition, BOOL isiPad);
 void setWebViewBackgroundColor(WKWebView* webView, UIColor* color);
 CAShapeLayer* createCornerRadiusMask(CGRect bounds, UIRectCorner corners, CGFloat radius);
+NSString* appendThemeQueryParameter(NSString* url);
+
+// Custom drag tray view that only intercepts touches in the handle area
+@interface DragTrayView : UIView
+@end
+
+@implementation DragTrayView
+
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    // Find the handle view (tag 8889)
+    UIView *handleView = [self viewWithTag:8889];
+    if (handleView) {
+        // Convert point to handle's coordinate system
+        CGPoint pointInHandle = [self convertPoint:point toView:handleView];
+        // Only intercept touches if they're within the handle bounds (with small padding for easier interaction)
+        CGRect handleBounds = handleView.bounds;
+        CGRect expandedBounds = CGRectInset(handleBounds, -15, -15); // Add 15pt padding around handle for easier dragging
+        if (CGRectContainsPoint(expandedBounds, pointInHandle)) {
+            // Return self so the pan gesture recognizer on drag tray can work
+            // This allows the gesture to track even when finger moves outside handle bounds
+            return [super hitTest:point withEvent:event];
+        }
+    }
+    // For touches outside the handle area, return nil to pass through to views below (webview)
+    return nil;
+}
+
+@end
 
 @interface OrientationLockedViewController : UIViewController
 @property (nonatomic, assign) CGRect customFrame;
@@ -681,7 +709,7 @@ static SafariViewDismissedCallback GetGlobalSafariViewDismissedCallback() {
                 [webView loadHTMLString:@"" baseURL:nil];
                 
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.05 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                    [webView removeFromSuperview];
+                [webView removeFromSuperview];
                 });
                 break;
             }
@@ -926,6 +954,46 @@ CAShapeLayer* createCornerRadiusMask(CGRect bounds, UIRectCorner corners, CGFloa
     return maskLayer;
 }
 
+NSString* appendThemeQueryParameter(NSString* url) {
+    if (url == nil || url.length == 0) {
+        return url;
+    }
+    
+    // Detect dark mode
+    NSString *theme = @"light";
+    if (@available(iOS 13.0, *)) {
+        UIUserInterfaceStyle currentStyle = [UITraitCollection currentTraitCollection].userInterfaceStyle;
+        if (currentStyle == UIUserInterfaceStyleDark) {
+            theme = @"dark";
+        }
+    }
+    
+    // Parse URL and append theme parameter
+    NSURLComponents *components = [NSURLComponents componentsWithString:url];
+    if (components == nil) {
+        // If URL parsing fails, try simple string append
+        NSString *separator = [url containsString:@"?"] ? @"&" : @"?";
+        return [NSString stringWithFormat:@"%@%@theme=%@", url, separator, theme];
+    }
+    
+    // Append or replace theme parameter
+    NSMutableArray *queryItems = [NSMutableArray arrayWithArray:components.queryItems ?: @[]];
+    
+    // Remove existing theme parameter if present
+    NSMutableArray *filteredItems = [NSMutableArray array];
+    for (NSURLQueryItem *item in queryItems) {
+        if (![item.name isEqualToString:@"theme"]) {
+            [filteredItems addObject:item];
+        }
+    }
+    
+    // Add new theme parameter
+    [filteredItems addObject:[NSURLQueryItem queryItemWithName:@"theme" value:theme]];
+    components.queryItems = filteredItems;
+    
+    return components.URL.absoluteString;
+}
+
 - (void)expandCardToFullScreen {
     if (!self.currentPresentedVC) return;
     
@@ -1050,10 +1118,12 @@ CAShapeLayer* createCornerRadiusMask(CGRect bounds, UIRectCorner corners, CGFloa
         // Use updateCardExpansionProgress to ensure frame calculation matches drag gesture
         [self updateCardExpansionProgress:1.0 cardView:cardView];
         
-    cardView.backgroundColor = getSystemBackgroundColor();
+        cardView.backgroundColor = getSystemBackgroundColor();
     } completion:^(BOOL finished) {
-        // Add iOS-style rounded corners at top for full screen - Apple Pay style
-        CAShapeLayer *maskLayer = createCornerRadiusMask(cardView.bounds, UIRectCornerTopLeft | UIRectCornerTopRight, 38.0);
+        // Add iOS-style rounded corners at top for full screen
+        // Use same radius (20.0) for iPhone whether collapsed or expanded
+        CGFloat radius = isRunningOniPad() ? 24.0 : 20.0;
+        CAShapeLayer *maskLayer = createCornerRadiusMask(cardView.bounds, UIRectCornerTopLeft | UIRectCornerTopRight, radius);
         cardView.layer.mask = maskLayer;
     }];
 }
@@ -1145,17 +1215,17 @@ CAShapeLayer* createCornerRadiusMask(CGRect bounds, UIRectCorner corners, CGFloa
     }
     
     if (progress > 0.9) {
-        CGFloat radius = 38.0 + ((progress - 0.9) / 0.1) * 2.0;
+        CGFloat radius = 20.0;
         CAShapeLayer *maskLayer = createCornerRadiusMask(cardView.bounds, UIRectCornerTopLeft | UIRectCornerTopRight, radius);
         cardView.layer.mask = maskLayer;
     } else if (progress > 0.5) {
         UIRectCorner cornersToRound = UIRectCornerTopLeft | UIRectCornerTopRight;
-        CGFloat radius = 20.0 + (progress * 18.0);
+        CGFloat radius = 20.0;
         CAShapeLayer *maskLayer = createCornerRadiusMask(cardView.bounds, cornersToRound, radius);
         cardView.layer.mask = maskLayer;
     } else if (progress > 0.001) {
         UIRectCorner cornersToRound = getCornersToRoundForPosition(_originalCardVerticalPosition, isRunningOniPad());
-        CGFloat radius = 20.0 + (progress * 8.0);
+        CGFloat radius = 20.0;
         CAShapeLayer *maskLayer = createCornerRadiusMask(cardView.bounds, cornersToRound, radius);
         cardView.layer.mask = maskLayer;
     }
@@ -1228,7 +1298,7 @@ CAShapeLayer* createCornerRadiusMask(CGRect bounds, UIRectCorner corners, CGFloa
     }
     
     // Update corner radius based on progress
-    CGFloat cornerRadius = 20.0 + (24.0 - 20.0) * progress;
+    CGFloat cornerRadius = 20.0;
     CAShapeLayer *maskLayer = createCornerRadiusMask(cardView.bounds, UIRectCornerAllCorners, cornerRadius);
     cardView.layer.mask = maskLayer;
 }
@@ -1361,7 +1431,7 @@ CAShapeLayer* createCornerRadiusMask(CGRect bounds, UIRectCorner corners, CGFloa
             containerVC.customFrame = cardView.frame;
         }
         
-        // Update overlay opacity        
+        // Update overlay opacity
         // Don't change overlay opacity - keep it constant for native feel
         // Overlay only fades during dismiss, not during expansion/collapse
     } completion:^(BOOL finished) {
@@ -1377,7 +1447,8 @@ CAShapeLayer* createCornerRadiusMask(CGRect bounds, UIRectCorner corners, CGFloa
 
 
 - (UIView *)createDragTray:(CGFloat)cardWidth {
-    UIView *dragTrayView = [[UIView alloc] init];
+    // Use custom DragTrayView that only intercepts touches in handle area
+    DragTrayView *dragTrayView = [[DragTrayView alloc] init];
     dragTrayView.frame = CGRectMake(0, 0, cardWidth, 44);
     dragTrayView.tag = 8888;
     
@@ -1417,6 +1488,7 @@ CAShapeLayer* createCornerRadiusMask(CGRect bounds, UIRectCorner corners, CGFloa
     handleView.layer.shadowRadius = 2.0; // Subtle shadow
     [dragTrayView addSubview:handleView];
     
+    // Add pan gesture recognizer to drag tray (it will only receive touches in handle area due to hitTest override)
     UIPanGestureRecognizer *dragTrayPanGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleDragTrayPanGesture:)];
     dragTrayPanGesture.delegate = self;
     [dragTrayView addGestureRecognizer:dragTrayPanGesture];
@@ -1531,20 +1603,20 @@ CAShapeLayer* createCornerRadiusMask(CGRect bounds, UIRectCorner corners, CGFloa
                             }
                             break;
                         }
-                    } else {
-                        CGFloat newY = self.initialY + currentTravel;
-                        CGFloat maxY = screenHeight;
-                        newY = MIN(maxY, newY);
-                        
-                        [CATransaction begin];
-                        [CATransaction setDisableActions:YES];
-                        cardView.frame = CGRectMake(cardView.frame.origin.x, newY, cardView.frame.size.width, cardView.frame.size.height);
-                        [CATransaction commit];
-                        
-                        if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
-                            OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
-                            containerVC.customFrame = cardView.frame;
-                        }
+                } else {
+                    CGFloat newY = self.initialY + currentTravel;
+                    CGFloat maxY = screenHeight;
+                    newY = MIN(maxY, newY);
+                    
+                    [CATransaction begin];
+                    [CATransaction setDisableActions:YES];
+                    cardView.frame = CGRectMake(cardView.frame.origin.x, newY, cardView.frame.size.width, cardView.frame.size.height);
+                    [CATransaction commit];
+                    
+                    if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
+                        OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
+                        containerVC.customFrame = cardView.frame;
+                }
                         break;
                     }
                 } else {
@@ -1577,8 +1649,8 @@ CAShapeLayer* createCornerRadiusMask(CGRect bounds, UIRectCorner corners, CGFloa
                     CGFloat screenHeight = self.portraitWindow ? self.portraitWindow.bounds.size.height : cardView.superview.bounds.size.height;
                     CGFloat cardBottom = currentY + height;
                     CGFloat distanceToBottom = screenHeight - cardBottom;
-                    CGFloat dismissVelocityThreshold = 800;
-                    if (distanceToBottom < 80.0 || (velocity.y > dismissVelocityThreshold && currentTravel > height * 0.25)) {
+                    CGFloat dismissVelocityThreshold = 1040; // 800 * 1.3
+                    if (distanceToBottom < 10.0 || (velocity.y > dismissVelocityThreshold && currentTravel > height * 0.325)) { // 80.0 * 1.3, 0.25 * 1.3
                         shouldDismiss = YES;
                     }
                 }
@@ -1693,10 +1765,28 @@ CAShapeLayer* createCornerRadiusMask(CGRect bounds, UIRectCorner corners, CGFloa
             } else {
                 if (isRunningOniPad()) {
                     CGRect screenBounds = [UIScreen mainScreen].bounds;
-                    CGFloat phoneLikeWidth = fmin(400.0, screenBounds.size.width * 0.9);
-                    CGFloat cardHeight = screenBounds.size.height * _cardHeightRatio;
-                    CGFloat originalX = (screenBounds.size.width - phoneLikeWidth) / 2;
-                    CGFloat originalY = (screenBounds.size.height - cardHeight) / 2;
+                    CGFloat originalWidth, originalHeight, originalX, originalY;
+                    
+                    if (_isCardExpanded) {
+                        // Snap back to expanded size
+                        CGFloat collapsedWidth = fmin(400.0, screenBounds.size.width * 0.9);
+                        CGFloat collapsedHeight = screenBounds.size.height * _cardHeightRatio;
+                        CGFloat expandedWidth = collapsedWidth * 1.25;
+                        CGFloat expandedHeight = collapsedHeight * 1.25;
+                        expandedWidth = fmin(expandedWidth, screenBounds.size.width * 0.95);
+                        expandedHeight = fmin(expandedHeight, screenBounds.size.height * 0.85);
+                        
+                        originalWidth = expandedWidth;
+                        originalHeight = expandedHeight;
+                        originalX = (screenBounds.size.width - expandedWidth) / 2;
+                        originalY = (screenBounds.size.height - expandedHeight) / 2;
+                    } else {
+                        // Snap back to collapsed size
+                        originalWidth = fmin(400.0, screenBounds.size.width * 0.9);
+                        originalHeight = screenBounds.size.height * _cardHeightRatio;
+                        originalX = (screenBounds.size.width - originalWidth) / 2;
+                        originalY = (screenBounds.size.height - originalHeight) / 2;
+                    }
                     
                     // Apple Pay snap-back animation - quick and tight
                     [UIView animateWithDuration:0.25 
@@ -1705,7 +1795,25 @@ CAShapeLayer* createCornerRadiusMask(CGRect bounds, UIRectCorner corners, CGFloa
                           initialSpringVelocity:fabs(velocity.y) / 1000.0 
                                         options:UIViewAnimationOptionCurveEaseOut 
                                      animations:^{
-                        cardView.frame = CGRectMake(originalX, originalY, phoneLikeWidth, cardHeight);
+                        cardView.frame = CGRectMake(originalX, originalY, originalWidth, originalHeight);
+                        
+                        // Update webview frame
+                        for (UIView *subview in cardView.subviews) {
+                            if ([subview isKindOfClass:NSClassFromString(@"WKWebView")]) {
+                                subview.frame = cardView.bounds;
+                                break;
+                            }
+                        }
+                        
+                        // Update drag tray
+                        UIView *dragTray = [cardView viewWithTag:8888];
+                        if (dragTray) {
+                            dragTray.frame = CGRectMake(0, 0, originalWidth, 44);
+                            UIView *handle = [dragTray viewWithTag:8889];
+                            if (handle) {
+                                handle.frame = CGRectMake((originalWidth / 2.0) - 18.0, 8, 36, 5);
+                            }
+                        }
                         
                         if ([self.currentPresentedVC isKindOfClass:[OrientationLockedViewController class]]) {
                             OrientationLockedViewController *containerVC = (OrientationLockedViewController *)self.currentPresentedVC;
@@ -2118,6 +2226,8 @@ extern "C" {
         }
         
         NSString* nsUrlStr = [NSString stringWithUTF8String:urlString];
+        // Append theme query parameter
+        nsUrlStr = appendThemeQueryParameter(nsUrlStr);
         NSURL* url = [NSURL URLWithString:nsUrlStr];
         
         if (url == nil) {
@@ -2776,7 +2886,13 @@ extern "C" {
         _isCardExpanded = NO;
         _usePopupPresentation = YES;
         
-        _StashPayCardOpenCheckoutInSafariVC(urlString);
+        // Append theme query parameter before opening
+        NSString* nsUrlStr = [NSString stringWithUTF8String:urlString];
+        nsUrlStr = appendThemeQueryParameter(nsUrlStr);
+        // Convert back to C string - the NSString will remain valid for the duration of the call
+        const char* urlWithTheme = [nsUrlStr UTF8String];
+        
+        _StashPayCardOpenCheckoutInSafariVC(urlWithTheme);
     }
     
     void _StashPayCardOpenPopup(const char* urlString) {

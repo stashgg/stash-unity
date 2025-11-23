@@ -196,6 +196,9 @@ public class StashPayCardPlugin {
             url = "https://" + url;
         }
 
+        // Append theme query parameter
+        url = appendThemeQueryParameter(url);
+
         final String finalUrl = url;
 
         activity.runOnUiThread(() -> {
@@ -723,5 +726,28 @@ public class StashPayCardPlugin {
 
     private int getThemeBackgroundColor() {
         return isDarkTheme() ? Color.parseColor("#1C1C1E") : Color.WHITE;
+    }
+    
+    private String appendThemeQueryParameter(String url) {
+        if (url == null || url.isEmpty()) {
+            return url;
+        }
+        
+        try {
+            Uri uri = Uri.parse(url);
+            Uri.Builder builder = uri.buildUpon();
+            
+            // Append or replace theme parameter
+            String theme = isDarkTheme() ? "dark" : "light";
+            builder.appendQueryParameter("theme", theme);
+            
+            return builder.build().toString();
+        } catch (Exception e) {
+            Log.e(TAG, "Error appending theme parameter: " + e.getMessage());
+            // If URL parsing fails, try simple string append
+            String separator = url.contains("?") ? "&" : "?";
+            String theme = isDarkTheme() ? "dark" : "light";
+            return url + separator + "theme=" + theme;
+        }
     }
 }

@@ -530,7 +530,9 @@ public class StashPayCardPortraitActivity extends Activity {
             FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT);
         webView.setLayoutParams(params);
         cardContainer.addView(webView);
-        webView.loadUrl(url);
+        // Append theme query parameter before loading
+        String urlWithTheme = appendThemeQueryParameter(url);
+        webView.loadUrl(urlWithTheme);
     }
     
     private void addHomeButton() {
@@ -558,7 +560,9 @@ public class StashPayCardPortraitActivity extends Activity {
         homeButton.setVisibility(View.GONE);
         homeButton.setOnClickListener(v -> {
             if (initialURL != null && webView != null) {
-                webView.loadUrl(initialURL);
+                // Append theme query parameter before loading
+                String urlWithTheme = appendThemeQueryParameter(initialURL);
+                webView.loadUrl(urlWithTheme);
             }
         });
         
@@ -889,5 +893,28 @@ public class StashPayCardPortraitActivity extends Activity {
     
     private int dpToPx(int dp) {
         return Math.round(dp * getResources().getDisplayMetrics().density);
+    }
+    
+    private String appendThemeQueryParameter(String url) {
+        if (url == null || url.isEmpty()) {
+            return url;
+        }
+        
+        try {
+            Uri uri = Uri.parse(url);
+            Uri.Builder builder = uri.buildUpon();
+            
+            // Append or replace theme parameter
+            String theme = isDarkTheme() ? "dark" : "light";
+            builder.appendQueryParameter("theme", theme);
+            
+            return builder.build().toString();
+        } catch (Exception e) {
+            Log.e(TAG, "Error appending theme parameter: " + e.getMessage());
+            // If URL parsing fails, try simple string append
+            String separator = url.contains("?") ? "&" : "?";
+            String theme = isDarkTheme() ? "dark" : "light";
+            return url + separator + "theme=" + theme;
+        }
     }
 }
