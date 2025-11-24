@@ -181,7 +181,8 @@ public class StashPayCardPortraitActivity extends Activity {
             isExpanded = true;
         } else {
             effectiveHeightRatio = CARD_HEIGHT_NORMAL;
-            isExpanded = false;
+            // On tablets, default size is the "expanded" state
+            isExpanded = isTablet;
         }
         
         int cardHeight = (int)(metrics.heightPixels * effectiveHeightRatio);
@@ -374,13 +375,9 @@ public class StashPayCardPortraitActivity extends Activity {
         int expandedWidth;
         
         if (isTablet) {
-            int normalWidth = Math.min(StashWebViewUtils.dpToPx(this, 600), (int)(metrics.widthPixels * 0.7f));
-            expandedWidth = (int)(normalWidth * 1.25f);
-            expandedWidth = Math.min(expandedWidth, (int)(metrics.widthPixels * 0.85f));
-            
-            int normalHeight = params.height;
-            expandedHeight = (int)(normalHeight * 1.25f);
-            expandedHeight = Math.min(expandedHeight, (int)(metrics.heightPixels * 0.85f));
+            // On tablets, Expand = default size (normal size)
+            expandedWidth = Math.min(StashWebViewUtils.dpToPx(this, 600), (int)(metrics.widthPixels * 0.7f));
+            expandedHeight = (int)(metrics.heightPixels * CARD_HEIGHT_NORMAL);
         } else {
             expandedWidth = params.width;
         }
@@ -414,8 +411,11 @@ public class StashPayCardPortraitActivity extends Activity {
         int collapsedWidth;
         
         if (isTablet) {
-            collapsedWidth = Math.min(StashWebViewUtils.dpToPx(this, 600), (int)(metrics.widthPixels * 0.7f));
-            collapsedHeight = (int)(metrics.heightPixels * CARD_HEIGHT_NORMAL);
+            // On tablets, Collapse = 30% smaller than default size (0.7x)
+            int defaultWidth = Math.min(StashWebViewUtils.dpToPx(this, 600), (int)(metrics.widthPixels * 0.7f));
+            int defaultHeight = (int)(metrics.heightPixels * CARD_HEIGHT_NORMAL);
+            collapsedWidth = (int)(defaultWidth * 0.7f);
+            collapsedHeight = (int)(defaultHeight * 0.7f);
             
             animateCardWidth(collapsedWidth, 320);
         } else {

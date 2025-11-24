@@ -214,18 +214,33 @@ NSString* appendThemeQueryParameter(NSString* url);
             [self updateCornerRadiusMask];
         }
     } else {
-        // NOTE: Card mode - skip layout during gestures or when expanded to prevent interference
-        if (self.skipLayoutDuringInitialSetup || _isCardExpanded) {
+        // NOTE: Card mode - skip layout during initial setup
+        // On iPad, allow layout updates even when expanded to handle rotation
+        if (self.skipLayoutDuringInitialSetup) {
+            return;
+        }
+        
+        // On iPhone, skip layout when expanded to prevent interference
+        if (!isRunningOniPad() && _isCardExpanded) {
             return;
         }
         
         CGFloat width, height, x, y;
         
         if (isRunningOniPad()) {
-            // NOTE: iPad card mode - only update layout on orientation changes, not during gestures
-            CGFloat phoneLikeWidth = fmin(400.0, screenBounds.size.width * 0.9);
-            width = phoneLikeWidth;
-            height = screenBounds.size.height * _cardHeightRatio;
+            // NOTE: iPad card mode - update layout on orientation changes to recenter and resize
+            // Use calculateiPadCardSize to match expand/collapse logic
+            // Expanded state uses default size, collapsed uses 0.7x
+            CGSize cardSize = calculateiPadCardSize(screenBounds);
+            if (_isCardExpanded) {
+                // Expanded = default size
+                width = cardSize.width;
+                height = cardSize.height;
+            } else {
+                // Collapsed = 30% smaller
+                width = cardSize.width * 0.7;
+                height = cardSize.height * 0.7;
+            }
             x = (screenBounds.size.width - width) / 2;
             y = (screenBounds.size.height - height) / 2;
         } else {
@@ -324,12 +339,9 @@ NSString* appendThemeQueryParameter(NSString* url);
         return UIInterfaceOrientationMaskPortrait;
     }
     
-    // Get current orientation from underlying app
-    UIInterfaceOrientation currentOrientation = [[UIApplication sharedApplication] statusBarOrientation];
-    
-    // On iPad, both popup and card mode inherit orientation from underlying app (no rotation)
+    // On iPad, allow all orientations so dialog rotates dynamically with the game
     if (isRunningOniPad()) {
-        return (1 << currentOrientation);
+        return UIInterfaceOrientationMaskAll;
     }
     
     // On iPhone, allow all orientations for popup mode
@@ -338,13 +350,14 @@ NSString* appendThemeQueryParameter(NSString* url);
     }
     
     // For iPhone card mode, lock to current orientation
+    UIInterfaceOrientation currentOrientation = [[UIApplication sharedApplication] statusBarOrientation];
     return (1 << currentOrientation);
 }
 
 - (BOOL)shouldAutorotate {
-    // On iPad, both popup and card mode inherit orientation from underlying Unity app (no rotation)
+    // On iPad, allow rotation so dialog rotates dynamically with the game
     if (isRunningOniPad()) {
-        return NO;
+        return YES;
     }
     
     // On iPhone, allow rotation for popup mode only
@@ -886,12 +899,16 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
         return CGSizeMake(600, 700);
     }
     
+    // Always use landscape dimensions (larger width) for consistent card size regardless of orientation
+    CGFloat landscapeWidth = fmax(screenBounds.size.width, screenBounds.size.height);
+    CGFloat landscapeHeight = fmin(screenBounds.size.width, screenBounds.size.height);
+    
     // Use a more squared aspect ratio for iPad (closer to 4:5 instead of iPhone's narrow 9:19.5)
     CGFloat targetAspectRatio = 0.75; // 3:4 ratio (more squared)
     
     // Scale to fit nicely on iPad (80% of screen width, 75% of height)
-    CGFloat maxCardWidth = screenBounds.size.width * 0.8;
-    CGFloat maxCardHeight = screenBounds.size.height * 0.75;
+    CGFloat maxCardWidth = landscapeWidth * 0.8;
+    CGFloat maxCardHeight = landscapeHeight * 0.75;
     
     if (maxCardWidth <= 0 || maxCardHeight <= 0) {
         return CGSizeMake(600, 700);
@@ -911,7 +928,7 @@ CGSize calculateiPadCardSize(CGRect screenBounds) {
     }
     
     // Ensure reasonable sizes
-    if (cardWidth < 400 || cardHeight < 500 || cardWidth > screenBounds.size.width || cardHeight > screenBounds.size.height) {
+    if (cardWidth < 400 || cardHeight < 500) {
         return CGSizeMake(600, 700);
     }
     
@@ -1168,18 +1185,17 @@ NSString* appendThemeQueryParameter(NSString* url) {
     
     if (isRunningOniPad()) {
         CGSize cardSize = calculateiPadCardSize(screenBounds);
-        collapsedWidth = cardSize.width;
-        collapsedHeight = cardSize.height;
-        collapsedX = (screenBounds.size.width - collapsedWidth) / 2;
-        collapsedY = (screenBounds.size.height - collapsedHeight) / 2;
-        
-        // iPad expanded: 25% larger, centered
-        expandedWidth = collapsedWidth * 1.25;
-        expandedHeight = collapsedHeight * 1.25;
-        expandedWidth = fmin(expandedWidth, screenBounds.size.width * 0.95);
-        expandedHeight = fmin(expandedHeight, screenBounds.size.height * 0.85);
+        // On iPad, Expand = default size, Collapse = 30% smaller (0.7x)
+        expandedWidth = cardSize.width;
+        expandedHeight = cardSize.height;
         expandedX = (screenBounds.size.width - expandedWidth) / 2;
         expandedY = (screenBounds.size.height - expandedHeight) / 2;
+        
+        // iPad collapsed: 30% smaller than default, centered
+        collapsedWidth = expandedWidth * 0.7;
+        collapsedHeight = expandedHeight * 0.7;
+        collapsedX = (screenBounds.size.width - collapsedWidth) / 2;
+        collapsedY = (screenBounds.size.height - collapsedHeight) / 2;
     } else {
         // iPhone collapsed
         collapsedWidth = screenBounds.size.width * _originalCardWidthRatio;
@@ -1707,23 +1723,18 @@ NSString* appendThemeQueryParameter(NSString* url) {
                     CGRect screenBounds = [UIScreen mainScreen].bounds;
                     CGFloat originalWidth, originalHeight, originalX, originalY;
                     
+                    CGSize cardSize = calculateiPadCardSize(screenBounds);
+                    
                     if (_isCardExpanded) {
-                        // Snap back to expanded size
-                        CGFloat collapsedWidth = fmin(400.0, screenBounds.size.width * 0.9);
-                        CGFloat collapsedHeight = screenBounds.size.height * _cardHeightRatio;
-                        CGFloat expandedWidth = collapsedWidth * 1.25;
-                        CGFloat expandedHeight = collapsedHeight * 1.25;
-                        expandedWidth = fmin(expandedWidth, screenBounds.size.width * 0.95);
-                        expandedHeight = fmin(expandedHeight, screenBounds.size.height * 0.85);
-                        
-                        originalWidth = expandedWidth;
-                        originalHeight = expandedHeight;
-                        originalX = (screenBounds.size.width - expandedWidth) / 2;
-                        originalY = (screenBounds.size.height - expandedHeight) / 2;
+                        // Snap back to expanded size (default size)
+                        originalWidth = cardSize.width;
+                        originalHeight = cardSize.height;
+                        originalX = (screenBounds.size.width - originalWidth) / 2;
+                        originalY = (screenBounds.size.height - originalHeight) / 2;
                     } else {
-                        // Snap back to collapsed size
-                        originalWidth = fmin(400.0, screenBounds.size.width * 0.9);
-                        originalHeight = screenBounds.size.height * _cardHeightRatio;
+                        // Snap back to collapsed size (30% smaller)
+                        originalWidth = cardSize.width * 0.7;
+                        originalHeight = cardSize.height * 0.7;
                         originalX = (screenBounds.size.width - originalWidth) / 2;
                         originalY = (screenBounds.size.height - originalHeight) / 2;
                     }
@@ -2460,10 +2471,10 @@ extern "C" {
                 } else {
                     // Card mode: split implementation for iPhone and iPad
                     if (isRunningOniPad()) {
-                        // iPad: phone-like aspect ratio, centered vertically, supports rotation
-                        CGFloat phoneLikeWidth = fmin(400.0, screenBounds.size.width * 0.9);
-                        width = phoneLikeWidth;
-                        height = screenBounds.size.height * _cardHeightRatio;
+                        // iPad: use calculateiPadCardSize to match expand/collapse logic
+                        CGSize cardSize = calculateiPadCardSize(screenBounds);
+                        width = cardSize.width;
+                        height = cardSize.height;
                         x = (screenBounds.size.width - width) / 2;
                         finalY = (screenBounds.size.height - height) / 2;
                     } else {
@@ -2579,6 +2590,11 @@ extern "C" {
                 
                 cardWindow.hidden = NO;
                 [cardWindow makeKeyAndVisible];
+                
+                // On iPad, default size is the "expanded" state
+                if (isRunningOniPad() && !_usePopupPresentation) {
+                    _isCardExpanded = YES;
+                }
                 
                 if (isRunningOniPad() || _usePopupPresentation) {
                     dispatch_async(dispatch_get_main_queue(), ^{
