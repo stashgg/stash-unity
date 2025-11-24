@@ -175,7 +175,7 @@ NSString* appendThemeQueryParameter(NSString* url);
         
         CGFloat portraitWidthMultiplier = _useCustomPopupSize ? _customPortraitWidthMultiplier : 1.0285;
         CGFloat portraitHeightMultiplier = _useCustomPopupSize ? _customPortraitHeightMultiplier : 1.485;
-        CGFloat landscapeWidthMultiplier = _useCustomPopupSize ? _customLandscapeWidthMultiplier : 1.753635;
+        CGFloat landscapeWidthMultiplier = _useCustomPopupSize ? _customLandscapeWidthMultiplier : 1.2275445;
         CGFloat landscapeHeightMultiplier = _useCustomPopupSize ? _customLandscapeHeightMultiplier : 1.1385;
         
         CGFloat popupWidth = baseSize * (isLandscape ? landscapeWidthMultiplier : portraitWidthMultiplier);
@@ -2463,9 +2463,23 @@ extern "C" {
                 CGFloat width, height, x, finalY;
                 
                 if (_usePopupPresentation) {
-                    // Popup mode: use ratios and center vertically
-                    width = screenBounds.size.width * _cardWidthRatio;
-                    height = screenBounds.size.height * _cardHeightRatio;
+                    // Popup mode: calculate size using same method as viewWillLayoutSubviews for consistency
+                    BOOL isLandscape = UIInterfaceOrientationIsLandscape([[UIApplication sharedApplication] statusBarOrientation]);
+                    
+                    CGFloat smallerDimension = fmin(screenBounds.size.width, screenBounds.size.height);
+                    CGFloat percentage = isRunningOniPad() ? 0.5 : 0.75;
+                    CGFloat baseSize = fmax(
+                        isRunningOniPad() ? 400.0 : 300.0,
+                        fmin(isRunningOniPad() ? 500.0 : 500.0, smallerDimension * percentage)
+                    );
+                    
+                    CGFloat portraitWidthMultiplier = _useCustomPopupSize ? _customPortraitWidthMultiplier : 1.0285;
+                    CGFloat portraitHeightMultiplier = _useCustomPopupSize ? _customPortraitHeightMultiplier : 1.485;
+                    CGFloat landscapeWidthMultiplier = _useCustomPopupSize ? _customLandscapeWidthMultiplier : 1.2275445;
+                    CGFloat landscapeHeightMultiplier = _useCustomPopupSize ? _customLandscapeHeightMultiplier : 1.1385;
+                    
+                    width = baseSize * (isLandscape ? landscapeWidthMultiplier : portraitWidthMultiplier);
+                    height = baseSize * (isLandscape ? landscapeHeightMultiplier : portraitHeightMultiplier);
                     x = (screenBounds.size.width - width) / 2;
                     finalY = (screenBounds.size.height - height) / 2;
                 } else {
@@ -2835,7 +2849,7 @@ extern "C" {
             // iOS default multipliers
             portraitWidthMultiplier = 1.0285;
             portraitHeightMultiplier = 1.485;
-            landscapeWidthMultiplier = 1.753635;
+            landscapeWidthMultiplier = 1.2275445;
             landscapeHeightMultiplier = 1.1385;
         }
         
