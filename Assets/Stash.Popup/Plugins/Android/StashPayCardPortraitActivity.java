@@ -171,23 +171,72 @@ public class StashPayCardPortraitActivity extends Activity {
         }
     }
 
+    /**
+     * Calculate tablet card size matching iOS iPad logic
+     * Always uses landscape dimensions for consistent size regardless of orientation
+     */
+    private int[] calculateTabletCardSize(DisplayMetrics metrics) {
+        // Always use landscape dimensions (larger width) for consistent card size
+        int landscapeWidth = Math.max(metrics.widthPixels, metrics.heightPixels);
+        int landscapeHeight = Math.min(metrics.widthPixels, metrics.heightPixels);
+        
+        // Use a more squared aspect ratio (3:4 ratio = 0.75)
+        float targetAspectRatio = 0.75f;
+        
+        // Scale to fit nicely (80% of screen width, 75% of height)
+        float maxCardWidth = landscapeWidth * 0.8f;
+        float maxCardHeight = landscapeHeight * 0.75f;
+        
+        if (maxCardWidth <= 0 || maxCardHeight <= 0) {
+            return new int[]{600, 700};
+        }
+        
+        int cardWidth, cardHeight;
+        
+        // Calculate dimensions maintaining squared aspect ratio
+        if (maxCardWidth / targetAspectRatio <= maxCardHeight) {
+            // Width-constrained
+            cardWidth = (int)maxCardWidth;
+            cardHeight = (int)(cardWidth / targetAspectRatio);
+        } else {
+            // Height-constrained
+            cardHeight = (int)maxCardHeight;
+            cardWidth = (int)(cardHeight * targetAspectRatio);
+        }
+        
+        // Ensure reasonable sizes
+        if (cardWidth < 400 || cardHeight < 500) {
+            return new int[]{600, 700};
+        }
+        
+        return new int[]{cardWidth, cardHeight};
+    }
+    
     private void createCard() {
         DisplayMetrics metrics = getResources().getDisplayMetrics();
         boolean isTablet = StashWebViewUtils.isTablet(this);
         
-        float effectiveHeightRatio;
-        if (wasLandscapeBeforePortrait && !isTablet) {
-            effectiveHeightRatio = CARD_HEIGHT_EXPANDED;
+        int cardWidth, cardHeight;
+        
+        if (isTablet) {
+            // Use iOS iPad matching calculation
+            int[] cardSize = calculateTabletCardSize(metrics);
+            cardWidth = cardSize[0];
+            cardHeight = cardSize[1];
+            // On tablets, default size is the "expanded" state
             isExpanded = true;
         } else {
-            effectiveHeightRatio = CARD_HEIGHT_NORMAL;
-            // On tablets, default size is the "expanded" state
-            isExpanded = isTablet;
+            float effectiveHeightRatio;
+            if (wasLandscapeBeforePortrait) {
+                effectiveHeightRatio = CARD_HEIGHT_EXPANDED;
+                isExpanded = true;
+            } else {
+                effectiveHeightRatio = CARD_HEIGHT_NORMAL;
+                isExpanded = false;
+            }
+            cardHeight = (int)(metrics.heightPixels * effectiveHeightRatio);
+            cardWidth = FrameLayout.LayoutParams.MATCH_PARENT;
         }
-        
-        int cardHeight = (int)(metrics.heightPixels * effectiveHeightRatio);
-        int cardWidth = isTablet ? Math.min(StashWebViewUtils.dpToPx(this, 600), (int)(metrics.widthPixels * 0.7f)) 
-                                  : FrameLayout.LayoutParams.MATCH_PARENT;
         
         configureCardContainer(isTablet, cardWidth, cardHeight);
         
@@ -375,9 +424,10 @@ public class StashPayCardPortraitActivity extends Activity {
         int expandedWidth;
         
         if (isTablet) {
-            // On tablets, Expand = default size (normal size)
-            expandedWidth = Math.min(StashWebViewUtils.dpToPx(this, 600), (int)(metrics.widthPixels * 0.7f));
-            expandedHeight = (int)(metrics.heightPixels * CARD_HEIGHT_NORMAL);
+            // On tablets, Expand = default size (matching iOS iPad calculation)
+            int[] cardSize = calculateTabletCardSize(metrics);
+            expandedWidth = cardSize[0];
+            expandedHeight = cardSize[1];
         } else {
             expandedWidth = params.width;
         }
@@ -412,10 +462,10 @@ public class StashPayCardPortraitActivity extends Activity {
         
         if (isTablet) {
             // On tablets, Collapse = 30% smaller than default size (0.7x)
-            int defaultWidth = Math.min(StashWebViewUtils.dpToPx(this, 600), (int)(metrics.widthPixels * 0.7f));
-            int defaultHeight = (int)(metrics.heightPixels * CARD_HEIGHT_NORMAL);
-            collapsedWidth = (int)(defaultWidth * 0.7f);
-            collapsedHeight = (int)(defaultHeight * 0.7f);
+            // Use iOS iPad matching calculation for default size
+            int[] defaultCardSize = calculateTabletCardSize(metrics);
+            collapsedWidth = (int)(defaultCardSize[0] * 0.7f);
+            collapsedHeight = (int)(defaultCardSize[1] * 0.7f);
             
             animateCardWidth(collapsedWidth, 320);
         } else {
