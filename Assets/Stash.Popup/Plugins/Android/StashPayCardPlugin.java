@@ -470,20 +470,20 @@ public class StashPayCardPlugin {
     private void injectStashSDKFunctions() {
         if (webView == null) return;
         
-        if (usePopupPresentation) {
-            String disableScrollScript = "(function() {" +
-                "  document.body.style.overflow = 'hidden';" +
-                "  document.documentElement.style.overflow = 'hidden';" +
-                "  document.body.style.position = 'fixed';" +
-                "  document.body.style.width = '100%';" +
-                "  document.body.style.height = '100%';" +
-                "  if (document.body) {" +
-                "    document.body.addEventListener('touchmove', function(e) { e.preventDefault(); }, { passive: false });" +
-                "    document.body.addEventListener('wheel', function(e) { e.preventDefault(); }, { passive: false });" +
-                "  }" +
-                "})();";
-            webView.evaluateJavascript(disableScrollScript, null);
-        }
+      //  if (usePopupPresentation) {
+      //      String disableScrollScript = "(function() {" +
+      //          "  document.body.style.overflow = 'hidden';" +
+      //          "  document.documentElement.style.overflow = 'hidden';" +
+      //          "  document.body.style.position = 'fixed';" +
+      //          "  document.body.style.width = '100%';" +
+      //          "  document.body.style.height = '100%';" +
+      //          "  if (document.body) {" +
+      //          "    document.body.addEventListener('touchmove', function(e) { e.preventDefault(); }, { passive: false });" +
+      //          "    document.body.addEventListener('wheel', function(e) { e.preventDefault(); }, { passive: false });" +
+      //          "  }" +
+      //          "})();";
+      //      webView.evaluateJavascript(disableScrollScript, null);
+      //  }
         
         webView.evaluateJavascript(StashWebViewUtils.JS_SDK_SCRIPT, null);
     }
