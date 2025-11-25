@@ -54,10 +54,10 @@ public class StashPayCardPlugin {
     private int lastOrientation = Configuration.ORIENTATION_UNDEFINED;
     
     private boolean useCustomSize;
-    private float customPortraitWidthMultiplier = 0.85f;
-    private float customPortraitHeightMultiplier = 1.125f;
-    private float customLandscapeWidthMultiplier = 1.27075f;
-    private float customLandscapeHeightMultiplier = 0.9f;
+    private float customPortraitWidthMultiplier = 1.0285f;
+    private float customPortraitHeightMultiplier = 1.485f;
+    private float customLandscapeWidthMultiplier = 1.2275445f;
+    private float customLandscapeHeightMultiplier = 1.1385f;
     
     private long pageLoadStartTime;
     
@@ -641,11 +641,11 @@ public class StashPayCardPlugin {
         );
         
         float widthMultiplier = isLandscape ? 
-            (useCustomSize ? customLandscapeWidthMultiplier : 1.27075f) :
-            (useCustomSize ? customPortraitWidthMultiplier : 0.85f);
+            (useCustomSize ? customLandscapeWidthMultiplier : 1.2275445f) :
+            (useCustomSize ? customPortraitWidthMultiplier : 1.0285f);
         float heightMultiplier = isLandscape ? 
-            (useCustomSize ? customLandscapeHeightMultiplier : 0.9f) :
-            (useCustomSize ? customPortraitHeightMultiplier : 1.125f);
+            (useCustomSize ? customLandscapeHeightMultiplier : 1.1385f) :
+            (useCustomSize ? customPortraitHeightMultiplier : 1.485f);
 
         int popupWidth = (int)(baseSize * widthMultiplier);
         int popupHeight = (int)(baseSize * heightMultiplier);
