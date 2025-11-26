@@ -96,7 +96,28 @@ public class StashWebViewUtils {
         settings.setDisplayZoomControls(false);
         settings.setSupportZoom(false);
         
-        // Enable cookies for payment flows (PayPal, etc.)
+        // Enable support for multiple windows (required for iframes like Adyen)
+        settings.setSupportMultipleWindows(true);
+        settings.setJavaScriptCanOpenWindowsAutomatically(true);
+        
+        // Enable database storage (may be needed for payment providers)
+        settings.setDatabaseEnabled(true);
+        
+        // Allow mixed content mode for payment iframes (Adyen, etc.)
+        // This allows HTTPS pages to load HTTP resources, which some payment providers may use
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+        }
+        
+        // Allow media playback without user gesture (needed for some payment flows)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+            settings.setMediaPlaybackRequiresUserGesture(false);
+        }
+        
+        // Set cache mode to default (allows caching for better performance)
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        
+        // Enable cookies for payment flows (PayPal, Adyen, etc.)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
         }

@@ -459,7 +459,17 @@ public class StashPayCardPlugin {
             }
         });
         
-        webView.setWebChromeClient(new WebChromeClient());
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
+                // Handle new window requests (including iframes) by loading in the current WebView
+                // This is required for payment provider iframes like Adyen
+                WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
+                transport.setWebView(view);
+                resultMsg.sendToTarget();
+                return true;
+            }
+        });
         webView.addJavascriptInterface(new StashJavaScriptInterface(), "StashAndroid");
         webView.setVerticalScrollBarEnabled(false);
         webView.setHorizontalScrollBarEnabled(false);
