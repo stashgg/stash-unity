@@ -1499,3 +1499,52 @@ jobs:
             echo "❌ Failed to upload iOS Simulator build to Appetize (HTTP $HTTP_CODE)"
             exit 1
           fi
+  
+  # Upload builds to BrowserStack after Android and/or iOS builds complete
+  upload-to-browserstack:
+    name: Upload builds to BrowserStack
+    needs: [determine-platforms, build]
+    if: always() && (contains(needs.determine-platforms.outputs.platforms, 'Android') || contains(needs.determine-platforms.outputs.platforms, 'iOS'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Upload Android build to BrowserStack
+        if: contains(needs.determine-platforms.outputs.platforms, 'Android')
+        run: |
+          echo "Uploading Android build to BrowserStack..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" -u "${{ secrets.BROWSERSTACK_USERNAME }}:${{ secrets.BROWSERSTACK_ACCESS_KEY }}" \
+            -X POST "https://api-cloud.browserstack.com/app-live/upload" \
+            -F "data={\"url\": \"https://storage.googleapis.com/stash_sdk_demo/Android/latest/StashDemo.apk/Android.apk\"}")
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          
+          echo "Response status: $HTTP_CODE"
+          echo "Response body: $BODY"
+          
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            echo "✅ Android build uploaded successfully to BrowserStack"
+          else
+            echo "❌ Failed to upload Android build to BrowserStack (HTTP $HTTP_CODE)"
+            exit 1
+          fi
+      
+      - name: Upload iOS build to BrowserStack
+        if: contains(needs.determine-platforms.outputs.platforms, 'iOS')
+        run: |
+          echo "Uploading iOS build to BrowserStack..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" -u "${{ secrets.BROWSERSTACK_USERNAME }}:${{ secrets.BROWSERSTACK_ACCESS_KEY }}" \
+            -X POST "https://api-cloud.browserstack.com/app-live/upload" \
+            -F "data={\"url\": \"https://storage.googleapis.com/stash_sdk_demo/iOS/latest/StashDemo.ipa/StashDemo.ipa\"}")
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          
+          echo "Response status: $HTTP_CODE"
+          echo "Response body: $BODY"
+          
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            echo "✅ iOS build uploaded successfully to BrowserStack"
+          else
+            echo "❌ Failed to upload iOS build to BrowserStack (HTTP $HTTP_CODE)"
+            exit 1
+          fi
