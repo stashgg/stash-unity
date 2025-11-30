@@ -38,6 +38,10 @@ Sample scene demonstrating package usage:
 
 ### Opening a Checkout
 
+> **Important Note:**  
+> On iOS, if your app is attached to the debugger (especially wirelessly), the first call to open the Stash checkout card dialog might be very slow and this is expected. The slowdown comes from card web view launching separate processes (GPU, Networking, WebContent) that are heavily instrumented by Xcode, causing a significant delay. This only happens for the first call and does **not** impact production builds in any way.
+
+
 Use `OpenCheckout()` to display a Stash Pay checkout in a native card dialog:
 
 ```csharp
