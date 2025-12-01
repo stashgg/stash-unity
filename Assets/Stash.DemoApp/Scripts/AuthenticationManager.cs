@@ -7,6 +7,7 @@ using UnityEngine;
 using UnityEngine.Networking;
 using Stash.Webshop;
 using Stash.Models;
+using StashPopup;
 using System.Threading.Tasks;
 
 namespace Stash.Samples
@@ -292,6 +293,24 @@ namespace Stash.Samples
         {
             try
             {
+                // Check if this is a purchase success deeplink - dismiss SFSafariViewController if active
+                if (url.Contains("stash/purchaseSuccess") || url.Contains("stash://purchaseSuccess"))
+                {
+                    Debug.Log($"[Auth] Purchase success deeplink received: {url}");
+                    StashPayCard.Instance.DismissSafariViewController(success: true);
+                    // Purchase success handling can be added here if needed
+                    return;
+                }
+                
+                // Check if this is a purchase failure deeplink - dismiss SFSafariViewController if active
+                if (url.Contains("stash/purchaseFailure") || url.Contains("stash://purchaseFailure"))
+                {
+                    Debug.Log($"[Auth] Purchase failure deeplink received: {url}");
+                    StashPayCard.Instance.DismissSafariViewController(success: false);
+                    // Purchase failure handling can be added here if needed
+                    return;
+                }
+                
                 // Check if this is a Stash login callback
                 if (url.Contains("stash/login"))
                 {

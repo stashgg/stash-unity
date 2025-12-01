@@ -208,6 +208,9 @@ namespace StashPopup
 
         [DllImport("__Internal")]
         private static extern bool _StashPayCardGetForceSafariViewController();
+        
+        [DllImport("__Internal")]
+        private static extern void _StashPayCardDismissSafariViewController(bool success);
 #endif
 
         #endregion
@@ -424,6 +427,37 @@ namespace StashPopup
             androidPluginInstance?.Call("resetPresentationState");
 #elif UNITY_IOS && !UNITY_EDITOR
             _StashPayCardResetPresentationState();
+#endif
+        }
+
+        /// <summary>
+        /// Dismisses the currently open SFSafariViewController if one is presented and fires the appropriate callbacks.
+        /// 
+        /// This method is useful when handling deeplink callbacks from SFSafariViewController.
+        /// When a deeplink is received (e.g., via Application.deepLinkActivated), you can call
+        /// this method to programmatically dismiss the SFSafariViewController, fire the appropriate
+        /// success or failure callback, and return control to the Unity game.
+        /// 
+        /// Note: This method only has effect on iOS devices when ForceWebBasedCheckout is true
+        /// and an SFSafariViewController is currently presented. In the Unity Editor or on
+        /// other platforms, it has no effect.
+        /// 
+        /// Usage example:
+        /// <code>
+        /// Application.deepLinkActivated += (url) => {
+        ///     if (url.Contains("stash/purchaseSuccess")) {
+        ///         StashPayCard.Instance.DismissSafariViewController(success: true);
+        ///     } else if (url.Contains("stash/purchaseFailure")) {
+        ///         StashPayCard.Instance.DismissSafariViewController(success: false);
+        ///     }
+        /// };
+        /// </code>
+        /// </summary>
+        /// <param name="success">True to fire OnPaymentSuccess callback, false to fire OnPaymentFailure callback.</param>
+        public void DismissSafariViewController(bool success)
+        {
+#if UNITY_IOS && !UNITY_EDITOR
+            _StashPayCardDismissSafariViewController(success);
 #endif
         }
 

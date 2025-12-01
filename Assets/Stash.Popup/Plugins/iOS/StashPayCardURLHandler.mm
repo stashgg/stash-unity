@@ -69,6 +69,7 @@ static const CGFloat kDragTrayHeight = 44.0f;
 @property (nonatomic, assign) CGFloat initialY;
 @property (nonatomic, assign) BOOL isObservingKeyboard;
 @property (nonatomic, assign) BOOL isPurchaseProcessing;
+@property (nonatomic, strong) SFSafariViewController *currentSafariViewController;
 - (void)dismissButtonTapped:(UIButton *)button;
 - (void)dismissWithAnimation:(void (^)(void))completion;
 - (void)handleDragTrayPanGesture:(UIPanGestureRecognizer *)gesture;
@@ -785,6 +786,8 @@ static SafariViewDismissedCallback GetGlobalSafariViewDismissedCallback() {
 
 - (void)safariViewControllerDidFinish:(SFSafariViewController *)controller {
     if (_forceSafariViewController) {
+        // Clear the reference when dismissed
+        self.currentSafariViewController = nil;
         if (_safariViewDismissedCallback != NULL) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 // Explicitly capture self - this is intentional
@@ -2329,11 +2332,16 @@ extern "C" {
                 // Set delegate ONLY for basic dismissal callback - no other modifications
                 safariViewController.delegate = [StashPayCardSafariDelegate sharedInstance];
                 
+                // Store reference to SFSafariViewController for deeplink dismissal
+                [StashPayCardSafariDelegate sharedInstance].currentSafariViewController = safariViewController;
+                
                 // Present with completely default system behavior - no custom presentation styles
                 [topController presentViewController:safariViewController animated:YES completion:nil];
                 
                 // Set a simple callback for when the native Safari is dismissed
                 [StashPayCardSafariDelegate sharedInstance].safariViewDismissedCallback = ^{
+                    // Clear the reference when dismissed
+                    [StashPayCardSafariDelegate sharedInstance].currentSafariViewController = nil;
                     if (_safariViewDismissedCallback != NULL) {
                         _safariViewDismissedCallback();
                     }
@@ -2810,6 +2818,35 @@ extern "C" {
 
     bool _StashPayCardGetForceSafariViewController() {
         return _forceSafariViewController;
+    }
+
+    void _StashPayCardDismissSafariViewController(bool success) {
+        StashPayCardSafariDelegate *delegate = [StashPayCardSafariDelegate sharedInstance];
+        if (delegate.currentSafariViewController) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                // Fire the appropriate callback before dismissing
+                if (success) {
+                    if (_paymentSuccessCallback != NULL && !_paymentSuccessCallbackCalled) {
+                        _paymentSuccessCallbackCalled = YES;
+                        _paymentSuccessCallback();
+                    }
+                } else {
+                    if (_paymentFailureCallback != NULL) {
+                        _paymentFailureCallback();
+                    }
+                }
+                
+                // Dismiss the view controller
+                [delegate.currentSafariViewController dismissViewControllerAnimated:YES completion:^{
+                    delegate.currentSafariViewController = nil;
+                    
+                    // Fire dismiss callback after dismissal
+                    if (_safariViewDismissedCallback != NULL) {
+                        _safariViewDismissedCallback();
+                    }
+                }];
+            });
+        }
     }
 
     // Forward declaration

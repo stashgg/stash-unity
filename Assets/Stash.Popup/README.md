@@ -141,23 +141,47 @@ StashPayCard.Instance.OpenPopup(
 
 ### Forcing Web View Mode
 
-Stash Popup can also force Web View mode (SFSafariViewController on iOS, Chrome Custom Tabs on Android) instead of in-app WebView. You can either force this in code or later remotely via Stash Studio for specific segments.
+By default, Stash Popup presents checkout flows in an in-app card (native view) to maximize flexibility and callback support for your game logic. However, there are cases where you may want to show these flows in an external browser context—using SFSafariViewController on iOS or Chrome Custom Tabs on Android. You can force this Web View mode either directly in your code (see below), or remotely via Stash Studio targeting rules.
 
-Keep in mind that callbacks do not work for the web view mode, and users are instead redirected back to the game via deeplinks after a successful purchase. 
+**How Web View Mode Affects Callbacks:**  
+When you force Web View mode, the purchase happens in the browser environment. On Android, callbacks like OnSuccess/OnFailure are *not* triggered—users complete checkout and then are redirected back to your game with a deeplink.
+
+On iOS, however, you can still leverage all the usual callbacks (dismiss, success, failure) *if* you handle the incoming deeplinks and manually notify StashPayCard via `DismissSafariViewController(success: true/false)`. This allows you to propagate results all the way back to your original Unity callback handlers.
 
 ```csharp
 void OpenInBrowser(string url)
 {
-    // Enable browser mode
+    // Enable browser-based checkout for this operation.
     StashPayCard.Instance.ForceWebBasedCheckout = true;
-    
-    // Opens in Safari/Chrome instead of card
+
+    // This will open Safari/Chrome instead of the in-app card.
     StashPayCard.Instance.OpenCheckout(url, OnDismiss, OnSuccess, OnFailure);
-    
-    // Restore default mode
+
+    // (Optional) Restore default behavior if needed for future calls.
     StashPayCard.Instance.ForceWebBasedCheckout = false;
 }
 ```
+
+**Handling Deep Links & Callbacks (iOS Example):**
+
+On iOS, listen for deep link activations in your Unity code. When you detect one of the Stash-specific result URLs, call `DismissSafariViewController()` with the appropriate success value. StashPayCard will then trigger your original OnSuccess/OnFailure callback from the OpenCheckout call!
+
+```csharp
+void Awake()
+{
+    Application.deepLinkActivated += OnDeepLink;
+}
+
+void OnDeepLink(string url)
+{
+    if (url.Contains("stash/purchaseSuccess"))
+        StashPayCard.Instance.DismissSafariViewController(success: true);  // Triggers OnSuccess callback!
+    else if (url.Contains("stash/purchaseFailure"))
+        StashPayCard.Instance.DismissSafariViewController(success: false); // Triggers OnFailure callback!
+}
+```
+
+> **Tip:** This pattern enables you to safely use all StashPayCard event callbacks on iOS in Web View mode, as long as you handle deep link routing and invoke `DismissSafariViewController` accordingly. On Android, only the deeplink will fire; you must handle navigation manually after the redirect.
 
 ## Unity Editor Testing 
 
