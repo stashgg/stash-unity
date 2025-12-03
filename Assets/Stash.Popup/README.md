@@ -40,7 +40,7 @@ Sample scene demonstrating package usage, use as a reference implementation:
 ## Best Practices
 
 - Implement both in-app dialog and in-app browser checkout flows with Stash.Popup to ensure a reliable fallback if one flow is unavailable.
-- Set up deep link handling for Stash Pay even for in-app dialog, as some payment methods may require returning to your app from external browser flows.
+- Set up deep link handling for Stash Pay even when using in-app dialogs, as some payment methods may require returning to your app from external browser flows.
 - Maintain Stash.Popup in its own folder for easy updates. The package is actively developed and may receive frequent patches.
 
 ## Basic Usage
@@ -99,7 +99,7 @@ public class MyStore : MonoBehaviour
 ```
 
 > **iOS Development Note:**  
-> The first Stash checkout call may be slow when running under the Xcode debugger (especially if connected wirelessly), due to `WKWebView` processes being heavilly instrumented by Xcode. This delay only affects debug sessions on the first call, not production builds.
+> The first Stash checkout call may be slow when running under the Xcode debugger (especially if connected wirelessly), due to `WKWebView` processes being heavily instrumented by Xcode. This delay only affects debug sessions on the first call, not production builds.
 
 
 
@@ -115,12 +115,13 @@ void OpenInBrowserMode(string url)
     // Enable browser-based checkout for this operation.
     StashPayCard.Instance.ForceWebBasedCheckout = true;
 
-    // This will open isolated browser window instead of the in-app card.
-    StashPayCard.Instance.OpenCheckout(url, OnDismiss, OnSuccess, OnFailure);
+    // This will open in-app browser window instead of the in-app card.
+    // In browser mode only dismiss callback is available. Use deeplinks for success/failure callbacks.
+    StashPayCard.Instance.OpenCheckout(url, OnDismiss);
 }
 ```
 
-In browser mode, Stash Pay can't trigger Unity Success/Failure callbacks directly like the in-app dialog. Instead, the purchase result is sent back via deeplinks. Always implement deeplink handling alongside native callbacks to cover all use-cases. See section below for details.
+In browser mode, Stash Pay can't trigger Unity Success/Failure callbacks directly like the in-app dialog can. Instead, the purchase result is sent back via deeplinks. Always implement deeplink handling alongside native callbacks to cover all use-cases. See section below for details.
 
 > **Android Note:** Some Unity projects *may* require the `androidx.browser` dependency to use Chrome Custom Tabs. See [Troubleshooting](#android-browser-fallback-behavior-inconsistency) section for setup instructions.
 
@@ -138,9 +139,9 @@ Stash uses the following deeplink format for successful and failed purchases:
 
 **Handling deeplinks:**  
 
-Configure your Unity project to handle deeplinks using the standard approach. If you dont use deep linking in your game already, see the official [Unity Deep Linking documentation](https://docs.unity3d.com/6000.2/Documentation/Manual/deep-linking.html).
+Configure your Unity project to handle deeplinks using the standard approach. If you don't use deep linking in your game already, see the official [Unity Deep Linking documentation](https://docs.unity3d.com/6000.2/Documentation/Manual/deep-linking.html).
 
-On iOS you must call `StashPayCard.Instance.DismissSafariViewController()` after the deeplink is recieved. This will dismiss the **SFSafariViewController** seamlessly, and user is returned back to the game, and you can handle the purchase outcome. On Android there is no need to manually dismiss the Chrome Custom Tabs and user is automatically returned to the game.
+On iOS you must call `StashPayCard.Instance.DismissSafariViewController()` after the deeplink is received. This will dismiss the **SFSafariViewController** seamlessly, the user is returned to the game, and you can handle the purchase outcome. On Android there is no need to manually dismiss Chrome Custom Tabs as the user is automatically returned to the game.
 
 ```csharp
 void Awake()
@@ -151,11 +152,15 @@ void Awake()
 void OnDeepLink(string url)
 {
     if (url.Contains("stash/purchaseSuccess"))
+    {
         StashPayCard.Instance.DismissSafariViewController(success: true); //iOS only
         //Handle purchase success.
+    }
     else if (url.Contains("stash/purchaseFailure"))
+    {
         StashPayCard.Instance.DismissSafariViewController(success: false); //iOS only
         //Handle purchase failure.
+    }
 }
 ```
 
@@ -171,7 +176,7 @@ void OnDeepLink(string url)
 
 Stash.Popup package includes a Unity editor extension that allows you to test Stash Pay checkout dialogs directly in the Unity Editor without building to a device.
 
-When you call `OpenCheckout()` in the Editor, the extension automatically intercepts these calls and displays the flow in a "emualtor" window within Unity editor. This enables you to interact with the Stash Pay UI, complete purchases, and verify callback events. You can finish both test and production purchases.
+When you call `OpenCheckout()` in the Editor, the extension automatically intercepts these calls and displays the flow in an "emulator" window within Unity editor. This enables you to interact with the Stash Pay UI, complete purchases, and verify callback events. You can finish both test and production purchases.
 
 > **Note:** Currently **Windows** and **macOS** versions of Unity are supported for editor simulator. Linux versions of editor are not supported.
 
@@ -184,7 +189,7 @@ Stash also provides a customizable opt-in popup that allows users to choose betw
 
 > Note: Opt-in dialog requires unique URL you can obtain from Stash Studio.
 
-Use `OpenPopup()` for dynamic payment channel selection opt-in dialogs controlled by Stash. Handle the `OnOptinResponse` event that return the player's preffered selection:
+Use `OpenPopup()` for dynamic payment channel selection opt-in dialogs controlled by Stash. Handle the `OnOptinResponse` event that returns the player's preferred selection:
 
 ```csharp
 void ShowPaymentChannelSelection()
@@ -248,7 +253,7 @@ Clean and rebuild Xcode project.
 
 Ensure internet permission in your AndroidManifest.xml.
 
-### [Android] Full browser used instead of Chrome Custom Tabs
+### [Android] System browser used instead of in-app Chrome Custom Tabs
 
 When using browser mode, some Unity projects launch Chrome Custom Tabs while others fall back to a system browser window. (This may be due to differences in Android dependencies between Unity versions.) While both flows are valid, Chrome Custom Tabs generally provide a superior experience. If you notice your app is not using Chrome Custom Tabs, you can resolve this by including the [AndroidX Browser library (`androidx.browser:browser`)](https://developer.android.com/jetpack/androidx/releases/browser), which supports [Android Custom Tabs](https://developer.android.com/develop/ui/views/layout/webapps/overview-of-android-custom-tabs).
 
@@ -305,6 +310,28 @@ Dismisses current dialog and resets state.
 - `landscapeHeightMultiplier` (float) - Height multiplier for landscape orientation
 
 **Note:** Each platform (iOS and Android) has its own default sizing. When `customSize` is not provided, the platform-specific defaults are used.
+
+## Device Testing & Issues
+
+Every Stash.Popup release is live tested using the [BrowserStack App Live](https://www.browserstack.com/list-of-browsers-and-platforms/app_live) device cloud. The following iOS and Android devices are included in the test suite (subject to platform availability):
+
+
+| Platform   | Devices (Sample Coverage)                                                                                                                                                                           | OS Versions                 |
+|------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------|
+| **iOS**    | iPhone 15 Pro, iPhone 15, iPhone 14 Pro Max, iPhone 14, iPhone 13, iPhone 12 Pro, iPhone 12, iPhone 11, iPhone XR, iPhone SE (3rd Gen), iPad Pro 12.9, iPad Air 5, iPad Mini 6, iPad 10th Gen      | iOS / iPadOS 26, 18, 17 |
+| **Android**| Google Pixel 8, Pixel 7 Pro, Pixel 7, Pixel 6a, Samsung Galaxy S24 Ultra, S24+, S23 Ultra, S23, S22+, S22, S21 FE, S21, S20, OnePlus 10 Pro, 9 Pro, Xiaomi Redmi Note 11, 12, Samsung Galaxy Tab S8 | Android 16, 15, 14, 13, 12, 11 |
+
+> **Note:** Device availability on BrowserStack may change. Additional models and OS versions are added for regression coverage and as new releases become available.
+
+Manual and automated test flows validate:
+- In-app card dialog and in-app browser (SFSafariViewController, Chrome Custom Tabs)
+- Checkout result callback triggers
+- Deep link handling for at least one major Android and iOS version per release
+
+For the complete up-to-date device list, see [BrowserStack App Live devices](https://www.browserstack.com/list-of-browsers-and-platforms/app_live).  
+If you encounter any device-specific issues, please [file a bug report on GitHub](https://github.com/stashgg/stash-unity/issues).
+
+
 
 ## Support
 
