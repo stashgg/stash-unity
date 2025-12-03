@@ -24,7 +24,7 @@ namespace Stash.Samples
 
         #region Default Values
         public const string DEFAULT_ORIENTATION_MODE = "Portrait";
-        public const string DEFAULT_PAYMENT_METHOD = "NATIVE_IAP";
+        public const string DEFAULT_PAYMENT_METHOD = "STASH_PAY";
         public const string DEFAULT_CURRENCY = "USD";
         public const string DEFAULT_SHOP_HANDLE = "demo-shop";
         #endregion
