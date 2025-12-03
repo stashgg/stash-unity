@@ -15,8 +15,14 @@ All components are optional. Mix and match based on your needs.
 |-----------|---------|-------------|
 | **[Stash.Popup](Assets/Stash.Popup/README.md)** | Stash Pay | In-game popup for Stash Pay checkout on iOS and Android. Includes Sample scene. |
 | **Stash.Webshop** | Stash Webshop | Stash Webshop player account linking. |
-| **Stash.DemoApp** | x | Stash Demo app and playground for testing. **(Don't use or import.)** |
+| **Stash.DemoApp** | x | Stash Demo app and playground for testing. **(Don't import)** |
 
+## Sample
+
+You can try **Stash.DemoApp** directly in online hosted emulators:
+
+- **iOS:** [Open in Appetize.io](https://appetize.io/app/b_eyszozcrmyt2zifoh5bjyiifha)
+- **Android:** [Open in Appetize.io](https://appetize.io/app/b_e7zfxgltohxm2rd5aw4zplzmwq?device=pixel7&osVersion=13.0&toolbar=true)
 
 ## Installation
 
