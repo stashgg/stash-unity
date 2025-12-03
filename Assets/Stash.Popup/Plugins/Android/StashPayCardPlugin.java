@@ -144,6 +144,7 @@ public class StashPayCardPlugin {
     }
     
     public void openPopup(String url) {
+        // Popup always uses in-app dialog, ignoring forceSafariViewController flag
         usePopupPresentation = true;
         useCustomSize = false;
         openURLInternal(url);
@@ -151,6 +152,7 @@ public class StashPayCardPlugin {
     
     public void openPopupWithSize(String url, float portraitWidthMultiplier, float portraitHeightMultiplier, 
                                    float landscapeWidthMultiplier, float landscapeHeightMultiplier) {
+        // Popup always uses in-app dialog, ignoring forceSafariViewController flag
         usePopupPresentation = true;
         customPortraitWidthMultiplier = portraitWidthMultiplier;
         customPortraitHeightMultiplier = portraitHeightMultiplier;
@@ -217,11 +219,14 @@ public class StashPayCardPlugin {
         final String finalUrl = url;
 
         activity.runOnUiThread(() -> {
-            if (forceSafariViewController) {
-                openWithChromeCustomTabs(finalUrl, activity);
-            } else if (usePopupPresentation) {
+            // Popup presentation always uses in-app dialog (ignores forceSafariViewController)
+            if (usePopupPresentation) {
                 createAndShowPopupDialog(finalUrl, activity);
+            } else if (forceSafariViewController) {
+                // Force web view mode for checkout
+                openWithChromeCustomTabs(finalUrl, activity);
             } else {
+                // Default: in-app card presentation
                 launchPortraitActivity(finalUrl, activity);
             }
         });
