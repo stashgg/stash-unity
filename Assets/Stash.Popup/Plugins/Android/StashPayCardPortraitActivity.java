@@ -618,11 +618,12 @@ public class StashPayCardPortraitActivity extends Activity {
         String lower = url.toLowerCase();
         if (lower.contains("pay.google.com")) {
             googlePayRedirectHandled = true;
-            openInSystemBrowser(initialURL);
+            // Try Chrome Custom Tabs first, fall back to system browser if not available
+            openGooglePayInBrowser(initialURL);
         }
     }
     
-    private void openInSystemBrowser(String url) {
+    private void openGooglePayInBrowser(String url) {
         try {
             // Add dpm=gpay query parameter
             String urlWithParam = url;
@@ -636,7 +637,68 @@ public class StashPayCardPortraitActivity extends Activity {
                 }
             }
             
-            Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(urlWithParam));
+            // Use the same Chrome Custom Tabs method as web-based checkout
+            openWithChromeCustomTabs(urlWithParam, this);
+            // Dismiss the card after opening browser/Custom Tabs
+            dismissWithAnimation();
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to open Google Pay URL: " + e.getMessage());
+        }
+    }
+    
+    private void openWithChromeCustomTabs(String url, Activity activity) {
+        try {
+            if (isChromeCustomTabsAvailable()) {
+                Log.d(TAG, "Opening Google Pay URL with Chrome Custom Tabs");
+                openWithReflectionChromeCustomTabs(url, activity);
+            } else {
+                Log.w(TAG, "Chrome Custom Tabs not available (androidx.browser library missing). Falling back to default browser.");
+                openInSystemBrowser(url);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to open browser: " + e.getMessage());
+            // Fallback to default browser on any error
+            try {
+                openInSystemBrowser(url);
+            } catch (Exception fallbackException) {
+                Log.e(TAG, "Failed to open default browser: " + fallbackException.getMessage());
+            }
+        }
+    }
+    
+    private boolean isChromeCustomTabsAvailable() {
+        try {
+            Class.forName("androidx.browser.customtabs.CustomTabsIntent");
+            return true;
+        } catch (ClassNotFoundException e) {
+            // AndroidX Browser library is not included in the project
+            // This is expected if the game doesn't include androidx.browser:browser dependency
+            return false;
+        }
+    }
+    
+    private void openWithReflectionChromeCustomTabs(String url, Activity activity) throws Exception {
+        Class<?> customTabsIntentClass = Class.forName("androidx.browser.customtabs.CustomTabsIntent");
+        Class<?> builderClass = Class.forName("androidx.browser.customtabs.CustomTabsIntent$Builder");
+
+        Object builder = builderClass.newInstance();
+        java.lang.reflect.Method setToolbarColor = builderClass.getMethod("setToolbarColor", int.class);
+        setToolbarColor.invoke(builder, Color.parseColor("#000000"));
+
+        java.lang.reflect.Method setShowTitle = builderClass.getMethod("setShowTitle", boolean.class);
+        setShowTitle.invoke(builder, true);
+
+        java.lang.reflect.Method build = builderClass.getMethod("build");
+        Object customTabsIntent = build.invoke(builder);
+
+        java.lang.reflect.Method launchUrl = customTabsIntentClass.getMethod("launchUrl", 
+            android.content.Context.class, Uri.class);
+        launchUrl.invoke(customTabsIntent, activity, Uri.parse(url));
+    }
+    
+    private void openInSystemBrowser(String url) {
+        try {
+            Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
             browserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(browserIntent);
             // Dismiss the card after opening browser
