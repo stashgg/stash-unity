@@ -510,12 +510,20 @@ public class StashPayCardPlugin {
     private void openWithChromeCustomTabs(String url, Activity activity) {
         try {
             if (isChromeCustomTabsAvailable()) {
+                Log.d(TAG, "Opening URL with Chrome Custom Tabs");
                 openWithReflectionChromeCustomTabs(url, activity);
             } else {
+                Log.w(TAG, "Chrome Custom Tabs not available (androidx.browser library missing). Falling back to default browser.");
                 openWithDefaultBrowser(url, activity);
             }
         } catch (Exception e) {
             Log.e(TAG, "Failed to open browser: " + e.getMessage());
+            // Fallback to default browser on any error
+            try {
+                openWithDefaultBrowser(url, activity);
+            } catch (Exception fallbackException) {
+                Log.e(TAG, "Failed to open default browser: " + fallbackException.getMessage());
+            }
         }
     }
     
@@ -524,6 +532,8 @@ public class StashPayCardPlugin {
             Class.forName("androidx.browser.customtabs.CustomTabsIntent");
             return true;
         } catch (ClassNotFoundException e) {
+            // AndroidX Browser library is not included in the project
+            // This is expected if the game doesn't include androidx.browser:browser dependency
             return false;
         }
     }
