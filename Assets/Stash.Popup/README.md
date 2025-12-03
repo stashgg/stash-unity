@@ -7,6 +7,8 @@
 Unity plugin for integrating Stash Pay checkout flows using native WebViews on iOS and Android.
 The plugin also provides SFSafariViewController and Chrome Custom Tabs mode as a fallback or alternative flow.
 
+> **Note:** The Stash.Popup package is optional and enhances the user experience by providing in-app checkout dialogs. Stash Pay can always be integrated by opening the checkout URL in the user's default browser if you prefer not to use the in-app popup or custom in-app browser controller.
+
 ## Requirements
 
 - Unity 2019.4+
@@ -16,7 +18,7 @@ The plugin also provides SFSafariViewController and Chrome Custom Tabs mode as a
 
 Import the `Stash.Popup` folder into your Unity project's Assets directory.
 
-## Folder Contents
+## Folder Structure
 
 ### ./Editor
 Dependency post-processing scripts and editor purchase simulator tool:
@@ -37,18 +39,24 @@ Sample scene demonstrating package usage, use as a reference implementation:
 
 ## Best Practices
 
-- Implement both in-app and browser-based checkout flows with Stash.Popup to ensure a reliable fallback if one flow is unavailable.
-- Set up deep link handling for Stash Pay, as some payment methods require returning to your app from external flows.
+- Implement both in-app dialog and in-app browser checkout flows with Stash.Popup to ensure a reliable fallback if one flow is unavailable.
+- Set up deep link handling for Stash Pay even for in-app dialog, as some payment methods may require returning to your app from external browser flows.
 - Maintain Stash.Popup in its own folder for easy updates. The package is actively developed and may receive frequent patches.
 
 ## Basic Usage
 
-### Opening a In-app checkout
+Before using Stash.Popup, make sure your game server is set up to create Stash Pay checkout URLs using the Stash API. If you haven't already set up checkout URL generation, see our [integration guide](https://docs.stash.gg/guides/stash-pay/integration) for instructions.
 
-> **iOS Development Note:**  
-> The first Stash checkout call may be slow when running under the Xcode debugger, due to web view processes being instrumented by Xcode. This delay only affects debug sessions, not production builds.
+Stash.Popup supports two presentation modes: **in-app card dialog** and **in-app browser**. To see how each presentation mode looks, refer to our documentation:
 
-Use `OpenCheckout()` to display a Stash Pay checkout in a native card dialog:
+- [Presentation Options for iOS](https://docs.stash.gg/guides/stash-pay/ios-android-integration/presentation-options-ios)
+- [Presentation Options for Android](https://docs.stash.gg/guides/stash-pay/ios-android-integration/presentation-options-android)
+
+We recommend implementing both so you can switch between these modes as you need.
+
+### Using In-app card dialog
+
+Use `OpenCheckout()` to display a Stash Pay URL in a native card dialog inside your game:
 
 ```csharp
 using StashPopup;
@@ -58,6 +66,7 @@ public class MyStore : MonoBehaviour
     void PurchaseItem(string checkoutUrl)
     {
         // checkoutUrl is a Stash Pay URL generated on your game backend.
+        // OpenCheckout offers three different callbacks.
         StashPayCard.Instance.OpenCheckout(
             checkoutUrl,
             dismissCallback: OnCheckoutDismissed,
@@ -68,34 +77,37 @@ public class MyStore : MonoBehaviour
     
     void OnCheckoutDismissed()
     {
-        // User closed the dialog
+        // User closed the dialog without finishing the purchase flow.
+        // This also fires if browser mode is enabled and user closed the browser and returned to the game.
         VerifyPurchaseStatus();
     }
     
     void OnPaymentSuccess()
     {
-        // Payment completed - verify on backend before granting items
-        VerifyAndGrantPurchase();
+        // Payment completed inside in-app dialog - verify on backend before granting items.
+        // Note: This callback is only available for in-app dialog, does not fire in the browser mode.
+        VerifyPurchaseStatus();
     }
     
     void OnPaymentFailure()
     {
-        // Payment failed - show error to user
+        // Payment failed inside in-app dialog - show error to user.
+        // Note: This callback is only available for in-app dialog, does not fire in the browser mode.
         ShowErrorMessage("Payment could not be processed");
     }
 }
 ```
 
->**Note:** Use the callbacks to update your game client and handle changes in purchase status. However, make sure to verify every purchase on your backend server before granting any items.
+> **iOS Development Note:**  
+> The first Stash checkout call may be slow when running under the Xcode debugger (especially if connected wirelessly), due to `WKWebView` processes being heavilly instrumented by Xcode. This delay only affects debug sessions on the first call, not production builds.
 
 
-## Browser Checkout Mode
 
-By default, Stash Popup shows the checkout flow inside your game as a native in-app card. If you prefer to direct users to a isolated browser window using SFSafariViewController on iOS or Chrome Custom Tabs on Android you can enable browser mode for checkout. 
+### Using In-app browser
 
-Implementing browser mode together with in-app card is also strongly recommended, either as an explicit user option or as a fallback when the in-app card isn’t suitable.
+If you prefer to direct users to an isolated in-app browser window instead, you can enable browser mode for the `OpenCheckout()` method. This will use [SFSafariViewController](https://developer.apple.com/documentation/safariservices/sfsafariviewcontroller) on iOS or [Chrome Custom Tabs](https://developer.android.com/develop/ui/views/layout/webapps/overview-of-android-custom-tabs) on Android.
 
-> **Android Note:** Some Unity projects may require the `androidx.browser` dependency to use Chrome Custom Tabs. See [Troubleshooting](#android-browser-fallback-behavior-inconsistency) for setup instructions.
+Even if you primarily use the in-app card mode, we strongly recommend supporting in-app browser mode as well either as a user-selectable option or as an automatic fallback if the dialog encounters unhandled errors.
 
 ```csharp
 void OpenInBrowserMode(string url)
@@ -108,27 +120,27 @@ void OpenInBrowserMode(string url)
 }
 ```
 
-When you enable browser mode, the purchase flow occurs in the isolated browser process so Stash Pay can't call your Unity callbacks directly. Instead, Stash Pay returns the purchase result using deeplinks, which your game can optionally listen for to determine the outcome.
+In browser mode, Stash Pay can't trigger Unity Success/Failure callbacks directly like the in-app dialog. Instead, the purchase result is sent back via deeplinks. Always implement deeplink handling alongside native callbacks to cover all use-cases. See section below for details.
+
+> **Android Note:** Some Unity projects *may* require the `androidx.browser` dependency to use Chrome Custom Tabs. See [Troubleshooting](#android-browser-fallback-behavior-inconsistency) section for setup instructions.
 
 ## Deeplinks
 
-Stash Pay uses the following deeplinks during browser-based checkout, as well as in situations where an external browser flow is required (For example 3DS verifications, Google Pay etc.). Regardless of whether you use browser mode, it is highly recommended to implement deeplink handling in your game to ensure reliable purchase result reception.
+Stash Pay uses deeplinks to return users to your game after in-app browser checkout or some external flows (e.g., 3DS, PayPal). Try to handle deeplinks in your game, as they are required for browser mode and sometimes needed for in-app dialogs as well.
 
 **Deeplink Structure:**  
-Stash uses the following deeplink format for both iOS and Android:
-- `<your-scheme>://stash/purchaseSuccess` - Purchase completed successfully
-- `<your-scheme>://stash/purchaseFailure` - Purchase failed or was cancelled
+Stash uses the following deeplink format for successful and failed purchases:
+- `<your-app-scheme>://stash/purchaseSuccess` - Purchase completed successfully.
+- `<your-app-scheme>://stash/purchaseFailure` - Purchase failed.
 
-> **Note:** You can set your deeplink scheme in Stash Studio.
+> **Note:** You can set your app unique deeplink scheme in Stash Studio.
 
-**Handling Deeplinks:**  
-On Android, OpenCheckout() callbacks like OnSuccess/OnFailure are *not* triggered when using browser checkout, users complete checkout and then are redirected back to your game with a deeplink. It is up to you to handle the rest of the purchase logic after the deeplink is received.
 
-On iOS, however, you can still leverage all the usual callbacks (dismiss, success, failure) *if* you handle the incoming deeplinks and manually notify StashPayCard via `DismissSafariViewController(success: true/false)`. This allows you to propagate results all the way back to your original Unity callback handlers.
+**Handling deeplinks:**  
 
-**Handling deep links on iOS:**
+Configure your Unity project to handle deeplinks using the standard approach. If you dont use deep linking in your game already, see the official [Unity Deep Linking documentation](https://docs.unity3d.com/6000.2/Documentation/Manual/deep-linking.html).
 
-On iOS, listen for deep link activations in your Unity code. When you detect one of the Stash-specific result URLs, call `DismissSafariViewController()` with the appropriate success value. StashPayCard will then trigger your original OnSuccess/OnFailure callback from the OpenCheckout call.
+On iOS you must call `StashPayCard.Instance.DismissSafariViewController()` after the deeplink is recieved. This will dismiss the **SFSafariViewController** seamlessly, and user is returned back to the game, and you can handle the purchase outcome. On Android there is no need to manually dismiss the Chrome Custom Tabs and user is automatically returned to the game.
 
 ```csharp
 void Awake()
@@ -139,13 +151,14 @@ void Awake()
 void OnDeepLink(string url)
 {
     if (url.Contains("stash/purchaseSuccess"))
-        StashPayCard.Instance.DismissSafariViewController(success: true);  // Triggers OnSuccess callback!
+        StashPayCard.Instance.DismissSafariViewController(success: true); //iOS only
+        //Handle purchase success.
     else if (url.Contains("stash/purchaseFailure"))
-        StashPayCard.Instance.DismissSafariViewController(success: false); // Triggers OnFailure callback!
+        StashPayCard.Instance.DismissSafariViewController(success: false); //iOS only
+        //Handle purchase failure.
 }
 ```
 
-You may also use `DismissSafariViewController()` without passing a success parameter to simply close the view controller. In this case, only the dismiss callback is triggered—no success or failure events will be called, giving you full control over how to handle the purchase result in web view mode.
 
 ## Unity Editor Simulator 
 
@@ -156,21 +169,22 @@ You may also use `DismissSafariViewController()` without passing a success param
 </br>
 </br>
 
-Stash.Popup plugin includes a Unity editor extension that allows you to test StashPayCard popups and checkout dialogs directly in the Unity Editor without building to a device.
+Stash.Popup package includes a Unity editor extension that allows you to test Stash Pay checkout dialogs directly in the Unity Editor without building to a device.
 
-When you call `OpenCheckout()` in the Editor, the extension automatically intercepts these calls and displays the flow in a window within Unity editor. This enables you to interact with the Stash Pay UI, complete purchases, and verify callback events without leaving the Editor.
+When you call `OpenCheckout()` in the Editor, the extension automatically intercepts these calls and displays the flow in a "emualtor" window within Unity editor. This enables you to interact with the Stash Pay UI, complete purchases, and verify callback events. You can finish both test and production purchases.
 
-> **Note:** Currently **Windows** and **macOS** versions of Unity are supported for editor simulator. Linux versions will come soon.
-
+> **Note:** Currently **Windows** and **macOS** versions of Unity are supported for editor simulator. Linux versions of editor are not supported.
 
 
 ## Optional Flows
 
-### Opening an Opt-in Popup
+### Opt-in Popup
+
+Stash also provides a customizable opt-in popup that allows users to choose between Native IAP and Stash Pay. This dialog is hosted remotely and can be tailored in Stash Studio, even down to specific players, devices, or player cohorts. Stash handles the visuals and presentation logic, you simply prompt it when needed.
 
 > Note: Opt-in dialog requires unique URL you can obtain from Stash Studio.
 
-Use `OpenPopup()` for dynamic payment channel selection opt-in dialogs controlled by Stash. Always handle the `OnOptinResponse` event:
+Use `OpenPopup()` for dynamic payment channel selection opt-in dialogs controlled by Stash. Handle the `OnOptinResponse` event that return the player's preffered selection:
 
 ```csharp
 void ShowPaymentChannelSelection()
@@ -189,20 +203,19 @@ void ShowPaymentChannelSelection()
 
 void OnChannelSelected(string channel)
 {
-    // Receives "native_iap" or "stash_pay" enum.
+    // Receives "NATIVE_IAP" or "STASH_PAY" enum.
     string paymentMethod = channel.ToUpper();
     
     // Save user preference and use it to control the payment channel.
     PlayerPrefs.SetString("PaymentMethod", paymentMethod);
-    PlayerPrefs.Save();
     
     Debug.Log($"User selected: {paymentMethod}");
 }
 ```
 
-### Configuring Opt-in Popup Size
+### Opt-in Popup Size
 
-By default, `OpenPopup()` sizes itself to fit the device screen constraints. While not recommended for most cases, if you want to override this behavior, you can provide a custom size using the `PopupSizeConfig` class:
+By default, `OpenPopup()` sizes itself automatically to fit the device screen. While not recommended for most cases, if you want to override this behavior, you can provide a custom size using the `PopupSizeConfig` class:
 
 ```csharp
 var customSize = new PopupSizeConfig
@@ -258,9 +271,7 @@ dependencies {
 **DEPS**}
 ```
 
-3. **Rebuild your Android project** - the dependency will now be included automatically.
-
-> **Note:** Stash Popup will automatically detect if Chrome Custom Tabs is available and fall back gracefully to the default browser if not.
+> **Note:** Stash Popup will automatically detect if Chrome Custom Tabs is available in the Android bundle and fall back gracefully to the default browser if not.
 
 
 ## API Reference
@@ -287,7 +298,7 @@ Dismisses current dialog and resets state.
 
 ### Types
 
-**`PopupSizeConfig`** (struct)
+**`PopupSizeConfig`** (struct) - Only for opt-in popups.
 - `portraitWidthMultiplier` (float) - Width multiplier for portrait orientation
 - `portraitHeightMultiplier` (float) - Height multiplier for portrait orientation
 - `landscapeWidthMultiplier` (float) - Width multiplier for landscape orientation
