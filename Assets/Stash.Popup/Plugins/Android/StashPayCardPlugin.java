@@ -433,38 +433,89 @@ public class StashPayCardPlugin {
             @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
                 super.onPageStarted(view, url, favicon);
-                pageLoadStartTime = System.currentTimeMillis();
-                showLoadingIndicator(activity);
-                injectStashSDKFunctions();
+                try {
+                    pageLoadStartTime = System.currentTimeMillis();
+                    showLoadingIndicator(activity);
+                    injectStashSDKFunctions();
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in onPageStarted: " + e.getMessage(), e);
+                    handleWebViewException("onPageStarted", e);
+                }
             }
             
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
-                
-                if (pageLoadStartTime > 0) {
-                    long loadTimeMs = System.currentTimeMillis() - pageLoadStartTime;
-                    StashUnityBridge.sendPageLoaded(loadTimeMs);
-                    pageLoadStartTime = 0;
+                try {
+                    if (pageLoadStartTime > 0) {
+                        long loadTimeMs = System.currentTimeMillis() - pageLoadStartTime;
+                        StashUnityBridge.sendPageLoaded(loadTimeMs);
+                        pageLoadStartTime = 0;
+                    }
+                    
+                    injectStashSDKFunctions();
+                    view.postDelayed(() -> {
+                        hideLoadingIndicator(activity);
+                        view.setVisibility(View.VISIBLE);
+                    }, 300);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in onPageFinished: " + e.getMessage(), e);
+                    handleWebViewException("onPageFinished", e);
                 }
-                
-                injectStashSDKFunctions();
-                view.postDelayed(() -> {
-                    hideLoadingIndicator(activity);
-                    view.setVisibility(View.VISIBLE);
-                }, 300);
             }
             
             @Override
             public void onReceivedError(WebView view, android.webkit.WebResourceRequest request, 
                                         android.webkit.WebResourceError error) {
                 super.onReceivedError(view, request, error);
-                // Log only if strictly necessary for debugging production issues
-                Log.e(TAG, "WebView error: " + error.getDescription());
+                try {
+                    String errorDescription = error != null ? error.getDescription().toString() : "Unknown error";
+                    Log.e(TAG, "WebView error: " + errorDescription);
+                    handleWebViewException("onReceivedError", new Exception("WebView resource error: " + errorDescription));
+                } catch (Exception e) {
+                    Log.e(TAG, "Error handling WebView error: " + e.getMessage(), e);
+                }
+            }
+            
+            // Handle renderer process crashes (API 26+)
+            @Override
+            public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
+                try {
+                    String errorMessage = "WebView renderer process crashed";
+                    if (detail != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        if (detail.didCrash()) {
+                            errorMessage = "WebView renderer process crashed (didCrash=true)";
+                        } else {
+                            errorMessage = "WebView renderer process terminated (didCrash=false)";
+                        }
+                    }
+                    Log.e(TAG, errorMessage);
+                    handleWebViewException("onRenderProcessGone", new Exception(errorMessage));
+                    // Return true to indicate we handled the crash
+                    return true;
+                } catch (Exception e) {
+                    Log.e(TAG, "Error handling renderer crash: " + e.getMessage(), e);
+                    return true; // Always return true to prevent app crash
+                }
             }
         });
         
-        webView.setWebChromeClient(new WebChromeClient());
+        webView.setWebChromeClient(new WebChromeClient() {
+            // Handle WebView crashes (API 26+)
+            @Override
+            public boolean onCrash(WebView view) {
+                try {
+                    String errorMessage = "WebView crashed";
+                    Log.e(TAG, errorMessage);
+                    handleWebViewException("onCrash", new Exception(errorMessage));
+                    // Return true to indicate we handled the crash
+                    return true;
+                } catch (Exception e) {
+                    Log.e(TAG, "Error handling WebView crash: " + e.getMessage(), e);
+                    return true; // Always return true to prevent app crash
+                }
+            }
+        });
         webView.addJavascriptInterface(new StashJavaScriptInterface(), "StashAndroid");
         webView.setVerticalScrollBarEnabled(false);
         webView.setHorizontalScrollBarEnabled(false);
@@ -581,6 +632,37 @@ public class StashPayCardPlugin {
     private void dismissCurrentDialog() {
         if (currentDialog != null) {
             dismissPopupDialog();
+        }
+    }
+    
+    private void handleWebViewException(String operation, Exception exception) {
+        try {
+            String errorMessage = exception != null ? exception.getMessage() : "Unknown WebView error";
+            if (exception != null && exception.getCause() != null) {
+                errorMessage += " (Cause: " + exception.getCause().getMessage() + ")";
+            }
+            Log.e(TAG, "WebView exception in " + operation + ": " + errorMessage, exception);
+            
+            // Report to Unity
+            StashUnityBridge.sendNativeException(operation, errorMessage);
+            
+            // Close the dialog gracefully
+            new Handler(Looper.getMainLooper()).post(() -> {
+                try {
+                    dismissCurrentDialog();
+                } catch (Exception e) {
+                    Log.e(TAG, "Error dismissing dialog after exception: " + e.getMessage(), e);
+                    cleanupAllViews();
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Error in handleWebViewException: " + e.getMessage(), e);
+            // Last resort: force cleanup
+            try {
+                cleanupAllViews();
+            } catch (Exception cleanupException) {
+                Log.e(TAG, "Critical: Failed to cleanup after exception: " + cleanupException.getMessage(), cleanupException);
+            }
         }
     }
     

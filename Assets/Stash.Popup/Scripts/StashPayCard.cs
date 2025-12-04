@@ -172,6 +172,27 @@ namespace StashPopup
                 OnPageLoaded?.Invoke(loadTime);
             }
         }
+        
+        /// <summary>
+        /// Android native callback invoked when a native exception occurs (e.g., WebView crash).
+        /// This method is called by the native Android plugin and triggers the OnNativeException event.
+        /// </summary>
+        /// <param name="message">Formatted message containing operation and error: "operation|errorMessage"</param>
+        public void OnAndroidNativeException(string message)
+        {
+            if (string.IsNullOrEmpty(message))
+            {
+                return;
+            }
+            
+            // Parse the message format: "operation|errorMessage"
+            string[] parts = message.Split(new[] { '|' }, 2);
+            string operation = parts.Length > 0 ? parts[0] : "Unknown";
+            string errorMessage = parts.Length > 1 ? parts[1] : message;
+            
+            System.Exception exception = new System.Exception($"Android Native Error in {operation}: {errorMessage}");
+            HandleNativeException(operation, exception);
+        }
 
 #elif UNITY_IOS && !UNITY_EDITOR
         private delegate void SafariViewDismissedCallback();

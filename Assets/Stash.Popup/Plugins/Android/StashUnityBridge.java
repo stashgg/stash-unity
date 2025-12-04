@@ -14,6 +14,7 @@ public class StashUnityBridge {
     public static final String MSG_ON_OPTIN_RESPONSE = "OnAndroidOptinResponse";
     public static final String MSG_ON_DIALOG_DISMISSED = "OnAndroidDialogDismissed";
     public static final String MSG_ON_PAGE_LOADED = "OnAndroidPageLoaded";
+    public static final String MSG_ON_NATIVE_EXCEPTION = "OnAndroidNativeException";
 
     public static void sendMessage(String methodName, String message) {
         try {
@@ -41,6 +42,12 @@ public class StashUnityBridge {
 
     public static void sendPageLoaded(long loadTimeMs) {
         sendMessage(MSG_ON_PAGE_LOADED, String.valueOf(loadTimeMs));
+    }
+
+    public static void sendNativeException(String operation, String errorMessage) {
+        // Format: "operation|errorMessage"
+        String message = (operation != null ? operation : "Unknown") + "|" + (errorMessage != null ? errorMessage : "Unknown error");
+        sendMessage(MSG_ON_NATIVE_EXCEPTION, message);
     }
 }
 

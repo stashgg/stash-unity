@@ -517,6 +517,36 @@ public class StashPayCardPortraitActivity extends Activity {
             .start();
     }
 
+    private void handleWebViewException(String operation, Exception exception) {
+        try {
+            String errorMessage = exception != null ? exception.getMessage() : "Unknown WebView error";
+            if (exception != null && exception.getCause() != null) {
+                errorMessage += " (Cause: " + exception.getCause().getMessage() + ")";
+            }
+            Log.e(TAG, "WebView exception in " + operation + ": " + errorMessage, exception);
+            
+            // Report to Unity
+            StashUnityBridge.sendNativeException(operation, errorMessage);
+            
+            // Close the activity gracefully
+            runOnUiThread(() -> {
+                try {
+                    finish();
+                } catch (Exception e) {
+                    Log.e(TAG, "Error finishing activity after exception: " + e.getMessage(), e);
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Error in handleWebViewException: " + e.getMessage(), e);
+            // Last resort: force finish
+            try {
+                finish();
+            } catch (Exception finishException) {
+                Log.e(TAG, "Critical: Failed to finish activity after exception: " + finishException.getMessage(), finishException);
+            }
+        }
+    }
+
     private void addWebView() {
         if (url == null || url.isEmpty() || cardContainer == null) {
             return;
@@ -529,30 +559,83 @@ public class StashPayCardPortraitActivity extends Activity {
             @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
                 super.onPageStarted(view, url, favicon);
-                showLoading();
-                injectSDK(view);
-                checkProvider(url);
-                checkGooglePayRedirect(url);
+                try {
+                    showLoading();
+                    injectSDK(view);
+                    checkProvider(url);
+                    checkGooglePayRedirect(url);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in onPageStarted: " + e.getMessage(), e);
+                    handleWebViewException("onPageStarted", e);
+                }
             }
             
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
-                hideLoading();
-                injectSDK(view);
-                checkProvider(url);
-                checkGooglePayRedirect(url);
+                try {
+                    hideLoading();
+                    injectSDK(view);
+                    checkProvider(url);
+                    checkGooglePayRedirect(url);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in onPageFinished: " + e.getMessage(), e);
+                    handleWebViewException("onPageFinished", e);
+                }
             }
             
             @Override
             public void onReceivedError(WebView view, android.webkit.WebResourceRequest request, 
                                         android.webkit.WebResourceError error) {
                 super.onReceivedError(view, request, error);
-                Log.e(TAG, "WebView error: " + error.getDescription());
+                try {
+                    String errorDescription = error != null ? error.getDescription().toString() : "Unknown error";
+                    Log.e(TAG, "WebView error: " + errorDescription);
+                    handleWebViewException("onReceivedError", new Exception("WebView resource error: " + errorDescription));
+                } catch (Exception e) {
+                    Log.e(TAG, "Error handling WebView error: " + e.getMessage(), e);
+                }
+            }
+            
+            // Handle renderer process crashes (API 26+)
+            @Override
+            public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
+                try {
+                    String errorMessage = "WebView renderer process crashed";
+                    if (detail != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        if (detail.didCrash()) {
+                            errorMessage = "WebView renderer process crashed (didCrash=true)";
+                        } else {
+                            errorMessage = "WebView renderer process terminated (didCrash=false)";
+                        }
+                    }
+                    Log.e(TAG, errorMessage);
+                    handleWebViewException("onRenderProcessGone", new Exception(errorMessage));
+                    // Return true to indicate we handled the crash
+                    return true;
+                } catch (Exception e) {
+                    Log.e(TAG, "Error handling renderer crash: " + e.getMessage(), e);
+                    return true; // Always return true to prevent app crash
+                }
             }
         });
         
-        webView.setWebChromeClient(new WebChromeClient());
+        webView.setWebChromeClient(new WebChromeClient() {
+            // Handle WebView crashes (API 26+)
+            @Override
+            public boolean onCrash(WebView view) {
+                try {
+                    String errorMessage = "WebView crashed";
+                    Log.e(TAG, errorMessage);
+                    handleWebViewException("onCrash", new Exception(errorMessage));
+                    // Return true to indicate we handled the crash
+                    return true;
+                } catch (Exception e) {
+                    Log.e(TAG, "Error handling WebView crash: " + e.getMessage(), e);
+                    return true; // Always return true to prevent app crash
+                }
+            }
+        });
         webView.addJavascriptInterface(new JSInterface(), "StashAndroid");
         webView.setBackgroundColor(StashWebViewUtils.isDarkTheme(this) ? Color.parseColor(StashWebViewUtils.COLOR_DARK_BG) : Color.WHITE);
         
