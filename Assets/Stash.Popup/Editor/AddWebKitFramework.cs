@@ -35,6 +35,11 @@ public class AddWebKitFramework
             project.AddFrameworkToProject(mainTargetGuid, "SafariServices.framework", false);
             project.AddFrameworkToProject(frameworkTargetGuid, "SafariServices.framework", false);
             
+            // Enable Objective-C exceptions for @try/@catch support
+            // This is required for catching NSException in native code
+            project.AddBuildProperty(mainTargetGuid, "GCC_ENABLE_OBJC_EXCEPTIONS", "YES");
+            project.AddBuildProperty(frameworkTargetGuid, "GCC_ENABLE_OBJC_EXCEPTIONS", "YES");
+            
             // Write the changes to the project file
             File.WriteAllText(projectPath, project.WriteToString());
             

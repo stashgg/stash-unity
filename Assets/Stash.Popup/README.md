@@ -164,6 +164,52 @@ void OnDeepLink(string url)
 }
 ```
 
+## Exception Handling
+
+Stash.Popup includes built-in exception handling for native plugin operations on both iOS and Android. This allows you to catch and handle errors that occur during checkout or popup operations inside your Unity game.
+
+### Usage
+
+Subscribe to the `OnNativeException` event to be notified when exceptions occur:
+
+```csharp
+using StashPopup;
+
+void Start()
+{
+    // Subscribe to exception events
+    StashPayCard.Instance.OnNativeException += OnStashPayException;
+}
+
+void OnStashPayException(string operation, Exception exception)
+{
+    Debug.LogError($"StashPayCard exception in {operation}: {exception.Message}");
+    Debug.LogException(exception);
+    
+    // Handle the exception - log to analytics, show error to user, etc.
+    // Example: Log to crash reporting service
+}
+
+void OnDestroy()
+{
+    if (StashPayCard.Instance != null)
+    {
+        StashPayCard.Instance.OnNativeException -= OnStashPayException;
+    }
+}
+```
+### Automatic Fallback Behavior
+
+When `OpenCheckout()` or `OpenPopup()` encounters an exception:
+- The exception is logged and reported via `OnNativeException` event
+- On iOS and Android, the operation falls back to opening the URL in the default browser (`Application.OpenURL()`)
+- This ensures users can still complete their purchase even if the native dialog fails.
+
+### Best Practices
+
+- Always subscribe to `OnNativeException` in production builds to monitor errors.
+- Log exceptions to your analytics/crash reporting service.
+- Consider showing user-friendly error messages when exceptions occur.
 
 ## Unity Editor Simulator 
 
@@ -300,6 +346,17 @@ Dismisses current dialog and resets state.
 
 **`IsCurrentlyPresented`** (bool, read-only)
 - Returns whether a dialog is currently open.
+
+### Events
+
+**`OnNativeException`** (event `Action<string, Exception>`)
+- Fired when an unhandled exception occurs during native plugin operations.
+- Parameters:
+  - `string operation` - The name of the operation that failed (e.g., "OpenCheckout", "OpenPopup")
+  - `Exception exception` - The exception that occurred
+- **Platform Notes:**
+  - **Android:** Java exceptions are catchable and will trigger this event.
+  - **iOS:** Only `NSException` objects caught in `@try/@catch` blocks trigger this event. Crashes and memory violations cannot be caught.
 
 ### Types
 

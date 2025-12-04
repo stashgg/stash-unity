@@ -77,6 +77,16 @@ namespace StashPopup
         public event Action OnPaymentFailure;
         public event Action<string> OnOptinResponse;
         public event Action<double> OnPageLoaded;
+        /// <summary>
+        /// Event fired when an unhandled exception occurs during native plugin operations.
+        /// Subscribe to this event to be notified of exceptions that occur when calling native methods.
+        /// 
+        /// Platform Notes:
+        /// - Android: Java exceptions are catchable and will trigger this event.
+        /// - iOS: Objective-C exceptions/crashes are NOT catchable and will crash the app before this event fires.
+        ///   This event only fires for exceptions that occur during the P/Invoke marshalling itself.
+        /// </summary>
+        public event Action<string, Exception> OnNativeException;
         #endregion
 
         #region Private Fields
@@ -169,6 +179,7 @@ namespace StashPopup
         private delegate void PaymentFailureCallback();
         private delegate void OptinResponseCallback(string optinType);
         private delegate void PageLoadedCallback(double loadTimeMs);
+        private delegate void NativeErrorCallback(string operation, string errorMessage);
         
         [DllImport("__Internal")]
         private static extern void _StashPayCardOpenCheckoutInSafariVC(string url);
@@ -195,6 +206,9 @@ namespace StashPopup
         private static extern void _StashPayCardSetPageLoadedCallback(PageLoadedCallback callback);
         
         [DllImport("__Internal")]
+        private static extern void _StashPayCardSetNativeErrorCallback(NativeErrorCallback callback);
+        
+        [DllImport("__Internal")]
         private static extern void _StashPayCardSetCardConfigurationWithWidth(float heightRatio, float verticalPosition, float widthRatio);
         
         [DllImport("__Internal")]
@@ -202,10 +216,10 @@ namespace StashPopup
         
         [DllImport("__Internal")]
         private static extern bool _StashPayCardIsCurrentlyPresented();
-
+        
         [DllImport("__Internal")]
         private static extern void _StashPayCardSetForceSafariViewController(bool force);
-
+        
         [DllImport("__Internal")]
         private static extern bool _StashPayCardGetForceSafariViewController();
         
@@ -224,9 +238,23 @@ namespace StashPopup
         private void ApplyCardConfiguration()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
-            androidPluginInstance?.Call("setCardConfiguration", _cardHeightRatio, _cardVerticalPosition, _cardWidthRatio);
+            try
+            {
+                androidPluginInstance?.Call("setCardConfiguration", _cardHeightRatio, _cardVerticalPosition, _cardWidthRatio);
+            }
+            catch (System.Exception e)
+            {
+                HandleNativeException("ApplyCardConfiguration", e);
+            }
 #elif UNITY_IOS && !UNITY_EDITOR
-            _StashPayCardSetCardConfigurationWithWidth(_cardHeightRatio, _cardVerticalPosition, _cardWidthRatio);
+            try
+            {
+                _StashPayCardSetCardConfigurationWithWidth(_cardHeightRatio, _cardVerticalPosition, _cardWidthRatio);
+            }
+            catch (System.Exception e)
+            {
+                HandleNativeException("ApplyCardConfiguration", e);
+            }
 #endif
         }
 
@@ -293,6 +321,63 @@ namespace StashPopup
             
             if (androidPluginInstance != null)
             {
+                try
+                {
+                    if (isPopup)
+                    {
+                        // Only pass size if custom size is explicitly specified
+                        if (customSize.HasValue)
+                        {
+                            PopupSizeConfig sizeConfig = customSize.Value;
+                            Debug.Log($"[StashPayCard] Opening popup with custom size: Portrait({sizeConfig.portraitWidthMultiplier}, {sizeConfig.portraitHeightMultiplier}), Landscape({sizeConfig.landscapeWidthMultiplier}, {sizeConfig.landscapeHeightMultiplier})");
+                            androidPluginInstance.Call("openPopupWithSize", 
+                                url,
+                                sizeConfig.portraitWidthMultiplier,
+                                sizeConfig.portraitHeightMultiplier,
+                                sizeConfig.landscapeWidthMultiplier,
+                                sizeConfig.landscapeHeightMultiplier);
+                        }
+                        else
+                        {
+                            Debug.Log("[StashPayCard] Opening popup with platform default size (no custom size specified)");
+                            // Use platform default (no custom size specified)
+                            androidPluginInstance.Call("openPopup", url);
+                        }
+                    }
+                    else
+                    {
+                        // Apply card configuration and call openCheckout for card presentation
+                        androidPluginInstance.Call("setCardConfiguration", _cardHeightRatio, _cardVerticalPosition, _cardWidthRatio);
+                        androidPluginInstance.Call("openCheckout", url);
+                    }
+                }
+                catch (System.Exception e)
+                {
+                    HandleNativeException(isPopup ? "OpenPopup" : "OpenCheckout", e);
+                    // Fallback to opening URL in default browser
+                    Application.OpenURL(url);
+                }
+            }
+            else
+            {
+                Application.OpenURL(url);
+            }
+#elif UNITY_IOS && !UNITY_EDITOR
+            // Note: iOS Objective-C exceptions/crashes are NOT catchable via C# try-catch.
+            // Only P/Invoke marshalling errors would be caught here. Native crashes will terminate the app.
+            try
+            {
+                if (!isPopup)
+                {
+                    ApplyCardConfiguration();
+                }
+                _StashPayCardSetSafariViewDismissedCallback(OnIOSSafariViewDismissed);
+                _StashPayCardSetPaymentSuccessCallback(OnIOSPaymentSuccess);
+                _StashPayCardSetPaymentFailureCallback(OnIOSPaymentFailure);
+                _StashPayCardSetOptinResponseCallback(OnIOSOptinResponse);
+                _StashPayCardSetPageLoadedCallback(OnIOSPageLoaded);
+                _StashPayCardSetNativeErrorCallback(OnIOSNativeError);
+                
                 if (isPopup)
                 {
                     // Only pass size if custom size is explicitly specified
@@ -300,7 +385,7 @@ namespace StashPopup
                     {
                         PopupSizeConfig sizeConfig = customSize.Value;
                         Debug.Log($"[StashPayCard] Opening popup with custom size: Portrait({sizeConfig.portraitWidthMultiplier}, {sizeConfig.portraitHeightMultiplier}), Landscape({sizeConfig.landscapeWidthMultiplier}, {sizeConfig.landscapeHeightMultiplier})");
-                        androidPluginInstance.Call("openPopupWithSize", 
+                        _StashPayCardOpenPopupWithSize(
                             url,
                             sizeConfig.portraitWidthMultiplier,
                             sizeConfig.portraitHeightMultiplier,
@@ -310,56 +395,21 @@ namespace StashPopup
                     else
                     {
                         Debug.Log("[StashPayCard] Opening popup with platform default size (no custom size specified)");
-                        // Use platform default (no custom size specified)
-                    androidPluginInstance.Call("openPopup", url);
+                        // Use iOS default (no custom size specified)
+                        _StashPayCardOpenPopup(url);
                     }
                 }
                 else
                 {
-                    // Apply card configuration and call openCheckout for card presentation
-                    androidPluginInstance.Call("setCardConfiguration", _cardHeightRatio, _cardVerticalPosition, _cardWidthRatio);
-                    androidPluginInstance.Call("openCheckout", url);
+                    _StashPayCardOpenCheckoutInSafariVC(url);
                 }
             }
-            else
+            catch (System.Exception e)
             {
+                // This will only catch P/Invoke marshalling errors, not native Objective-C exceptions
+                HandleNativeException(isPopup ? "OpenPopup" : "OpenCheckout", e);
+                // Fallback to opening URL in default browser
                 Application.OpenURL(url);
-            }
-#elif UNITY_IOS && !UNITY_EDITOR
-            if (!isPopup)
-            {
-            ApplyCardConfiguration();
-            }
-            _StashPayCardSetSafariViewDismissedCallback(OnIOSSafariViewDismissed);
-            _StashPayCardSetPaymentSuccessCallback(OnIOSPaymentSuccess);
-            _StashPayCardSetPaymentFailureCallback(OnIOSPaymentFailure);
-            _StashPayCardSetOptinResponseCallback(OnIOSOptinResponse);
-            _StashPayCardSetPageLoadedCallback(OnIOSPageLoaded);
-            
-            if (isPopup)
-            {
-                // Only pass size if custom size is explicitly specified
-                if (customSize.HasValue)
-                {
-                    PopupSizeConfig sizeConfig = customSize.Value;
-                    Debug.Log($"[StashPayCard] Opening popup with custom size: Portrait({sizeConfig.portraitWidthMultiplier}, {sizeConfig.portraitHeightMultiplier}), Landscape({sizeConfig.landscapeWidthMultiplier}, {sizeConfig.landscapeHeightMultiplier})");
-                    _StashPayCardOpenPopupWithSize(
-                        url,
-                        sizeConfig.portraitWidthMultiplier,
-                        sizeConfig.portraitHeightMultiplier,
-                        sizeConfig.landscapeWidthMultiplier,
-                        sizeConfig.landscapeHeightMultiplier);
-                }
-                else
-                {
-                    Debug.Log("[StashPayCard] Opening popup with platform default size (no custom size specified)");
-                    // Use iOS default (no custom size specified)
-                _StashPayCardOpenPopup(url);
-                }
-            }
-            else
-            {
-            _StashPayCardOpenCheckoutInSafariVC(url);
             }
 #elif UNITY_EDITOR
             // Use Editor window for testing in Unity Editor
@@ -427,9 +477,23 @@ namespace StashPopup
         public void ResetPresentationState()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
-            androidPluginInstance?.Call("resetPresentationState");
+            try
+            {
+                androidPluginInstance?.Call("resetPresentationState");
+            }
+            catch (System.Exception e)
+            {
+                HandleNativeException("ResetPresentationState", e);
+            }
 #elif UNITY_IOS && !UNITY_EDITOR
-            _StashPayCardResetPresentationState();
+            try
+            {
+                _StashPayCardResetPresentationState();
+            }
+            catch (System.Exception e)
+            {
+                HandleNativeException("ResetPresentationState", e);
+            }
 #endif
         }
 
@@ -446,7 +510,14 @@ namespace StashPopup
         public void DismissSafariViewController()
         {
 #if UNITY_IOS && !UNITY_EDITOR
-            _StashPayCardDismissSafariViewController();
+            try
+            {
+                _StashPayCardDismissSafariViewController();
+            }
+            catch (System.Exception e)
+            {
+                HandleNativeException("DismissSafariViewController", e);
+            }
 #endif
         }
 
@@ -477,7 +548,14 @@ namespace StashPopup
         public void DismissSafariViewController(bool success)
         {
 #if UNITY_IOS && !UNITY_EDITOR
-            _StashPayCardDismissSafariViewControllerWithResult(success);
+            try
+            {
+                _StashPayCardDismissSafariViewControllerWithResult(success);
+            }
+            catch (System.Exception e)
+            {
+                HandleNativeException("DismissSafariViewController", e);
+            }
 #endif
         }
 
@@ -494,9 +572,25 @@ namespace StashPopup
             get
             {
 #if UNITY_ANDROID && !UNITY_EDITOR
-                return androidPluginInstance?.Call<bool>("isCurrentlyPresented") ?? false;
+                try
+                {
+                    return androidPluginInstance?.Call<bool>("isCurrentlyPresented") ?? false;
+                }
+                catch (System.Exception e)
+                {
+                    HandleNativeException("IsCurrentlyPresented", e);
+                    return false;
+                }
 #elif UNITY_IOS && !UNITY_EDITOR
-                return _StashPayCardIsCurrentlyPresented();
+                try
+                {
+                    return _StashPayCardIsCurrentlyPresented();
+                }
+                catch (System.Exception e)
+                {
+                    HandleNativeException("IsCurrentlyPresented", e);
+                    return false;
+                }
 #else
                 return false;
 #endif
@@ -519,9 +613,25 @@ namespace StashPopup
             get
             {
 #if UNITY_ANDROID && !UNITY_EDITOR
-                return androidPluginInstance?.Call<bool>("getForceSafariViewController") ?? false;
+                try
+                {
+                    return androidPluginInstance?.Call<bool>("getForceSafariViewController") ?? false;
+                }
+                catch (System.Exception e)
+                {
+                    HandleNativeException("ForceWebBasedCheckout.get", e);
+                    return false;
+                }
 #elif UNITY_IOS && !UNITY_EDITOR
-                return _StashPayCardGetForceSafariViewController();
+                try
+                {
+                    return _StashPayCardGetForceSafariViewController();
+                }
+                catch (System.Exception e)
+                {
+                    HandleNativeException("ForceWebBasedCheckout.get", e);
+                    return false;
+                }
 #else
                 return false;
 #endif
@@ -529,9 +639,23 @@ namespace StashPopup
             set
             {
 #if UNITY_ANDROID && !UNITY_EDITOR
-                androidPluginInstance?.Call("setForceSafariViewController", value);
+                try
+                {
+                    androidPluginInstance?.Call("setForceSafariViewController", value);
+                }
+                catch (System.Exception e)
+                {
+                    HandleNativeException("ForceWebBasedCheckout.set", e);
+                }
 #elif UNITY_IOS && !UNITY_EDITOR
-                _StashPayCardSetForceSafariViewController(value);
+                try
+                {
+                    _StashPayCardSetForceSafariViewController(value);
+                }
+                catch (System.Exception e)
+                {
+                    HandleNativeException("ForceWebBasedCheckout.set", e);
+                }
 #endif
             }
         }
@@ -614,6 +738,28 @@ namespace StashPopup
         #endregion
 
         #region Private Methods
+
+        /// <summary>
+        /// Handles exceptions that occur during native plugin operations.
+        /// Logs the exception and fires the OnNativeException event for subscribers.
+        /// 
+        /// Note on exception handling:
+        /// - Android: Java exceptions thrown in native code ARE catchable and will be wrapped as AndroidJavaException.
+        /// - iOS: Objective-C exceptions (NSException) and crashes are NOT catchable via C# try-catch.
+        ///   iOS crashes will terminate the app. Only errors that occur during the P/Invoke call itself
+        ///   (like invalid function signatures) would be catchable.
+        /// </summary>
+        /// <param name="operation">The name of the operation that failed (e.g., "OpenCheckout", "OpenPopup")</param>
+        /// <param name="exception">The exception that occurred</param>
+        private void HandleNativeException(string operation, System.Exception exception)
+        {
+            string errorMessage = $"[StashPayCard] Exception in {operation}: {exception.Message}";
+            Debug.LogError(errorMessage);
+            Debug.LogException(exception);
+            
+            // Fire event for subscribers to handle
+            OnNativeException?.Invoke(operation, exception);
+        }
 
         // Fetches remote feature flags from Flagsmith API with device traits
         private IEnumerator FetchFlagsmithConfiguration()
@@ -720,6 +866,18 @@ namespace StashPopup
         private static void OnIOSPageLoaded(double loadTimeMs)
         {
             Instance?.OnPageLoaded?.Invoke(loadTimeMs);
+        }
+        
+        // iOS callback: native error occurred
+        [MonoPInvokeCallback(typeof(NativeErrorCallback))]
+        private static void OnIOSNativeError(string operation, string errorMessage)
+        {
+            if (Instance != null)
+            {
+                // Create a synthetic exception to pass to the event handler
+                System.Exception exception = new System.Exception($"iOS Native Error in {operation}: {errorMessage}");
+                Instance.HandleNativeException(operation, exception);
+            }
         }
 #endif
 

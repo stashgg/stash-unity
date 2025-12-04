@@ -11,12 +11,14 @@ typedef void (*PaymentSuccessCallback)();
 typedef void (*PaymentFailureCallback)();
 typedef void (*OptinResponseCallback)(const char* optinType);
 typedef void (*PageLoadedCallback)(double loadTimeMs);
+typedef void (*NativeErrorCallback)(const char* operation, const char* errorMessage);
 
 SafariViewDismissedCallback _safariViewDismissedCallback = NULL;
 PaymentSuccessCallback _paymentSuccessCallback = NULL;
 PaymentFailureCallback _paymentFailureCallback = NULL;
 OptinResponseCallback _optinResponseCallback = NULL;
 PageLoadedCallback _pageLoadedCallback = NULL;
+NativeErrorCallback _nativeErrorCallback = NULL;
 
 #pragma mark - Global State
 
@@ -2289,43 +2291,73 @@ extern "C" {
     void _StashPayCardSetPageLoadedCallback(PageLoadedCallback callback) {
         _pageLoadedCallback = callback;
     }
+    
+    // Sets the callback function to be called when a native exception occurs
+    void _StashPayCardSetNativeErrorCallback(NativeErrorCallback callback) {
+        _nativeErrorCallback = callback;
+    }
+    
+    // Helper function to report errors to Unity
+    static void ReportNativeError(const char* operation, NSException* exception) {
+        if (_nativeErrorCallback != NULL) {
+            NSString* errorMessage = [NSString stringWithFormat:@"%@: %@", exception.name, exception.reason];
+            const char* errorMsgCStr = [errorMessage UTF8String];
+            _nativeErrorCallback(operation, errorMsgCStr);
+        }
+    }
+    
+    // Helper function to report errors with custom message
+    static void ReportNativeErrorWithMessage(const char* operation, const char* errorMessage) {
+        if (_nativeErrorCallback != NULL) {
+            _nativeErrorCallback(operation, errorMessage);
+        }
+    }
 
     void _StashPayCardSetCardConfigurationWithWidth(float heightRatio, float verticalPosition, float widthRatio) {
-        _cardHeightRatio = heightRatio < 0.1 ? 0.1 : (heightRatio > 1.0 ? 1.0 : heightRatio);
-        _cardVerticalPosition = verticalPosition < 0.0 ? 0.0 : (verticalPosition > 1.0 ? 1.0 : verticalPosition);
-        _cardWidthRatio = widthRatio < 0.1 ? 0.1 : (widthRatio > 1.0 ? 1.0 : widthRatio);
-        _originalCardHeightRatio = _cardHeightRatio;
-        _originalCardVerticalPosition = _cardVerticalPosition;
-        _originalCardWidthRatio = _cardWidthRatio;
-        _isCardExpanded = NO;
+        @try {
+            _cardHeightRatio = heightRatio < 0.1 ? 0.1 : (heightRatio > 1.0 ? 1.0 : heightRatio);
+            _cardVerticalPosition = verticalPosition < 0.0 ? 0.0 : (verticalPosition > 1.0 ? 1.0 : verticalPosition);
+            _cardWidthRatio = widthRatio < 0.1 ? 0.1 : (widthRatio > 1.0 ? 1.0 : widthRatio);
+            _originalCardHeightRatio = _cardHeightRatio;
+            _originalCardVerticalPosition = _cardVerticalPosition;
+            _originalCardWidthRatio = _cardWidthRatio;
+            _isCardExpanded = NO;
+        }
+        @catch (NSException *exception) {
+            ReportNativeError("SetCardConfiguration", exception);
+        }
     }
 
     // Opens a checkout URL in Safari View Controller with delegation
     void _StashPayCardOpenCheckoutInSafariVC(const char* urlString) {
-        if (urlString == NULL) {
-            return;
-        }
-        
-        NSString* nsUrlStr = [NSString stringWithUTF8String:urlString];
-        // Append theme query parameter
-        nsUrlStr = appendThemeQueryParameter(nsUrlStr);
-        NSURL* url = [NSURL URLWithString:nsUrlStr];
-        
-        if (url == nil) {
-            return;
-        }
-        
-        // Get the top view controller to present from
-        UIViewController* rootController = [UIApplication sharedApplication].keyWindow.rootViewController;
-        UIViewController* topController = rootController;
-        
-        while (topController.presentedViewController) {
-            topController = topController.presentedViewController;
-        }
-        
-        if (@available(iOS 9.0, *)) {
-            // Handle native Safari controller first (completely separate path)
-            if (_forceSafariViewController) {
+        @try {
+            if (urlString == NULL) {
+                ReportNativeErrorWithMessage("OpenCheckout", "URL string is NULL");
+                return;
+            }
+            
+            NSString* nsUrlStr = [NSString stringWithUTF8String:urlString];
+            // Append theme query parameter
+            nsUrlStr = appendThemeQueryParameter(nsUrlStr);
+            NSURL* url = [NSURL URLWithString:nsUrlStr];
+            
+            if (url == nil) {
+                NSString* errorMsg = [NSString stringWithFormat:@"Invalid URL: %@", nsUrlStr];
+                ReportNativeErrorWithMessage("OpenCheckout", [errorMsg UTF8String]);
+                return;
+            }
+            
+            // Get the top view controller to present from
+            UIViewController* rootController = [UIApplication sharedApplication].keyWindow.rootViewController;
+            UIViewController* topController = rootController;
+            
+            while (topController.presentedViewController) {
+                topController = topController.presentedViewController;
+            }
+            
+            if (@available(iOS 9.0, *)) {
+                // Handle native Safari controller first (completely separate path)
+                if (_forceSafariViewController) {
                 // Use completely native SFSafariViewController with absolutely NO modifications
                 SFSafariViewController* safariViewController = [[SFSafariViewController alloc] initWithURL:url];
                 
@@ -2347,39 +2379,39 @@ extern "C" {
                     }
                 };
                 
-                return;
-            }
-            
-            // Check if a card is already being presented
-            if (_isCardCurrentlyPresented) {
-                return;
-            }
-            
-            // Reset all callback flags for new payment session to ensure callbacks work properly
-            _paymentSuccessHandled = NO;
-            _paymentSuccessCallbackCalled = NO;
-            _callbackWasCalled = NO;
-            
-            // Set the presentation flag
-            _isCardCurrentlyPresented = YES;
-            
-            _isCardExpanded = NO;
-            
-            // Create a custom view controller with WKWebView
-            OrientationLockedViewController *containerVC = [[OrientationLockedViewController alloc] init];
-            containerVC.modalPresentationStyle = UIModalPresentationOverFullScreen;
-            
-            // Enforce portrait for OpenCheckout on iPhone (not popup)
-            containerVC.enforcePortrait = !_usePopupPresentation;
-            
-            // Set container background immediately to prevent black flash
-            containerVC.view.backgroundColor = getSystemBackgroundColor();
-            
-            // Try to create the web view
-            Class webViewClass = NSClassFromString(@"WKWebView");
-            Class configClass = NSClassFromString(@"WKWebViewConfiguration");
-            
-            if (webViewClass && configClass) {
+                    return;
+                }
+                
+                // Check if a card is already being presented
+                if (_isCardCurrentlyPresented) {
+                    return;
+                }
+                
+                // Reset all callback flags for new payment session to ensure callbacks work properly
+                _paymentSuccessHandled = NO;
+                _paymentSuccessCallbackCalled = NO;
+                _callbackWasCalled = NO;
+                
+                // Set the presentation flag
+                _isCardCurrentlyPresented = YES;
+                
+                _isCardExpanded = NO;
+                
+                // Create a custom view controller with WKWebView
+                OrientationLockedViewController *containerVC = [[OrientationLockedViewController alloc] init];
+                containerVC.modalPresentationStyle = UIModalPresentationOverFullScreen;
+                
+                // Enforce portrait for OpenCheckout on iPhone (not popup)
+                containerVC.enforcePortrait = !_usePopupPresentation;
+                
+                // Set container background immediately to prevent black flash
+                containerVC.view.backgroundColor = getSystemBackgroundColor();
+                
+                // Try to create the web view
+                Class webViewClass = NSClassFromString(@"WKWebView");
+                Class configClass = NSClassFromString(@"WKWebViewConfiguration");
+                
+                if (webViewClass && configClass) {
                 // WebKit is available, use WKWebView with optimized configuration
                 WKWebViewConfiguration *config = CreateWebViewConfiguration();
                 
@@ -2792,19 +2824,30 @@ extern "C" {
                 }];
                     }
                 }
+                }
             }
+        }
+        @catch (NSException *exception) {
+            ReportNativeError("OpenCheckout", exception);
+            // Reset state on error
+            _isCardCurrentlyPresented = NO;
         }
     }
 
     // Resets the card presentation state
     void _StashPayCardResetPresentationState() {
-        if ([StashPayCardSafariDelegate sharedInstance].currentPresentedVC) {
-            [[StashPayCardSafariDelegate sharedInstance].currentPresentedVC dismissViewControllerAnimated:NO completion:^{
+        @try {
+            if ([StashPayCardSafariDelegate sharedInstance].currentPresentedVC) {
+                [[StashPayCardSafariDelegate sharedInstance].currentPresentedVC dismissViewControllerAnimated:NO completion:^{
+                    [[StashPayCardSafariDelegate sharedInstance] cleanupCardInstance];
+                }];
+            } else {
+                // If no view controller is presented, just clean up the state
                 [[StashPayCardSafariDelegate sharedInstance] cleanupCardInstance];
-            }];
-        } else {
-            // If no view controller is presented, just clean up the state
-            [[StashPayCardSafariDelegate sharedInstance] cleanupCardInstance];
+            }
+        }
+        @catch (NSException *exception) {
+            ReportNativeError("ResetPresentationState", exception);
         }
     }
 
@@ -2821,48 +2864,68 @@ extern "C" {
     }
 
     void _StashPayCardDismissSafariViewController() {
-        StashPayCardSafariDelegate *delegate = [StashPayCardSafariDelegate sharedInstance];
-        if (delegate.currentSafariViewController) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                // Dismiss the view controller without firing success/failure callbacks
-                [delegate.currentSafariViewController dismissViewControllerAnimated:YES completion:^{
-                    delegate.currentSafariViewController = nil;
-                    
-                    // Fire dismiss callback after dismissal
-                    if (_safariViewDismissedCallback != NULL) {
-                        _safariViewDismissedCallback();
+        @try {
+            StashPayCardSafariDelegate *delegate = [StashPayCardSafariDelegate sharedInstance];
+            if (delegate.currentSafariViewController) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    @try {
+                        // Dismiss the view controller without firing success/failure callbacks
+                        [delegate.currentSafariViewController dismissViewControllerAnimated:YES completion:^{
+                            delegate.currentSafariViewController = nil;
+                            
+                            // Fire dismiss callback after dismissal
+                            if (_safariViewDismissedCallback != NULL) {
+                                _safariViewDismissedCallback();
+                            }
+                        }];
                     }
-                }];
-            });
+                    @catch (NSException *exception) {
+                        ReportNativeError("DismissSafariViewController", exception);
+                    }
+                });
+            }
+        }
+        @catch (NSException *exception) {
+            ReportNativeError("DismissSafariViewController", exception);
         }
     }
     
     void _StashPayCardDismissSafariViewControllerWithResult(bool success) {
-        StashPayCardSafariDelegate *delegate = [StashPayCardSafariDelegate sharedInstance];
-        if (delegate.currentSafariViewController) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                // Fire the appropriate callback before dismissing
-                if (success) {
-                    if (_paymentSuccessCallback != NULL && !_paymentSuccessCallbackCalled) {
-                        _paymentSuccessCallbackCalled = YES;
-                        _paymentSuccessCallback();
+        @try {
+            StashPayCardSafariDelegate *delegate = [StashPayCardSafariDelegate sharedInstance];
+            if (delegate.currentSafariViewController) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    @try {
+                        // Fire the appropriate callback before dismissing
+                        if (success) {
+                            if (_paymentSuccessCallback != NULL && !_paymentSuccessCallbackCalled) {
+                                _paymentSuccessCallbackCalled = YES;
+                                _paymentSuccessCallback();
+                            }
+                        } else {
+                            if (_paymentFailureCallback != NULL) {
+                                _paymentFailureCallback();
+                            }
+                        }
+                        
+                        // Dismiss the view controller
+                        [delegate.currentSafariViewController dismissViewControllerAnimated:YES completion:^{
+                            delegate.currentSafariViewController = nil;
+                            
+                            // Fire dismiss callback after dismissal
+                            if (_safariViewDismissedCallback != NULL) {
+                                _safariViewDismissedCallback();
+                            }
+                        }];
                     }
-                } else {
-                    if (_paymentFailureCallback != NULL) {
-                        _paymentFailureCallback();
+                    @catch (NSException *exception) {
+                        ReportNativeError("DismissSafariViewControllerWithResult", exception);
                     }
-                }
-                
-                // Dismiss the view controller
-                [delegate.currentSafariViewController dismissViewControllerAnimated:YES completion:^{
-                    delegate.currentSafariViewController = nil;
-                    
-                    // Fire dismiss callback after dismissal
-                    if (_safariViewDismissedCallback != NULL) {
-                        _safariViewDismissedCallback();
-                    }
-                }];
-            });
+                });
+            }
+        }
+        @catch (NSException *exception) {
+            ReportNativeError("DismissSafariViewControllerWithResult", exception);
         }
     }
 
@@ -2871,15 +2934,21 @@ extern "C" {
     
     // Helper function to open popup with given multipliers
     static void OpenPopupWithMultipliers(const char* urlString, BOOL useCustomSize, float portraitWidth, float portraitHeight, float landscapeWidth, float landscapeHeight) {
-        if (useCustomSize) {
-            _useCustomPopupSize = YES;
-            _customPortraitWidthMultiplier = portraitWidth;
-            _customPortraitHeightMultiplier = portraitHeight;
-            _customLandscapeWidthMultiplier = landscapeWidth;
-            _customLandscapeHeightMultiplier = landscapeHeight;
-        } else {
-            _useCustomPopupSize = NO;
-        }
+        @try {
+            if (urlString == NULL) {
+                ReportNativeErrorWithMessage("OpenPopup", "URL string is NULL");
+                return;
+            }
+            
+            if (useCustomSize) {
+                _useCustomPopupSize = YES;
+                _customPortraitWidthMultiplier = portraitWidth;
+                _customPortraitHeightMultiplier = portraitHeight;
+                _customLandscapeWidthMultiplier = landscapeWidth;
+                _customLandscapeHeightMultiplier = landscapeHeight;
+            } else {
+                _useCustomPopupSize = NO;
+            }
         
         CGRect screenBounds = [UIScreen mainScreen].bounds;
         BOOL isLandscape = UIInterfaceOrientationIsLandscape([[UIApplication sharedApplication] statusBarOrientation]);
@@ -2920,20 +2989,34 @@ extern "C" {
         _isCardExpanded = NO;
         _usePopupPresentation = YES;
         
-        // Append theme query parameter before opening
-        NSString* nsUrlStr = [NSString stringWithUTF8String:urlString];
-        nsUrlStr = appendThemeQueryParameter(nsUrlStr);
-        // Convert back to C string - the NSString will remain valid for the duration of the call
-        const char* urlWithTheme = [nsUrlStr UTF8String];
-        
-        _StashPayCardOpenCheckoutInSafariVC(urlWithTheme);
+            // Append theme query parameter before opening
+            NSString* nsUrlStr = [NSString stringWithUTF8String:urlString];
+            nsUrlStr = appendThemeQueryParameter(nsUrlStr);
+            // Convert back to C string - the NSString will remain valid for the duration of the call
+            const char* urlWithTheme = [nsUrlStr UTF8String];
+            
+            _StashPayCardOpenCheckoutInSafariVC(urlWithTheme);
+        }
+        @catch (NSException *exception) {
+            ReportNativeError("OpenPopup", exception);
+        }
     }
     
     void _StashPayCardOpenPopup(const char* urlString) {
-        OpenPopupWithMultipliers(urlString, NO, 0, 0, 0, 0);
+        @try {
+            OpenPopupWithMultipliers(urlString, NO, 0, 0, 0, 0);
+        }
+        @catch (NSException *exception) {
+            ReportNativeError("OpenPopup", exception);
+        }
     }
     
     void _StashPayCardOpenPopupWithSize(const char* urlString, float portraitWidth, float portraitHeight, float landscapeWidth, float landscapeHeight) {
-        OpenPopupWithMultipliers(urlString, YES, portraitWidth, portraitHeight, landscapeWidth, landscapeHeight);
+        @try {
+            OpenPopupWithMultipliers(urlString, YES, portraitWidth, portraitHeight, landscapeWidth, landscapeHeight);
+        }
+        @catch (NSException *exception) {
+            ReportNativeError("OpenPopupWithSize", exception);
+        }
     }
 }
