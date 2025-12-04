@@ -54,12 +54,32 @@ namespace Stash.Samples
         // Subscribe to page load events
         StashPayCard.Instance.OnPageLoaded += OnPageLoaded;
         
+        // Initialize native exception logger
+        InitializeNativeExceptionLogger();
+        
         // Initialize store items and UI
         ValidateAndInitializeStoreItems();
         UpdateUIFromStoreItems();
         
         // Setup channel selection button
         SetupChannelSelectionButton();
+    }
+    
+    private void InitializeNativeExceptionLogger()
+    {
+        // Check if logger already exists
+        NativeExceptionLogger existingLogger = FindObjectOfType<NativeExceptionLogger>();
+        if (existingLogger == null)
+        {
+            // Create logger GameObject
+            GameObject loggerGO = new GameObject("NativeExceptionLogger");
+            NativeExceptionLogger logger = loggerGO.AddComponent<NativeExceptionLogger>();
+            
+            // Set UI document reference
+            var loggerUIDocument = loggerGO.AddComponent<UIDocument>();
+            loggerUIDocument.panelSettings = storeUIDocument.panelSettings;
+            logger.UIDocument = loggerUIDocument;
+        }
     }
     private void InitializeIAP()
     {

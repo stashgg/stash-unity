@@ -180,6 +180,9 @@
                     <ui:VisualElement class="settings-option-row settings-option-row-column">
                         <ui:Button name="open-test-card-button" text="Open Test Card" class="test-card-button" />
                     </ui:VisualElement>
+                    <ui:VisualElement class="settings-option-row settings-option-row-column">
+                        <ui:Button name="native-logs-button" text="Native Logs" class="test-card-button" />
+                    </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>

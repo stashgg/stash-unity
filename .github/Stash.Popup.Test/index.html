@@ -29,6 +29,14 @@
             color: #000;
         }
         
+        h2 {
+            font-size: 14px;
+            font-weight: 500;
+            margin-top: 20px;
+            margin-bottom: 8px;
+            color: #ff6b6b;
+        }
+        
         button {
             width: 100%;
             padding: 8px 12px;
@@ -106,6 +114,10 @@
         
         body.theme-dark h1 {
             color: #fff;
+        }
+        
+        body.theme-dark h2 {
+            color: #ff6b6b;
         }
         
         body.theme-dark button {
@@ -216,6 +228,15 @@
         <button onclick="triggerExpand()">Expand</button>
         <button onclick="triggerCollapse()">Collapse</button>
         
+        <h2>Exception Tests</h2>
+        <button onclick="triggerJSError()" style="background: #ff6b6b; color: #fff; border-color: #ff5252;">Throw JavaScript Error</button>
+        <button onclick="triggerMemoryLeak()" style="background: #ff6b6b; color: #fff; border-color: #ff5252;">Memory Leak Test</button>
+        <button onclick="triggerInfiniteLoop()" style="background: #ff6b6b; color: #fff; border-color: #ff5252;">Infinite Loop (May Freeze)</button>
+        <button onclick="triggerLargeDOM()" style="background: #ff6b6b; color: #fff; border-color: #ff5252;">Create Large DOM</button>
+        <button onclick="triggerInvalidAPICall()" style="background: #ff6b6b; color: #fff; border-color: #ff5252;">Invalid SDK Call</button>
+        <button onclick="triggerUncaughtPromise()" style="background: #ff6b6b; color: #fff; border-color: #ff5252;">Uncaught Promise</button>
+        <button onclick="triggerRecursiveError()" style="background: #ff6b6b; color: #fff; border-color: #ff5252;">Recursive Error</button>
+        
         <div id="status" class="status">Ready</div>
         <div id="theme-info" class="theme-info"></div>
         <div id="user-agent-info" class="user-agent-info"></div>
@@ -317,6 +338,124 @@
                 window.stash_sdk.collapse();
             }
         }
+        
+        // Exception test functions
+        function triggerJSError() {
+            updateStatus('Throwing JavaScript Error...');
+            try {
+                // Throw a synchronous error
+                throw new Error('Test JavaScript Error - This should be caught by native exception handler');
+            } catch (e) {
+                updateStatus('Error caught: ' + e.message);
+                // Re-throw to potentially crash
+                throw e;
+            }
+        }
+        
+        function triggerMemoryLeak() {
+            updateStatus('Creating memory leak...');
+            // Create a large array that grows indefinitely
+            window.memoryLeakArray = window.memoryLeakArray || [];
+            for (let i = 0; i < 100000; i++) {
+                window.memoryLeakArray.push(new Array(1000).fill(Math.random()));
+            }
+            updateStatus('Created ~100MB of data. Repeat to increase memory usage.');
+        }
+        
+        function triggerInfiniteLoop() {
+            updateStatus('Starting infinite loop (may freeze browser)...');
+            // This will freeze the page
+            while (true) {
+                // Intentionally infinite - browser may kill the tab
+                Math.random();
+            }
+        }
+        
+        function triggerLargeDOM() {
+            updateStatus('Creating large DOM structure...');
+            const container = document.querySelector('.container');
+            for (let i = 0; i < 10000; i++) {
+                const div = document.createElement('div');
+                div.style.padding = '10px';
+                div.style.margin = '2px';
+                div.style.backgroundColor = 'rgba(255, 0, 0, 0.1)';
+                div.textContent = 'DOM Element ' + i;
+                container.appendChild(div);
+            }
+            updateStatus('Created 10,000 DOM elements');
+        }
+        
+        function triggerInvalidAPICall() {
+            updateStatus('Calling invalid SDK method...');
+            try {
+                // Try to call non-existent methods or with invalid parameters
+                if (window.stash_sdk) {
+                    // Call with invalid parameters
+                    if (window.stash_sdk.onPaymentSuccess) {
+                        window.stash_sdk.onPaymentSuccess(null);
+                        window.stash_sdk.onPaymentSuccess(undefined);
+                        window.stash_sdk.onPaymentSuccess('invalid');
+                        window.stash_sdk.onPaymentSuccess({ invalid: 'data', nested: { deep: { very: { deep: { object: 'test' } } } } });
+                    }
+                    // Try calling non-existent methods
+                    if (window.stash_sdk.nonExistentMethod) {
+                        window.stash_sdk.nonExistentMethod();
+                    }
+                } else {
+                    // SDK not available - try to access it anyway
+                    window.stash_sdk.invalidMethod();
+                }
+                updateStatus('Invalid API calls attempted');
+            } catch (e) {
+                updateStatus('Error: ' + e.message);
+                throw e; // Re-throw to potentially crash
+            }
+        }
+        
+        function triggerUncaughtPromise() {
+            updateStatus('Creating uncaught promise rejection...');
+            // Create a promise that rejects without a catch handler
+            Promise.reject(new Error('Uncaught Promise Rejection - Test Error'));
+            // Also create an async function that throws
+            (async function() {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                throw new Error('Async function error');
+            })();
+            updateStatus('Uncaught promise created');
+        }
+        
+        function triggerRecursiveError() {
+            updateStatus('Triggering recursive error...');
+            function recursiveFunction(depth) {
+                if (depth > 1000) {
+                    throw new Error('Stack overflow - recursive error at depth ' + depth);
+                }
+                return recursiveFunction(depth + 1);
+            }
+            try {
+                recursiveFunction(0);
+            } catch (e) {
+                updateStatus('Recursive error: ' + e.message);
+                throw e; // Re-throw
+            }
+        }
+        
+        // Override console.error to catch errors
+        const originalConsoleError = console.error;
+        console.error = function(...args) {
+            originalConsoleError.apply(console, args);
+            updateStatus('Console Error: ' + args.join(' '));
+        };
+        
+        // Catch unhandled promise rejections
+        window.addEventListener('unhandledrejection', function(event) {
+            updateStatus('Unhandled Promise Rejection: ' + (event.reason?.message || event.reason));
+        });
+        
+        // Catch general errors
+        window.addEventListener('error', function(event) {
+            updateStatus('Global Error: ' + (event.message || 'Unknown error'));
+        });
     </script>
 </body>
 </html>

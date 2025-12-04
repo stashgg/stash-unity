@@ -41,6 +41,7 @@ namespace Stash.Samples
         private Button settingsPopupCloseButton;
         private Button stashSdkSettingsCloseButton;
         private Button openTestCardButton;
+        private Button nativeLogsButton;
         private Label deviceIdLabel;
         private Label stashLogoLabel;
 
@@ -182,6 +183,7 @@ namespace Stash.Samples
             popupLandscapeHeightInput = root.Q<TextField>("popup-landscape-height-input");
             stashSdkSettingsCloseButton = root.Q<Button>("stash-sdk-settings-close-button");
             openTestCardButton = root.Q<Button>("open-test-card-button");
+            nativeLogsButton = root.Q<Button>("native-logs-button");
 
             if (stashSdkSettingsPopup != null)
             {
@@ -227,6 +229,11 @@ namespace Stash.Samples
             if (openTestCardButton != null)
             {
                 openTestCardButton.clicked += OpenTestCard;
+            }
+
+            if (nativeLogsButton != null)
+            {
+                nativeLogsButton.clicked += OpenNativeLogs;
             }
 
             SetupPopupSizeInputs();
@@ -528,6 +535,19 @@ namespace Stash.Samples
                     UINotificationSystem.ShowToast("Failure", "Payment failed", 3f, root);
                 }
             );
+        }
+
+        private void OpenNativeLogs()
+        {
+            NativeExceptionLogger logger = Object.FindObjectOfType<NativeExceptionLogger>();
+            if (logger != null)
+            {
+                logger.ShowLogPanel();
+            }
+            else
+            {
+                UINotificationSystem.ShowToast("Error", "Native Exception Logger not found", 2f, root);
+            }
         }
     }
 }
