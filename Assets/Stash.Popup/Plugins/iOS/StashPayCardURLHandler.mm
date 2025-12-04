@@ -2820,7 +2820,24 @@ extern "C" {
         return _forceSafariViewController;
     }
 
-    void _StashPayCardDismissSafariViewController(bool success) {
+    void _StashPayCardDismissSafariViewController() {
+        StashPayCardSafariDelegate *delegate = [StashPayCardSafariDelegate sharedInstance];
+        if (delegate.currentSafariViewController) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                // Dismiss the view controller without firing success/failure callbacks
+                [delegate.currentSafariViewController dismissViewControllerAnimated:YES completion:^{
+                    delegate.currentSafariViewController = nil;
+                    
+                    // Fire dismiss callback after dismissal
+                    if (_safariViewDismissedCallback != NULL) {
+                        _safariViewDismissedCallback();
+                    }
+                }];
+            });
+        }
+    }
+    
+    void _StashPayCardDismissSafariViewControllerWithResult(bool success) {
         StashPayCardSafariDelegate *delegate = [StashPayCardSafariDelegate sharedInstance];
         if (delegate.currentSafariViewController) {
             dispatch_async(dispatch_get_main_queue(), ^{

@@ -210,7 +210,10 @@ namespace StashPopup
         private static extern bool _StashPayCardGetForceSafariViewController();
         
         [DllImport("__Internal")]
-        private static extern void _StashPayCardDismissSafariViewController(bool success);
+        private static extern void _StashPayCardDismissSafariViewController();
+        
+        [DllImport("__Internal")]
+        private static extern void _StashPayCardDismissSafariViewControllerWithResult(bool success);
 #endif
 
         #endregion
@@ -431,6 +434,23 @@ namespace StashPopup
         }
 
         /// <summary>
+        /// Dismisses the currently open SFSafariViewController if one is presented.
+        /// 
+        /// This method dismisses the SFSafariViewController and fires only the OnSafariViewDismissed callback.
+        /// Use this when you want to dismiss the view controller without triggering success/failure callbacks.
+        /// 
+        /// Note: This method only has effect on iOS devices when ForceWebBasedCheckout is true
+        /// and an SFSafariViewController is currently presented. In the Unity Editor or on
+        /// other platforms, it has no effect.
+        /// </summary>
+        public void DismissSafariViewController()
+        {
+#if UNITY_IOS && !UNITY_EDITOR
+            _StashPayCardDismissSafariViewController();
+#endif
+        }
+
+        /// <summary>
         /// Dismisses the currently open SFSafariViewController if one is presented and fires the appropriate callbacks.
         /// 
         /// This method is useful when handling deeplink callbacks from SFSafariViewController.
@@ -457,7 +477,7 @@ namespace StashPopup
         public void DismissSafariViewController(bool success)
         {
 #if UNITY_IOS && !UNITY_EDITOR
-            _StashPayCardDismissSafariViewController(success);
+            _StashPayCardDismissSafariViewControllerWithResult(success);
 #endif
         }
 
