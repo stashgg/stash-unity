@@ -30,6 +30,10 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.net.Uri;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Path;
 import com.unity3d.player.UnityPlayer;
 
 public class StashPayCardPortraitActivity extends Activity {
@@ -682,11 +686,39 @@ public class StashPayCardPortraitActivity extends Activity {
         Class<?> builderClass = Class.forName("androidx.browser.customtabs.CustomTabsIntent$Builder");
 
         Object builder = builderClass.newInstance();
+        
+        // Set toolbar color
         java.lang.reflect.Method setToolbarColor = builderClass.getMethod("setToolbarColor", int.class);
         setToolbarColor.invoke(builder, Color.parseColor("#000000"));
 
+        // Show title
         java.lang.reflect.Method setShowTitle = builderClass.getMethod("setShowTitle", boolean.class);
         setShowTitle.invoke(builder, true);
+
+        // Disable share menu (SHARE_STATE_OFF = 0)
+        try {
+            java.lang.reflect.Method setShareState = builderClass.getMethod("setShareState", int.class);
+            setShareState.invoke(builder, 0); // SHARE_STATE_OFF
+        } catch (NoSuchMethodException e) {
+            Log.d(TAG, "setShareState not available, skipping");
+        }
+
+        // Enable URL bar hiding (auto-hide toolbar)
+        try {
+            java.lang.reflect.Method enableUrlBarHiding = builderClass.getMethod("enableUrlBarHiding");
+            enableUrlBarHiding.invoke(builder);
+        } catch (NoSuchMethodException e) {
+            Log.d(TAG, "enableUrlBarHiding not available, skipping");
+        }
+
+        // Set close button icon (X icon)
+        try {
+            Bitmap closeIcon = createCloseButtonIcon(activity);
+            java.lang.reflect.Method setCloseButtonIcon = builderClass.getMethod("setCloseButtonIcon", Bitmap.class);
+            setCloseButtonIcon.invoke(builder, closeIcon);
+        } catch (NoSuchMethodException e) {
+            Log.d(TAG, "setCloseButtonIcon not available, skipping");
+        }
 
         java.lang.reflect.Method build = builderClass.getMethod("build");
         Object customTabsIntent = build.invoke(builder);
@@ -694,6 +726,28 @@ public class StashPayCardPortraitActivity extends Activity {
         java.lang.reflect.Method launchUrl = customTabsIntentClass.getMethod("launchUrl", 
             android.content.Context.class, Uri.class);
         launchUrl.invoke(customTabsIntent, activity, Uri.parse(url));
+    }
+    
+    private Bitmap createCloseButtonIcon(Activity activity) {
+        int size = (int) (24 * activity.getResources().getDisplayMetrics().density);
+        Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        
+        Paint paint = new Paint();
+        paint.setColor(Color.WHITE);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(3.0f);
+        paint.setAntiAlias(true);
+        
+        float padding = size * 0.25f;
+        Path path = new Path();
+        path.moveTo(padding, padding);
+        path.lineTo(size - padding, size - padding);
+        path.moveTo(size - padding, padding);
+        path.lineTo(padding, size - padding);
+        
+        canvas.drawPath(path, paint);
+        return bitmap;
     }
     
     private void openInSystemBrowser(String url) {
