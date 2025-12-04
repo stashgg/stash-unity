@@ -12,6 +12,9 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.util.Log;
+import java.lang.Runtime;
+import android.app.ActivityManager;
+import android.content.Context;
 import android.view.Gravity;
 import android.view.Surface;
 import android.view.View;
@@ -429,6 +432,31 @@ public class StashPayCardPlugin {
     private void setupPopupWebView(WebView webView, String url, final Activity activity) {
         StashWebViewUtils.configureWebViewSettings(webView, StashWebViewUtils.isDarkTheme(activity));
         
+        // Set memory limits for WebView (API 18+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2) {
+            try {
+                // Limit WebView memory cache
+                WebSettings settings = webView.getSettings();
+                settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+                
+                // Try to set memory limits if available
+                Runtime runtime = Runtime.getRuntime();
+                long maxMemory = runtime.maxMemory();
+                long heapSize = runtime.totalMemory();
+                long freeMemory = runtime.freeMemory();
+                long usedMemory = heapSize - freeMemory;
+                
+                double memoryUsageRatio = (double) usedMemory / maxMemory;
+                
+                Log.d(TAG, "Memory stats - Max: " + (maxMemory / 1024 / 1024) + "MB, Used: " + (usedMemory / 1024 / 1024) + "MB, Ratio: " + String.format("%.2f", memoryUsageRatio * 100) + "%");
+                
+                // Start memory monitoring
+                startMemoryMonitoring(activity);
+            } catch (Exception e) {
+                Log.e(TAG, "Error setting up memory monitoring: " + e.getMessage(), e);
+            }
+        }
+        
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
@@ -666,8 +694,86 @@ public class StashPayCardPlugin {
         }
     }
     
+    private void startMemoryMonitoring(final Activity activity) {
+        stopMemoryMonitoring(); // Stop any existing monitoring
+        
+        memoryMonitorHandler = new Handler(Looper.getMainLooper());
+        memoryMonitorRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (currentDialog == null || !currentDialog.isShowing() || webView == null) {
+                    stopMemoryMonitoring();
+                    return;
+                }
+                
+                try {
+                    Runtime runtime = Runtime.getRuntime();
+                    long maxMemory = runtime.maxMemory();
+                    long heapSize = runtime.totalMemory();
+                    long freeMemory = runtime.freeMemory();
+                    long usedMemory = heapSize - freeMemory;
+                    
+                    double memoryUsageRatio = (double) usedMemory / maxMemory;
+                    
+                    // Check if memory is critical
+                    if (memoryUsageRatio >= MEMORY_CRITICAL_THRESHOLD) {
+                        Log.e(TAG, "CRITICAL: Memory usage at " + String.format("%.1f", memoryUsageRatio * 100) + "% - Closing card to prevent app crash");
+                        handleWebViewException("MemoryCritical", new Exception("Memory usage critical: " + String.format("%.1f", memoryUsageRatio * 100) + "% (Used: " + (usedMemory / 1024 / 1024) + "MB / Max: " + (maxMemory / 1024 / 1024) + "MB)"));
+                        stopMemoryMonitoring();
+                        return;
+                    }
+                    
+                    // Check if memory is at warning level
+                    if (memoryUsageRatio >= MEMORY_WARNING_THRESHOLD) {
+                        Log.w(TAG, "WARNING: Memory usage at " + String.format("%.1f", memoryUsageRatio * 100) + "% - Monitoring closely");
+                    }
+                    
+                    // Get system memory info (API 16+)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+                        ActivityManager.MemoryInfo memInfo = new ActivityManager.MemoryInfo();
+                        ActivityManager activityManager = (ActivityManager) activity.getSystemService(Context.ACTIVITY_SERVICE);
+                        if (activityManager != null) {
+                            activityManager.getMemoryInfo(memInfo);
+                            long availableMemory = memInfo.availMem;
+                            long totalMemory = memInfo.totalMem;
+                            double systemMemoryRatio = 1.0 - ((double) availableMemory / totalMemory);
+                            
+                            if (systemMemoryRatio >= 0.90) {
+                                Log.e(TAG, "CRITICAL: System memory usage at " + String.format("%.1f", systemMemoryRatio * 100) + "% - Closing card");
+                                handleWebViewException("SystemMemoryCritical", new Exception("System memory critical: " + String.format("%.1f", systemMemoryRatio * 100) + "%"));
+                                stopMemoryMonitoring();
+                                return;
+                            }
+                        }
+                    }
+                    
+                    // Schedule next check
+                    if (memoryMonitorHandler != null && memoryMonitorRunnable != null) {
+                        memoryMonitorHandler.postDelayed(memoryMonitorRunnable, MEMORY_CHECK_INTERVAL_MS);
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in memory monitoring: " + e.getMessage(), e);
+                    stopMemoryMonitoring();
+                }
+            }
+        };
+        
+        // Start monitoring after a short delay
+        memoryMonitorHandler.postDelayed(memoryMonitorRunnable, MEMORY_CHECK_INTERVAL_MS);
+    }
+    
+    private void stopMemoryMonitoring() {
+        if (memoryMonitorHandler != null && memoryMonitorRunnable != null) {
+            memoryMonitorHandler.removeCallbacks(memoryMonitorRunnable);
+            memoryMonitorHandler = null;
+            memoryMonitorRunnable = null;
+        }
+    }
+    
     private void cleanupAllViews() {
         try {
+            stopMemoryMonitoring(); // Stop memory monitoring when cleaning up
+            
             if (loadingIndicator != null) {
                 try {
                     if (loadingIndicator.getParent() != null) {
