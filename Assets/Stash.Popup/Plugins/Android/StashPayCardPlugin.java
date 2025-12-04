@@ -64,6 +64,13 @@ public class StashPayCardPlugin {
     
     private long pageLoadStartTime;
     
+    // Memory monitoring
+    private Handler memoryMonitorHandler;
+    private Runnable memoryMonitorRunnable;
+    private static final long MEMORY_CHECK_INTERVAL_MS = 2000; // Check every 2 seconds
+    private static final double MEMORY_WARNING_THRESHOLD = 0.85; // 85% of max heap
+    private static final double MEMORY_CRITICAL_THRESHOLD = 0.95; // 95% of max heap
+    
     private class StashJavaScriptInterface {
         @JavascriptInterface
         public void onPaymentSuccess() {
@@ -528,22 +535,8 @@ public class StashPayCardPlugin {
             }
         });
         
-        webView.setWebChromeClient(new WebChromeClient() {
-            // Handle WebView crashes (API 26+)
-            @Override
-            public boolean onCrash(WebView view) {
-                try {
-                    String errorMessage = "WebView crashed";
-                    Log.e(TAG, errorMessage);
-                    handleWebViewException("onCrash", new Exception(errorMessage));
-                    // Return true to indicate we handled the crash
-                    return true;
-                } catch (Exception e) {
-                    Log.e(TAG, "Error handling WebView crash: " + e.getMessage(), e);
-                    return true; // Always return true to prevent app crash
-                }
-            }
-        });
+        // Note: onCrash() was deprecated in API 26 and removed. We use onRenderProcessGone() in WebViewClient instead.
+        webView.setWebChromeClient(new WebChromeClient());
         webView.addJavascriptInterface(new StashJavaScriptInterface(), "StashAndroid");
         webView.setVerticalScrollBarEnabled(false);
         webView.setHorizontalScrollBarEnabled(false);
