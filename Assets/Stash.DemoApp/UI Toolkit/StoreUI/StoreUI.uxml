@@ -183,6 +183,9 @@
                     <ui:VisualElement class="settings-option-row settings-option-row-column">
                         <ui:Button name="native-logs-button" text="Native Logs" class="test-card-button" />
                     </ui:VisualElement>
+                    <ui:VisualElement class="settings-option-row settings-option-row-column">
+                        <ui:Button name="load-next-scene-button" text="Load Next Scene" class="test-card-button" />
+                    </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>

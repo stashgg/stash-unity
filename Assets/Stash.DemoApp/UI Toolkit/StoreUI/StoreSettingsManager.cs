@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UIElements;
 using System.Collections.Generic;
 using StashPopup;
@@ -42,6 +43,7 @@ namespace Stash.Samples
         private Button stashSdkSettingsCloseButton;
         private Button openTestCardButton;
         private Button nativeLogsButton;
+        private Button loadNextSceneButton;
         private Label deviceIdLabel;
         private Label stashLogoLabel;
 
@@ -184,6 +186,7 @@ namespace Stash.Samples
             stashSdkSettingsCloseButton = root.Q<Button>("stash-sdk-settings-close-button");
             openTestCardButton = root.Q<Button>("open-test-card-button");
             nativeLogsButton = root.Q<Button>("native-logs-button");
+            loadNextSceneButton = root.Q<Button>("load-next-scene-button");
 
             if (stashSdkSettingsPopup != null)
             {
@@ -234,6 +237,11 @@ namespace Stash.Samples
             if (nativeLogsButton != null)
             {
                 nativeLogsButton.clicked += OpenNativeLogs;
+            }
+
+            if (loadNextSceneButton != null)
+            {
+                loadNextSceneButton.clicked += LoadNextScene;
             }
 
             SetupPopupSizeInputs();
@@ -547,6 +555,21 @@ namespace Stash.Samples
             else
             {
                 UINotificationSystem.ShowToast("Error", "Native Exception Logger not found", 2f, root);
+            }
+        }
+
+        private void LoadNextScene()
+        {
+            int currentSceneIndex = SceneManager.GetActiveScene().buildIndex;
+            int totalScenes = SceneManager.sceneCountInBuildSettings;
+            
+            if (currentSceneIndex + 1 < totalScenes)
+            {
+                SceneManager.LoadScene(currentSceneIndex + 1);
+            }
+            else
+            {
+                UINotificationSystem.ShowToast("Info", "Already on the last scene", 2f, root);
             }
         }
     }
