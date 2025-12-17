@@ -50,9 +50,11 @@ namespace Stash.Samples
         private Button userTabButton;
         private Button storeTabButton;
         private Button webshopTabButton;
+        private Button galleonTabButton;
         private VisualElement userTabContent;
         private VisualElement storeTabContent;
         private VisualElement webshopTabContent;
+        private VisualElement galleonTabContent;
         #endregion
 
         #region Tab Configuration
@@ -160,9 +162,11 @@ namespace Stash.Samples
             userTabButton = root.Q<Button>("user-tab-button");
             storeTabButton = root.Q<Button>("store-tab-button");
             webshopTabButton = root.Q<Button>("webshop-tab-button");
+            galleonTabButton = root.Q<Button>("galleon-tab-button");
             userTabContent = root.Q<VisualElement>("user-tab-content");
             storeTabContent = root.Q<VisualElement>("store-tab-content");
             webshopTabContent = root.Q<VisualElement>("webshop-tab-content");
+            galleonTabContent = root.Q<VisualElement>("galleon-tab-content");
         }
 
         private void SetupEventHandlers()
@@ -193,8 +197,8 @@ namespace Stash.Samples
 
         private void SetupTabNavigation()
         {
-            if (userTabButton == null || storeTabButton == null || webshopTabButton == null ||
-                userTabContent == null || storeTabContent == null || webshopTabContent == null)
+            if (userTabButton == null || storeTabButton == null || webshopTabButton == null || galleonTabButton == null ||
+                userTabContent == null || storeTabContent == null || webshopTabContent == null || galleonTabContent == null)
             {
                 Debug.LogError("[StoreAuth] Tab elements not found");
                 return;
@@ -203,6 +207,7 @@ namespace Stash.Samples
             userTabButton.clicked += () => SelectTab("user");
             storeTabButton.clicked += () => SelectTab("store");
             webshopTabButton.clicked += () => SelectTab("webshop");
+            galleonTabButton.clicked += () => SelectTab("galleon");
         }
 
         private void SubscribeToAuthEvents()
@@ -525,11 +530,13 @@ namespace Stash.Samples
             userTabButton.RemoveFromClassList("tab-selected");
             storeTabButton.RemoveFromClassList("tab-selected");
             webshopTabButton.RemoveFromClassList("tab-selected");
+            galleonTabButton.RemoveFromClassList("tab-selected");
             
             // Hide all content
             userTabContent.style.display = DisplayStyle.None;
             storeTabContent.style.display = DisplayStyle.None;
             webshopTabContent.style.display = DisplayStyle.None;
+            galleonTabContent.style.display = DisplayStyle.None;
             
             // Show selected tab
             switch (tabToShow.ToLower())
@@ -546,6 +553,10 @@ namespace Stash.Samples
                     webshopTabButton.AddToClassList("tab-selected");
                     webshopTabContent.style.display = DisplayStyle.Flex;
                     break;
+                case "galleon":
+                    galleonTabButton.AddToClassList("tab-selected");
+                    galleonTabContent.style.display = DisplayStyle.Flex;
+                    break;
                 default:
                     Debug.LogError($"[StoreAuth] Unknown tab: {tabToShow}");
                     break;
@@ -560,8 +571,8 @@ namespace Stash.Samples
 
         private bool ValidateTabElements()
         {
-            return userTabButton != null && storeTabButton != null && webshopTabButton != null &&
-                   userTabContent != null && storeTabContent != null && webshopTabContent != null;
+            return userTabButton != null && storeTabButton != null && webshopTabButton != null && galleonTabButton != null &&
+                   userTabContent != null && storeTabContent != null && webshopTabContent != null && galleonTabContent != null;
         }
 
         private void RefreshTabElements()
@@ -569,9 +580,11 @@ namespace Stash.Samples
             userTabButton?.MarkDirtyRepaint();
             storeTabButton?.MarkDirtyRepaint();
             webshopTabButton?.MarkDirtyRepaint();
+            galleonTabButton?.MarkDirtyRepaint();
             userTabContent?.MarkDirtyRepaint();
             storeTabContent?.MarkDirtyRepaint();
             webshopTabContent?.MarkDirtyRepaint();
+            galleonTabContent?.MarkDirtyRepaint();
         }
 
         private string GetActiveTab()
@@ -579,6 +592,7 @@ namespace Stash.Samples
             if (userTabButton?.ClassListContains("tab-selected") == true) return "user";
             if (storeTabButton?.ClassListContains("tab-selected") == true) return "store";
             if (webshopTabButton?.ClassListContains("tab-selected") == true) return "webshop";
+            if (galleonTabButton?.ClassListContains("tab-selected") == true) return "galleon";
             return string.Empty;
         }
         #endregion

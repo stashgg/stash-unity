@@ -63,6 +63,9 @@ namespace Stash.Samples
         
         // Setup channel selection button
         SetupChannelSelectionButton();
+        
+        // Setup Galleon checkout button
+        SetupGalleonCheckoutButton();
     }
     
     private void InitializeNativeExceptionLogger()
@@ -215,6 +218,22 @@ namespace Stash.Samples
         else
         {
             Debug.LogWarning("[StoreUI] Could not find open-channel-selection-button in UI");
+        }
+    }
+    
+    private void SetupGalleonCheckoutButton()
+    {
+        // Setup Galleon checkout button
+        Button galleonCheckoutButton = root.Q<Button>("galleon-checkout-button");
+
+        if (galleonCheckoutButton != null)
+        {
+            galleonCheckoutButton.clicked += OpenGalleonCheckout;
+            Debug.Log("[StoreUI] Galleon checkout button setup complete");
+        }
+        else
+        {
+            Debug.LogWarning("[StoreUI] Could not find galleon-checkout-button in UI");
         }
     }
     
@@ -948,5 +967,237 @@ namespace Stash.Samples
             UINotificationSystem.ShowLoadTimeToast(loadTimeMs, root);
         }
     }
+    
+    #region Galleon Checkout
+    
+    private const string GALLEON_API_BASE_URL = "https://sandbox-stash-bridge.galleon.so";
+    private const string GALLEON_BEARER_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcHBJZCI6Im1lcmdlY3J1aXNlLnNiLmFwcCIsImlhdCI6MTc2NTkyNDM4OH0.rbXMiE-z3-DXESoKuVGw_8u_9wu_KTQeI-rU75KEddw";
+    
+    /// <summary>
+    /// Opens Galleon checkout by authenticating and getting checkout URL
+    /// </summary>
+    private async void OpenGalleonCheckout()
+    {
+        try
+        {
+            UINotificationSystem.ShowToast("Galleon Checkout", "Authenticating...", 2f, root);
+            
+            // Step 1: Authenticate to get stripeCustomerId
+            string stripeCustomerId = await AuthenticateWithGalleon();
+            
+            if (string.IsNullOrEmpty(stripeCustomerId))
+            {
+                UINotificationSystem.ShowPopup("Error", "Failed to authenticate with Galleon API", 3f, root);
+                return;
+            }
+            
+            Debug.Log($"[Galleon] Authenticated successfully. Stripe Customer ID: {stripeCustomerId}");
+            
+            // Step 2: Get checkout link by customer ID
+            string checkoutUrl = await GetCheckoutLinkByCustomerId(stripeCustomerId);
+            
+            if (string.IsNullOrEmpty(checkoutUrl))
+            {
+                UINotificationSystem.ShowPopup("Error", "Failed to get checkout URL from Galleon API", 3f, root);
+                return;
+            }
+            
+            Debug.Log($"[Galleon] Checkout URL received: {checkoutUrl}");
+            
+            // Step 3: Open checkout in StashPayCard
+            StashPayCard.Instance.OpenCheckout(
+                checkoutUrl,
+                dismissCallback: () => {
+                    UINotificationSystem.ShowToast("Dismissed", "Galleon checkout was dismissed", 2f, root);
+                },
+                successCallback: () => {
+                    UINotificationSystem.ShowToast("Success", "Galleon checkout successful!", 3f, root);
+                },
+                failureCallback: () => {
+                    UINotificationSystem.ShowToast("Failure", "Galleon checkout failed", 3f, root);
+                }
+            );
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[Galleon] Error in OpenGalleonCheckout: {ex.Message}\n{ex.StackTrace}");
+            UINotificationSystem.ShowPopup("Error", $"Galleon checkout error: {ex.Message}", 3f, root);
+        }
+    }
+    
+    /// <summary>
+    /// Authenticates with Galleon API and returns stripeCustomerId
+    /// </summary>
+    private async Task<string> AuthenticateWithGalleon()
+    {
+        string url = $"{GALLEON_API_BASE_URL}/authenticate";
+        
+        // Using test payload from documentation
+        var requestBody = new GalleonAuthenticateRequest
+        {
+            app_user_id = "user123"
+        };
+        
+        string jsonBody = JsonUtility.ToJson(requestBody);
+        
+        using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
+        {
+            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonBody);
+            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+            request.SetRequestHeader("Authorization", $"Bearer {GALLEON_BEARER_TOKEN}");
+            
+            var operation = request.SendWebRequest();
+            while (!operation.isDone)
+            {
+                await Task.Yield();
+            }
+            
+            if (request.result == UnityWebRequest.Result.Success)
+            {
+                try
+                {
+                    var response = JsonUtility.FromJson<GalleonAuthenticateResponse>(request.downloadHandler.text);
+                    return response.stripeCustomerId;
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[Galleon] Failed to parse authenticate response: {ex.Message}. Response: {request.downloadHandler.text}");
+                    return null;
+                }
+            }
+            else
+            {
+                Debug.LogError($"[Galleon] Authenticate request failed: {request.error}. Status: {request.responseCode}. Response: {request.downloadHandler?.text}");
+                return null;
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Gets checkout link by customer ID from Galleon API
+    /// </summary>
+    private async Task<string> GetCheckoutLinkByCustomerId(string stripeCustomerId)
+    {
+        string url = $"{GALLEON_API_BASE_URL}/checkout-link-by-customer-id";
+        
+        // Using test payload from documentation
+        var requestBody = new GalleonCheckoutLinkRequest
+        {
+            stripe_customer_id = stripeCustomerId,
+            amount = 29.99,
+            currency = "USD",
+            payer_ip = "192.168.1.1",
+            session_ttl_seconds = 900,
+            metadata = new GalleonCheckoutMetadata
+            {
+                transactionId = "123123",
+                platform = "google_dtc"
+            },
+            description = "Premium Subscription",
+            setup_future_usage = "off_session",
+            sku = "SKU-PREMIUM",
+            preview = new GalleonCheckoutPreview
+            {
+                title = "Premium Subscription",
+                description = "Unlock all premium features",
+                image_url = "https://example.com/premium.png"
+            },
+            return_deeplink = "myapp://payment-complete",
+            back_button_enabled = true,
+            country = "US"
+        };
+        
+        string jsonBody = JsonUtility.ToJson(requestBody);
+        
+        using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
+        {
+            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonBody);
+            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+            request.SetRequestHeader("Authorization", $"Bearer {GALLEON_BEARER_TOKEN}");
+            
+            var operation = request.SendWebRequest();
+            while (!operation.isDone)
+            {
+                await Task.Yield();
+            }
+            
+            if (request.result == UnityWebRequest.Result.Success)
+            {
+                try
+                {
+                    var response = JsonUtility.FromJson<GalleonCheckoutLinkResponse>(request.downloadHandler.text);
+                    return response.checkout_url;
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[Galleon] Failed to parse checkout link response: {ex.Message}. Response: {request.downloadHandler.text}");
+                    return null;
+                }
+            }
+            else
+            {
+                Debug.LogError($"[Galleon] Checkout link request failed: {request.error}. Status: {request.responseCode}. Response: {request.downloadHandler?.text}");
+                return null;
+            }
+        }
+    }
+    
+    // Galleon API request/response classes
+    [Serializable]
+    private class GalleonAuthenticateRequest
+    {
+        public string app_user_id;
+    }
+    
+    [Serializable]
+    private class GalleonAuthenticateResponse
+    {
+        public string stripeCustomerId;
+    }
+    
+    [Serializable]
+    private class GalleonCheckoutLinkRequest
+    {
+        public string stripe_customer_id;
+        public double amount;
+        public string currency;
+        public string payer_ip;
+        public int session_ttl_seconds;
+        public GalleonCheckoutMetadata metadata;
+        public string description;
+        public string setup_future_usage;
+        public string sku;
+        public GalleonCheckoutPreview preview;
+        public string return_deeplink;
+        public bool back_button_enabled;
+        public string country;
+    }
+    
+    [Serializable]
+    private class GalleonCheckoutMetadata
+    {
+        public string transactionId;
+        public string platform;
+    }
+    
+    [Serializable]
+    private class GalleonCheckoutPreview
+    {
+        public string title;
+        public string description;
+        public string image_url;
+    }
+    
+    [Serializable]
+    private class GalleonCheckoutLinkResponse
+    {
+        public string checkout_url;
+    }
+    
+    #endregion
     }
 }

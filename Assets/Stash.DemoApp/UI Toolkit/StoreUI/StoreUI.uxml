@@ -11,6 +11,7 @@
             <ui:Button text="Account" name="user-tab-button" class="tab-button" />
             <ui:Button text="Stash Pay" name="store-tab-button" class="tab-button tab-selected" />
             <ui:Button text="Webshop" name="webshop-tab-button" class="tab-button" />
+            <ui:Button text="Galeon" name="galleon-tab-button" class="tab-button" />
         </ui:VisualElement>
         <ui:VisualElement name="tab-content" class="tab-content">
             <ui:VisualElement class="content-overlay" />
@@ -92,6 +93,12 @@
                         </ui:VisualElement>
                     </ui:VisualElement>
                 </ui:VisualElement>
+            </ui:VisualElement>
+            <ui:VisualElement name="galleon-tab-content" class="tab-panel" style="display: none;">
+                <ui:VisualElement class="tab-overlay" />
+                <ui:ScrollView name="galleon-scroll-view" class="items-scroll-view">
+                    <ui:Button name="galleon-checkout-button" text="Galeon Checkout" class="channel-selection-button" style="color: rgb(255, 255, 255); background-color: rgba(255, 255, 255, 0.15); border-left-color: rgba(219, 219, 219, 0.4); border-right-color: rgba(219, 219, 219, 0.4); border-top-color: rgba(219, 219, 219, 0.4); border-bottom-color: rgba(219, 219, 219, 0.4);" />
+                </ui:ScrollView>
             </ui:VisualElement>
             <ui:VisualElement name="settings-tab" class="tab-content" />
         </ui:VisualElement>

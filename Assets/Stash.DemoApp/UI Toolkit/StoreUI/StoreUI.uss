@@ -606,7 +606,7 @@
 }
 
 .tab-button {
-    padding: 10px 20px;
+    padding: 10px 12px;
     margin-right: 2px;
     background-color: transparent;
     color: rgba(200, 200, 200, 0.8);
@@ -614,8 +614,8 @@
     border-bottom-width: 3px;
     border-bottom-color: transparent;
     transition-duration: 0.2s;
-    min-width: 100px;
-    font-size: 14px;
+    min-width: 70px;
+    font-size: 13px;
     flex: 0 1 auto;
     -unity-font-style: normal;
     border-radius: 12px 12px 0 0;
@@ -956,14 +956,15 @@
 .action-button {
     background-color: rgb(95, 159, 251);
     color: white;
-    padding: 4px 8px;
+    padding: 8px 16px;
     border-width: 1px;
     border-color: rgb(255, 255, 255);
     border-radius: 12px;
     -unity-font-style: bold;
     font-size: 14px;
     width: 90%;
-    height: 36px;
+    min-width: 200px;
+    height: 44px;
     justify-content: center;
     -unity-text-align: middle-center;
     align-items: center;

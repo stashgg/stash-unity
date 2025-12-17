@@ -26,11 +26,13 @@ namespace Stash.Samples
         private Button userTabButton;
         private Button storeTabButton;
         private Button webshopTabButton;
+        private Button galleonTabButton;
         
         // Tab content panels
         private VisualElement userTabContent;
         private VisualElement storeTabContent;
         private VisualElement webshopTabContent;
+        private VisualElement galleonTabContent;
         
         // Help system
         private VisualElement helpDescriptionDialog;
@@ -48,7 +50,8 @@ namespace Stash.Samples
         {
             { "user", "Manage your account settings and view your profile information. You can log in or create a new account here." },
             { "store", "Browse and purchase items using Stash Pay. This is our seamless alternative to in-app purchases." },
-            { "webshop", "Open the Stash Webshop directly from the game. All purchases are synchronized with your game account." }
+            { "webshop", "Open the Stash Webshop directly from the game. All purchases are synchronized with your game account." },
+            { "galleon", "Galleon checkout integration for seamless payments through the Galleon payment system." }
         };
         #endregion
 
@@ -143,11 +146,13 @@ namespace Stash.Samples
             userTabButton = root.Q<Button>("user-tab-button");
             storeTabButton = root.Q<Button>("store-tab-button");
             webshopTabButton = root.Q<Button>("webshop-tab-button");
+            galleonTabButton = root.Q<Button>("galleon-tab-button");
             
             // Get tab content panels
             userTabContent = root.Q<VisualElement>("user-tab-content");
             storeTabContent = root.Q<VisualElement>("store-tab-content");
             webshopTabContent = root.Q<VisualElement>("webshop-tab-content");
+            galleonTabContent = root.Q<VisualElement>("galleon-tab-content");
 
             // Get help description dialog elements
             helpDescriptionDialog = root.Q<VisualElement>("help-description-dialog");
@@ -157,8 +162,8 @@ namespace Stash.Samples
             // Found tab elements successfully
             
             // Validate that all required elements were found
-            return userTabButton != null && storeTabButton != null && webshopTabButton != null &&
-                   userTabContent != null && storeTabContent != null && webshopTabContent != null &&
+            return userTabButton != null && storeTabButton != null && webshopTabButton != null && galleonTabButton != null &&
+                   userTabContent != null && storeTabContent != null && webshopTabContent != null && galleonTabContent != null &&
                    helpDescriptionDialog != null && helpDescriptionCloseButton != null && helpDescriptionText != null;
         }
 
@@ -171,6 +176,7 @@ namespace Stash.Samples
             userTabButton.clicked += () => SelectTab("user");
             storeTabButton.clicked += () => SelectTab("store");
             webshopTabButton.clicked += () => SelectTab("webshop");
+            galleonTabButton.clicked += () => SelectTab("galleon");
 
             // Set up help description close button
             if (helpDescriptionCloseButton != null)
@@ -230,8 +236,8 @@ namespace Stash.Samples
         /// </summary>
         private bool ValidateTabElements()
         {
-            return userTabButton != null && storeTabButton != null && webshopTabButton != null &&
-                   userTabContent != null && storeTabContent != null && webshopTabContent != null;
+            return userTabButton != null && storeTabButton != null && webshopTabButton != null && galleonTabButton != null &&
+                   userTabContent != null && storeTabContent != null && webshopTabContent != null && galleonTabContent != null;
         }
 
         /// <summary>
@@ -242,6 +248,7 @@ namespace Stash.Samples
             userTabButton.RemoveFromClassList("tab-selected");
             storeTabButton.RemoveFromClassList("tab-selected");
             webshopTabButton.RemoveFromClassList("tab-selected");
+            galleonTabButton.RemoveFromClassList("tab-selected");
         }
 
         /// <summary>
@@ -252,6 +259,7 @@ namespace Stash.Samples
             userTabContent.style.display = DisplayStyle.None;
             storeTabContent.style.display = DisplayStyle.None;
             webshopTabContent.style.display = DisplayStyle.None;
+            galleonTabContent.style.display = DisplayStyle.None;
         }
 
         /// <summary>
@@ -276,6 +284,11 @@ namespace Stash.Samples
                     webshopTabContent.style.display = DisplayStyle.Flex;
                     break;
                     
+                case "galleon":
+                    galleonTabButton.AddToClassList("tab-selected");
+                    galleonTabContent.style.display = DisplayStyle.Flex;
+                    break;
+                    
                 default:
                     Debug.LogWarning($"[TabController] Unknown tab name: {tabName}");
                     break;
@@ -290,6 +303,7 @@ namespace Stash.Samples
             userTabButton.MarkDirtyRepaint();
             storeTabButton.MarkDirtyRepaint();
             webshopTabButton.MarkDirtyRepaint();
+            galleonTabButton.MarkDirtyRepaint();
         }
         #endregion
 
