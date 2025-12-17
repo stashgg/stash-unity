@@ -1005,6 +1005,9 @@ namespace Stash.Samples
             Debug.Log($"[Galleon] Checkout URL received: {checkoutUrl}");
             
             // Step 3: Open checkout in StashPayCard
+            // Apply user's preference for Web View mode
+            StashPayCard.Instance.ForceWebBasedCheckout = settingsManager.UseSafariWebView;
+            
             StashPayCard.Instance.OpenCheckout(
                 checkoutUrl,
                 dismissCallback: () => {
