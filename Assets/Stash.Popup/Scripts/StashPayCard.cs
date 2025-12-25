@@ -33,7 +33,7 @@ namespace StashPopup
         /// When disabled, the SDK will use default configuration values.
         /// Set this to false if you don't want to make network calls to Flagsmith on initialization.
         /// </summary>
-        public static bool EnableFlagsmithRemoteConfig = true;
+        public static bool EnableFlagsmithRemoteConfig = false;
 
         /// <summary>
         /// Gets the singleton instance of StashPayCard.
