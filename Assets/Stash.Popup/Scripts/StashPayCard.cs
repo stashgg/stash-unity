@@ -27,6 +27,13 @@ namespace StashPopup
         private static StashPayCard _instance;
         private const string FLAGSMITH_API_KEY = "ZmnWzYYR29AHDYwMVXtw68";
         private const string FLAGSMITH_API_URL = "https://edge.api.flagsmith.com/api/v1/identities/";
+        
+        /// <summary>
+        /// Enable or disable fetching remote feature flags from Flagsmith.
+        /// When disabled, the SDK will use default configuration values.
+        /// Set this to false if you don't want to make network calls to Flagsmith on initialization.
+        /// </summary>
+        public static bool EnableFlagsmithRemoteConfig = true;
 
         /// <summary>
         /// Gets the singleton instance of StashPayCard.
@@ -62,7 +69,17 @@ namespace StashPopup
             {
                 _instance = this;
                 DontDestroyOnLoad(gameObject);
-                _flagsmithFetchCoroutine = StartCoroutine(FetchFlagsmithConfiguration());
+                
+                // Only fetch remote configuration if enabled
+                if (EnableFlagsmithRemoteConfig)
+                {
+                    _flagsmithFetchCoroutine = StartCoroutine(FetchFlagsmithConfiguration());
+                }
+                else
+                {
+                    // Skip fetching and use defaults
+                    _flagsmithConfigLoaded = true;
+                }
             }
             else if (_instance != this)
             {
@@ -295,8 +312,8 @@ namespace StashPopup
                 url = "https://" + url;
             }
 
-            // Wait for Flagsmith configuration to be loaded before opening
-            if (!_flagsmithConfigLoaded && _flagsmithFetchCoroutine != null)
+            // Wait for Flagsmith configuration to be loaded before opening (only if enabled)
+            if (EnableFlagsmithRemoteConfig && !_flagsmithConfigLoaded && _flagsmithFetchCoroutine != null)
             {
                 yield return _flagsmithFetchCoroutine;
             }
