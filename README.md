@@ -36,7 +36,7 @@ You can try **Stash.DemoApp** directly in online hosted emulators:
 
 1. Open **Window > Package Manager**
 2. Click **+** → **Add package from git URL**
-3. Enter: `https://github.com/stashgg/stash-unity.git?path=Assets`
+3. Enter: `https://github.com/stashgg/stash-unity.git?path=Assets/<Stash.Webshop / Stash.Popup>`
 
 ## Documentation
 
