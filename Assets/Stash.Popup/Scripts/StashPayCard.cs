@@ -257,6 +257,8 @@ namespace StashPopup
 #if UNITY_ANDROID && !UNITY_EDITOR
             try
             {
+                // Ensure Android plugin is initialized before applying configuration
+                InitializeAndroidPlugin();
                 androidPluginInstance?.Call("setCardConfiguration", _cardHeightRatio, _cardVerticalPosition, _cardWidthRatio);
             }
             catch (System.Exception e)
@@ -496,6 +498,8 @@ namespace StashPopup
 #if UNITY_ANDROID && !UNITY_EDITOR
             try
             {
+                // Ensure Android plugin is initialized before resetting state
+                InitializeAndroidPlugin();
                 androidPluginInstance?.Call("resetPresentationState");
             }
             catch (System.Exception e)
@@ -591,6 +595,8 @@ namespace StashPopup
 #if UNITY_ANDROID && !UNITY_EDITOR
                 try
                 {
+                    // Ensure Android plugin is initialized before checking presentation state
+                    InitializeAndroidPlugin();
                     return androidPluginInstance?.Call<bool>("isCurrentlyPresented") ?? false;
                 }
                 catch (System.Exception e)
@@ -632,6 +638,8 @@ namespace StashPopup
 #if UNITY_ANDROID && !UNITY_EDITOR
                 try
                 {
+                    // Ensure Android plugin is initialized before getting the value
+                    InitializeAndroidPlugin();
                     return androidPluginInstance?.Call<bool>("getForceSafariViewController") ?? false;
                 }
                 catch (System.Exception e)
@@ -658,6 +666,8 @@ namespace StashPopup
 #if UNITY_ANDROID && !UNITY_EDITOR
                 try
                 {
+                    // Ensure Android plugin is initialized before setting the value
+                    InitializeAndroidPlugin();
                     androidPluginInstance?.Call("setForceSafariViewController", value);
                 }
                 catch (System.Exception e)
