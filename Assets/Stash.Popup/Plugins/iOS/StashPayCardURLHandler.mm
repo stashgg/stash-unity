@@ -4,6 +4,10 @@
 #import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
 
+// Unity pause/resume functions - available in Unity iOS builds
+extern void UnityPause(int pause);
+extern void UnityResume(void);
+
 #pragma mark - Types & Callbacks
 
 typedef void (*SafariViewDismissedCallback)();
@@ -26,6 +30,7 @@ BOOL _callbackWasCalled = NO;
 BOOL _isCardCurrentlyPresented = NO;
 BOOL _paymentSuccessHandled = NO;
 BOOL _paymentSuccessCallbackCalled = NO;
+BOOL _unityWasPaused = NO; // Track if Unity was paused for popup mode
 
 #pragma mark - Configuration Constants
 
@@ -775,6 +780,9 @@ static SafariViewDismissedCallback GetGlobalSafariViewDismissedCallback() {
         self.portraitWindow = nil;
     }
     
+    // Resume Unity when popup is dismissed (only if it was paused for popup mode)
+    BOOL shouldResume = _unityWasPaused;
+    
     self.currentPresentedVC = nil;
     self.isPurchaseProcessing = NO;
     _isCardExpanded = NO;
@@ -784,6 +792,12 @@ static SafariViewDismissedCallback GetGlobalSafariViewDismissedCallback() {
     _callbackWasCalled = NO;
     _paymentSuccessHandled = NO;
     _paymentSuccessCallbackCalled = NO;
+    _unityWasPaused = NO; // Reset the flag
+    
+    // Resume Unity after cleanup if it was paused
+    if (shouldResume) {
+        UnityResume();
+    }
 }
 
 - (void)safariViewControllerDidFinish:(SFSafariViewController *)controller {
@@ -2644,6 +2658,13 @@ extern "C" {
                 
                 cardWindow.hidden = NO;
                 [cardWindow makeKeyAndVisible];
+                
+                // Pause Unity when popup is shown (similar to Android dialog behavior)
+                // Only pause for popup mode, not for card mode
+                if (_usePopupPresentation) {
+                    UnityPause(1);
+                    _unityWasPaused = YES;
+                }
                 
                 // On iPad, default size is the "expanded" state
                 if (isRunningOniPad() && !_usePopupPresentation) {

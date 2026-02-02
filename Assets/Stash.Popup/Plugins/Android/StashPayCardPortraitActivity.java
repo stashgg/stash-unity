@@ -31,6 +31,7 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.net.Uri;
 import com.unity3d.player.UnityPlayer;
+import com.stash.popup.keepalive.StashKeepAliveManager;
 
 public class StashPayCardPortraitActivity extends Activity {
     private static final String TAG = "StashPayCard";
@@ -71,71 +72,122 @@ public class StashPayCardPortraitActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        Intent intent = getIntent();
-        url = intent.getStringExtra("url");
-        initialURL = intent.getStringExtra("initialURL");
-        usePopup = intent.getBooleanExtra("usePopup", false);
-        wasLandscapeBeforePortrait = intent.getBooleanExtra("wasLandscape", false);
-        
-        if (url == null || url.isEmpty()) {
+        try {
+            Intent intent = getIntent();
+            if (intent == null) {
+                Log.e(TAG, "Intent is null in onCreate");
+                finish();
+                return;
+            }
+            
+            url = intent.getStringExtra("url");
+            initialURL = intent.getStringExtra("initialURL");
+            usePopup = intent.getBooleanExtra("usePopup", false);
+            wasLandscapeBeforePortrait = intent.getBooleanExtra("wasLandscape", false);
+            
+            if (url == null || url.isEmpty()) {
+                finish();
+                return;
+            }
+            
+            boolean isTablet = false;
+            try {
+                isTablet = StashWebViewUtils.isTablet(this);
+            } catch (Exception e) {
+                Log.e(TAG, "Error checking if tablet: " + e.getMessage(), e);
+            }
+            
+            try {
+                if (usePopup) {
+                    setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR);
+                } else if (!isTablet) {
+                    setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error setting orientation: " + e.getMessage(), e);
+            }
+            
+            Window window = getWindow();
+            if (window != null) {
+                try {
+                    if (wasLandscapeBeforePortrait && !isTablet && !usePopup) {
+                        window.setBackgroundDrawable(new ColorDrawable(Color.BLACK));
+                    } else {
+                        window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+                    }
+                    
+                    requestWindowFeature(Window.FEATURE_NO_TITLE);
+                    window.addFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
+                    window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL);
+                    window.addFlags(WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH);
+                    window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+                    
+                    WindowManager.LayoutParams params = window.getAttributes();
+                    params.dimAmount = 0.3f;
+                    window.setAttributes(params);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error configuring window: " + e.getMessage(), e);
+                }
+            }
+            
+            createUI();
+        } catch (Exception e) {
+            Log.e(TAG, "Error in onCreate: " + e.getMessage(), e);
             finish();
-            return;
         }
-        
-        boolean isTablet = StashWebViewUtils.isTablet(this);
-        
-        if (usePopup) {
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR);
-        } else if (!isTablet) {
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
-        }
-        
-        Window window = getWindow();
-        if (wasLandscapeBeforePortrait && !isTablet && !usePopup) {
-            window.setBackgroundDrawable(new ColorDrawable(Color.BLACK));
-        } else {
-            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-        }
-        
-        requestWindowFeature(Window.FEATURE_NO_TITLE);
-        window.addFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
-        window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL);
-        window.addFlags(WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH);
-        window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-        
-        WindowManager.LayoutParams params = window.getAttributes();
-        params.dimAmount = 0.3f;
-        window.setAttributes(params);
-        
-        createUI();
     }
     
     private void createUI() {
-        rootLayout = new FrameLayout(this);
-        boolean isTablet = StashWebViewUtils.isTablet(this);
-        
-        if (wasLandscapeBeforePortrait && !isTablet && !usePopup) {
-            rootLayout.setBackgroundColor(Color.BLACK);
-        } else {
-            rootLayout.setBackgroundColor(Color.parseColor(StashWebViewUtils.COLOR_BACKGROUND_DIM));
-        }
-        
-        if (usePopup) {
-            createPopup();
-        } else {
-            createCard();
-        }
-        
-        if (!usePopup) {
-            rootLayout.setOnClickListener(v -> {
-                if (!isDismissing && v == rootLayout && !isPurchaseProcessing) {
-                    dismissWithAnimation();
+        try {
+            rootLayout = new FrameLayout(this);
+            boolean isTablet = false;
+            try {
+                isTablet = StashWebViewUtils.isTablet(this);
+            } catch (Exception e) {
+                Log.e(TAG, "Error checking if tablet in createUI: " + e.getMessage(), e);
+            }
+            
+            try {
+                if (wasLandscapeBeforePortrait && !isTablet && !usePopup) {
+                    rootLayout.setBackgroundColor(Color.BLACK);
+                } else {
+                    rootLayout.setBackgroundColor(Color.parseColor(StashWebViewUtils.COLOR_BACKGROUND_DIM));
                 }
-            });
+            } catch (Exception e) {
+                Log.e(TAG, "Error setting background color: " + e.getMessage(), e);
+                rootLayout.setBackgroundColor(Color.parseColor("#80000000")); // Fallback
+            }
+            
+            try {
+                if (usePopup) {
+                    createPopup();
+                } else {
+                    createCard();
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error creating UI: " + e.getMessage(), e);
+                finish();
+                return;
+            }
+            
+            if (!usePopup && cardContainer != null) {
+                rootLayout.setOnClickListener(v -> {
+                    try {
+                        if (!isDismissing && v == rootLayout && !isPurchaseProcessing) {
+                            dismissWithAnimation();
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error in root layout click handler: " + e.getMessage(), e);
+                    }
+                });
+                cardContainer.setOnClickListener(v -> {});
+            }
+            
+            setContentView(rootLayout);
+        } catch (Exception e) {
+            Log.e(TAG, "Error in createUI: " + e.getMessage(), e);
+            finish();
         }
-        cardContainer.setOnClickListener(v -> {});
-        
-        setContentView(rootLayout);
     }
     
     private void configureCardContainer(boolean isTablet, int cardWidth, int cardHeight) {
@@ -519,50 +571,85 @@ public class StashPayCardPortraitActivity extends Activity {
 
     private void addWebView() {
         if (url == null || url.isEmpty() || cardContainer == null) {
+            Log.e(TAG, "Invalid parameters in addWebView");
             return;
         }
         
-        webView = new WebView(this);
-        StashWebViewUtils.configureWebViewSettings(webView, StashWebViewUtils.isDarkTheme(this));
+        try {
+            webView = new WebView(this);
+            try {
+                StashWebViewUtils.configureWebViewSettings(webView, StashWebViewUtils.isDarkTheme(this));
+            } catch (Exception e) {
+                Log.e(TAG, "Error configuring WebView settings: " + e.getMessage(), e);
+            }
         
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
-                super.onPageStarted(view, url, favicon);
-                showLoading();
-                injectSDK(view);
-                checkProvider(url);
-                checkGooglePayRedirect(url);
+                try {
+                    super.onPageStarted(view, url, favicon);
+                    showLoading();
+                    injectSDK(view);
+                    checkProvider(url);
+                    checkGooglePayRedirect(url);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in onPageStarted: " + e.getMessage(), e);
+                }
             }
             
             @Override
             public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-                hideLoading();
-                injectSDK(view);
-                checkProvider(url);
-                checkGooglePayRedirect(url);
+                try {
+                    super.onPageFinished(view, url);
+                    hideLoading();
+                    injectSDK(view);
+                    checkProvider(url);
+                    checkGooglePayRedirect(url);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in onPageFinished: " + e.getMessage(), e);
+                }
             }
             
             @Override
             public void onReceivedError(WebView view, android.webkit.WebResourceRequest request, 
                                         android.webkit.WebResourceError error) {
-                super.onReceivedError(view, request, error);
-                Log.e(TAG, "WebView error: " + error.getDescription());
+                try {
+                    super.onReceivedError(view, request, error);
+                    if (error != null) {
+                        Log.e(TAG, "WebView error: " + error.getDescription());
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in onReceivedError: " + e.getMessage(), e);
+                }
             }
         });
         
-        webView.setWebChromeClient(new WebChromeClient());
-        webView.addJavascriptInterface(new JSInterface(), "StashAndroid");
-        webView.setBackgroundColor(StashWebViewUtils.isDarkTheme(this) ? Color.parseColor(StashWebViewUtils.COLOR_DARK_BG) : Color.WHITE);
-        
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT);
-        webView.setLayoutParams(params);
-        cardContainer.addView(webView);
-        // Append theme query parameter before loading
-        String urlWithTheme = StashWebViewUtils.appendThemeQueryParameter(url, StashWebViewUtils.isDarkTheme(this));
-        webView.loadUrl(urlWithTheme);
+            try {
+                webView.setWebChromeClient(new WebChromeClient());
+                webView.addJavascriptInterface(new JSInterface(), "StashAndroid");
+                webView.setBackgroundColor(StashWebViewUtils.isDarkTheme(this) ? Color.parseColor(StashWebViewUtils.COLOR_DARK_BG) : Color.WHITE);
+                
+                FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT);
+                webView.setLayoutParams(params);
+                cardContainer.addView(webView);
+                // Append theme query parameter before loading
+                String urlWithTheme;
+                try {
+                    urlWithTheme = StashWebViewUtils.appendThemeQueryParameter(url, StashWebViewUtils.isDarkTheme(this));
+                } catch (Exception e) {
+                    Log.e(TAG, "Error appending theme parameter: " + e.getMessage(), e);
+                    urlWithTheme = url; // Fallback to original URL
+                }
+                webView.loadUrl(urlWithTheme);
+            } catch (Exception e) {
+                Log.e(TAG, "Error setting up WebView: " + e.getMessage(), e);
+                finish();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error creating WebView: " + e.getMessage(), e);
+            finish();
+        }
     }
     
     private void addHomeButton() {
@@ -636,6 +723,11 @@ public class StashPayCardPortraitActivity extends Activity {
                     urlWithParam = url + "?dpm=gpay";
                 }
             }
+            
+            // Request notification permission (Android 13+) so keep-alive notification can show
+            StashKeepAliveManager.requestNotificationPermissionIfNeeded(this);
+            // Start keep-alive service to prevent Unity from being killed while in CCT
+            StashKeepAliveManager.start(this, "gpay_redirect", null, null, 30_000L);
             
             // Use the same Chrome Custom Tabs method as web-based checkout
             openWithChromeCustomTabs(urlWithParam, this);
@@ -763,32 +855,78 @@ public class StashPayCardPortraitActivity extends Activity {
         if (isDismissing) return;
         isDismissing = true;
         
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LOCKED);
-        
-        Window window = getWindow();
-        if (window != null) {
-            window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-            WindowManager.LayoutParams params = window.getAttributes();
-            params.dimAmount = 0f;
-            window.setAttributes(params);
-        }
-        
-        if (usePopup) {
-            cardContainer.animate()
-                .alpha(0f)
-                .scaleX(0.9f)
-                .scaleY(0.9f)
-                .setDuration(250)
-                .setInterpolator(new SpringInterpolator())
-                .withEndAction(this::finishActivityWithNoAnimation)
-                .start();
-        } else {
-            cardContainer.animate()
-                .translationY(cardContainer.getHeight())
-                .setDuration(400)
-                .setInterpolator(new SpringInterpolator())
-                .withEndAction(this::finishActivityWithNoAnimation)
-                .start();
+        try {
+            try {
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LOCKED);
+            } catch (Exception e) {
+                Log.e(TAG, "Error locking orientation: " + e.getMessage(), e);
+            }
+            
+            Window window = getWindow();
+            if (window != null) {
+                try {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+                    WindowManager.LayoutParams params = window.getAttributes();
+                    params.dimAmount = 0f;
+                    window.setAttributes(params);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error configuring window for dismissal: " + e.getMessage(), e);
+                }
+            }
+            
+            if (cardContainer == null) {
+                finishActivityWithNoAnimation();
+                return;
+            }
+            
+            if (usePopup) {
+                try {
+                    cardContainer.animate()
+                        .alpha(0f)
+                        .scaleX(0.9f)
+                        .scaleY(0.9f)
+                        .setDuration(250)
+                        .setInterpolator(new SpringInterpolator())
+                        .withEndAction(() -> {
+                            try {
+                                finishActivityWithNoAnimation();
+                            } catch (Exception e) {
+                                Log.e(TAG, "Error in animation end action: " + e.getMessage(), e);
+                                finish();
+                            }
+                        })
+                        .start();
+                } catch (Exception e) {
+                    Log.e(TAG, "Error animating popup dismissal: " + e.getMessage(), e);
+                    finishActivityWithNoAnimation();
+                }
+            } else {
+                try {
+                    cardContainer.animate()
+                        .translationY(cardContainer.getHeight())
+                        .setDuration(400)
+                        .setInterpolator(new SpringInterpolator())
+                        .withEndAction(() -> {
+                            try {
+                                finishActivityWithNoAnimation();
+                            } catch (Exception e) {
+                                Log.e(TAG, "Error in animation end action: " + e.getMessage(), e);
+                                finish();
+                            }
+                        })
+                        .start();
+                } catch (Exception e) {
+                    Log.e(TAG, "Error animating card dismissal: " + e.getMessage(), e);
+                    finishActivityWithNoAnimation();
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error in dismissWithAnimation: " + e.getMessage(), e);
+            try {
+                finish();
+            } catch (Exception e2) {
+                Log.e(TAG, "Error finishing activity: " + e2.getMessage(), e2);
+            }
         }
     }
     
@@ -810,58 +948,107 @@ public class StashPayCardPortraitActivity extends Activity {
     }
     
     private void notifyUnityAndDismiss(String messageName, String messageBody, boolean success) {
-        runOnUiThread(() -> {
-            if (success) {
-                // If success or failure (final state), we mark as sent so we don't fire dismiss callback in onDestroy
-                callbackSent = true;
-                isPurchaseProcessing = false;
-            }
-            StashUnityBridge.sendMessage(messageName, messageBody);
-            dismissWithAnimation();
-        });
+        try {
+            runOnUiThread(() -> {
+                try {
+                    if (success) {
+                        // If success or failure (final state), we mark as sent so we don't fire dismiss callback in onDestroy
+                        callbackSent = true;
+                        isPurchaseProcessing = false;
+                    }
+                    StashUnityBridge.sendMessage(messageName, messageBody);
+                    dismissWithAnimation();
+                } catch (Exception e) {
+                    Log.e(TAG, "Error in notifyUnityAndDismiss UI thread: " + e.getMessage(), e);
+                    try {
+                        finish();
+                    } catch (Exception e2) {
+                        Log.e(TAG, "Error finishing activity: " + e2.getMessage(), e2);
+                    }
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Error scheduling notifyUnityAndDismiss: " + e.getMessage(), e);
+        }
     }
 
     private class JSInterface {
         @JavascriptInterface
         public void onPaymentSuccess() {
-            // Mark processing as false (success)
-            notifyUnityAndDismiss(StashUnityBridge.MSG_ON_PAYMENT_SUCCESS, "", true);
+            try {
+                // Mark processing as false (success)
+                notifyUnityAndDismiss(StashUnityBridge.MSG_ON_PAYMENT_SUCCESS, "", true);
+            } catch (Exception e) {
+                Log.e(TAG, "Error in onPaymentSuccess: " + e.getMessage(), e);
+            }
         }
         
         @JavascriptInterface
         public void onPaymentFailure() {
-            // Mark processing as false (failure is final)
-            notifyUnityAndDismiss(StashUnityBridge.MSG_ON_PAYMENT_FAILURE, "", true);
+            try {
+                // Mark processing as false (failure is final)
+                notifyUnityAndDismiss(StashUnityBridge.MSG_ON_PAYMENT_FAILURE, "", true);
+            } catch (Exception e) {
+                Log.e(TAG, "Error in onPaymentFailure: " + e.getMessage(), e);
+            }
         }
         
         @JavascriptInterface
         public void onPurchaseProcessing() {
-            runOnUiThread(() -> {
-                isPurchaseProcessing = true;
-            });
+            try {
+                runOnUiThread(() -> {
+                    try {
+                        isPurchaseProcessing = true;
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error setting purchase processing: " + e.getMessage(), e);
+                    }
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "Error in onPurchaseProcessing: " + e.getMessage(), e);
+            }
         }
         
         @JavascriptInterface
         public void setPaymentChannel(String optinType) {
-            notifyUnityAndDismiss(StashUnityBridge.MSG_ON_OPTIN_RESPONSE, optinType != null ? optinType : "", false);
+            try {
+                notifyUnityAndDismiss(StashUnityBridge.MSG_ON_OPTIN_RESPONSE, optinType != null ? optinType : "", false);
+            } catch (Exception e) {
+                Log.e(TAG, "Error in setPaymentChannel: " + e.getMessage(), e);
+            }
         }
         
         @JavascriptInterface
         public void expand() {
-            runOnUiThread(() -> {
-                if (!usePopup && !isExpanded) {
-                    animateExpand();
-                }
-            });
+            try {
+                runOnUiThread(() -> {
+                    try {
+                        if (!usePopup && !isExpanded) {
+                            animateExpand();
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error in expand UI thread: " + e.getMessage(), e);
+                    }
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "Error in expand: " + e.getMessage(), e);
+            }
         }
         
         @JavascriptInterface
         public void collapse() {
-            runOnUiThread(() -> {
-                if (!usePopup && isExpanded) {
-                    animateCollapse();
-                }
-            });
+            try {
+                runOnUiThread(() -> {
+                    try {
+                        if (!usePopup && isExpanded) {
+                            animateCollapse();
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error in collapse UI thread: " + e.getMessage(), e);
+                    }
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "Error in collapse: " + e.getMessage(), e);
+            }
         }
     }
     
@@ -883,16 +1070,28 @@ public class StashPayCardPortraitActivity extends Activity {
     
     @Override
     protected void onDestroy() {
-        super.onDestroy();
-        
-        if (webView != null) {
-            webView.destroy();
-            webView = null;
-        }
-        
-        if (!callbackSent) {
-            callbackSent = true;
-            StashUnityBridge.sendDialogDismissed();
+        try {
+            super.onDestroy();
+            
+            if (webView != null) {
+                try {
+                    webView.destroy();
+                } catch (Exception e) {
+                    Log.e(TAG, "Error destroying WebView: " + e.getMessage(), e);
+                }
+                webView = null;
+            }
+            
+            if (!callbackSent) {
+                callbackSent = true;
+                try {
+                    StashUnityBridge.sendDialogDismissed();
+                } catch (Exception e) {
+                    Log.e(TAG, "Error sending dialog dismissed: " + e.getMessage(), e);
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error in onDestroy: " + e.getMessage(), e);
         }
     }
     

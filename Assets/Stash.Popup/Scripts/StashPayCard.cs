@@ -86,6 +86,35 @@ namespace StashPopup
                 Destroy(gameObject);
             }
         }
+        
+        /// <summary>
+        /// Unity lifecycle callback invoked when the application is paused or resumed.
+        /// 
+        /// On Android, this is used to stop the keep-alive foreground service when the app
+        /// regains focus after returning from Chrome Custom Tabs. This ensures the notification
+        /// is removed and the service stops cleanly.
+        /// </summary>
+        /// <param name="pauseStatus">True if the app is pausing, false if resuming.</param>
+        private void OnApplicationPause(bool pauseStatus)
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // When app resumes (pauseStatus == false), stop the keep-alive service
+            // This handles the case where user returns from Chrome Custom Tabs
+            if (!pauseStatus)
+            {
+                try
+                {
+                    InitializeAndroidPlugin();
+                    androidPluginInstance?.Call("stopKeepAlive");
+                }
+                catch (System.Exception e)
+                {
+                    // Swallow exceptions - service may already be stopped or never started
+                    Debug.LogWarning($"StashPayCard: Failed to stop keep-alive service: {e.Message}");
+                }
+            }
+#endif
+        }
         #endregion
 
         #region Events
