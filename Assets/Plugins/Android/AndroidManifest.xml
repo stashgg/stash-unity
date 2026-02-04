@@ -23,5 +23,9 @@
             </intent-filter>
             <meta-data android:name="unityplayer.UnityActivity" android:value="true" />
         </activity>
+        <!-- Resolve manifest merger conflict: AAR declares StashPayCardTheme, Unity may inject Translucent. Prefer AAR theme. -->
+        <activity android:name="com.stash.popup.StashPayCardPortraitActivity"
+            tools:replace="android:theme"
+            android:theme="@style/StashPayCardTheme" />
     </application>
 </manifest>

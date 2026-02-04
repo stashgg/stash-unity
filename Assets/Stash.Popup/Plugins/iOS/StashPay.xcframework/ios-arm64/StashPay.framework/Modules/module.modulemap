@@ -1,0 +1,6 @@
+framework module StashPay {
+  umbrella header "StashPay.h"
+  export *
+
+  module * { export * }
+}

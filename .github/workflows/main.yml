@@ -22,11 +22,10 @@ on:
         required: true
         type: choice
         options:
-          - StandaloneWindows64
+          # StandaloneWindows64 and StandaloneOSX temporarily disabled
           - Android
           - iOS
           - iOS-simulator
-          - StandaloneOSX
       upload_to_testflight:
         description: 'Upload to TestFlight (iOS only)'
         required: false
@@ -48,8 +47,9 @@ jobs:
     steps:
       - id: set-platforms
         run: |
+          # Temporarily disabled: StandaloneWindows64, StandaloneOSX (and their Stash Studio uploads)
           if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "workflow_run" ]; then
-            echo 'platforms=["Android","iOS","iOS-simulator","StandaloneWindows64","StandaloneOSX"]' >> $GITHUB_OUTPUT
+            echo 'platforms=["Android","iOS","iOS-simulator"]' >> $GITHUB_OUTPUT
           else
             echo "platforms=[\"${{ github.event.inputs.platform }}\"]" >> $GITHUB_OUTPUT
           fi

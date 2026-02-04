@@ -5,8 +5,6 @@ using System.Security.Cryptography;
 using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
-using Stash.Webshop;
-using Stash.Models;
 using StashPopup;
 using System.Threading.Tasks;
 
@@ -262,7 +260,7 @@ namespace Stash.Samples
             char[] result = new char[length];
             byte[] randomBytes = new byte[length];
 
-            using (RNGCryptoServiceProvider rng = new RNGCryptoServiceProvider())
+            using (var rng = RandomNumberGenerator.Create())
             {
                 rng.GetBytes(randomBytes);
             }
@@ -325,7 +323,7 @@ namespace Stash.Samples
             catch (Exception ex)
             {
                 Debug.LogError($"[Auth] Error processing deep link: {ex.Message}");
-                ShowPopup("Error", $"Authentication error: {ex.Message}", false);
+                ShowPopup("Error", $"Authentication error: {ex.Message}");
                 OnLoginFailed?.Invoke($"Deep link error: {ex.Message}");
             }
         }
@@ -349,7 +347,7 @@ namespace Stash.Samples
             if (!IsAuthenticated())
             {
                 Debug.LogError("[Auth] User not authenticated for Stash login");
-                ShowPopup("Authentication Required", "Please login first to proceed with Stash login.", false);
+                ShowPopup("Authentication Required", "Please login first to proceed with Stash login.");
                 OnLoginFailed?.Invoke("User not authenticated");
                 return;
             }
@@ -369,7 +367,13 @@ namespace Stash.Samples
                 };
 
                 string jsonBody = JsonUtility.ToJson(requestBody);
-                
+                string apiKey = PlayerPrefs.GetString(DemoAppConstants.PREF_STASH_API_KEY, "");
+                if (string.IsNullOrEmpty(apiKey))
+                {
+                    ShowPopup("Configuration Error", "Stash API key not set. Configure it in Settings.");
+                    OnLoginFailed?.Invoke("API key not configured");
+                    return;
+                }
                 // Send request to Stash API
                 using (UnityWebRequest request = new UnityWebRequest("https://test-api.stash.gg/sdk/custom_login/approve", "POST"))
                 {
@@ -377,7 +381,7 @@ namespace Stash.Samples
                     request.uploadHandler = new UploadHandlerRaw(bodyRaw);
                     request.downloadHandler = new DownloadHandlerBuffer();
                     request.SetRequestHeader("Content-Type", "application/json");
-                    request.SetRequestHeader("x-stash-api-key", "p0SVSU3awmdDv8VUPFZ_adWz_uC81xXsEY95Gg7WSwx9TZAJ5_ch-ePXK2Xh3B6o");
+                    request.SetRequestHeader("x-stash-api-key", apiKey);
 
                     // Send request
                     var operation = request.SendWebRequest();
@@ -388,13 +392,13 @@ namespace Stash.Samples
 
                     if (request.result == UnityWebRequest.Result.Success)
                     {
-                        ShowPopup("Account Linked", "Account linked successfully. Navigate back to the web shop.", true);
+                        ShowPopup("Account Linked", "Account linked successfully. Navigate back to the web shop.");
                         OnLoginSuccess?.Invoke();
                     }
                     else
                     {
                         Debug.LogError($"[Auth] Stash login failed: {request.error}");
-                        ShowPopup("Login Failed", $"Stash login failed: {request.error}", false);
+                        ShowPopup("Login Failed", $"Stash login failed: {request.error}");
                         OnLoginFailed?.Invoke($"Stash login failed: {request.error}");
                     }
                 }
@@ -402,7 +406,7 @@ namespace Stash.Samples
             catch (Exception ex)
             {
                 Debug.LogError($"[Auth] Stash login exception: {ex.Message}");
-                ShowPopup("Login Failed", $"Stash login failed: {ex.Message}", false);
+                ShowPopup("Login Failed", $"Stash login failed: {ex.Message}");
                 OnLoginFailed?.Invoke($"Stash login failed: {ex.Message}");
             }
         }
@@ -614,12 +618,12 @@ namespace Stash.Samples
         }
 
         /// <summary>
-        /// Shows a popup message to the user
+        /// Shows a popup message to the user via UI Toolkit notification system.
         /// </summary>
-        private void ShowPopup(string title, string message, bool withConfetti = false)
+        private void ShowPopup(string title, string message)
         {
             Debug.Log($"[Auth] {title}: {message}");
-            // Popup display can be implemented using UI Toolkit if needed
+            UINotificationSystem.ShowPopup(title, message, 3f, null);
         }
         #endregion
     }
