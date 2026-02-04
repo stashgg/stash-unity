@@ -555,6 +555,13 @@
     color: rgb(255, 215, 0);
 }
 
+.login-test-note {
+    font-size: 11px;
+    color: rgb(160, 160, 160);
+    margin-top: 8px;
+    -unity-text-align: middle-center;
+}
+
 .logout-button {
     background-color: rgb(251, 95, 95);
     color: white;

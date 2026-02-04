@@ -1,7 +1,10 @@
 /**
  * Unity bridge for the Stash Pay iOS SDK (StashPay.xcframework).
  * Forwards Unity C# calls to StashPayCard and sends delegate callbacks to Unity via UnitySendMessage.
- * Requires StashPay.xcframework (1.2.4+) to be added to the Xcode project (Embed & Sign).
+ *
+ * IMPORTANT: StashPay.xcframework must be present in this folder (Plugins/iOS/) when you build
+ * from Unity. Otherwise __has_include(<StashPay/...>) fails and the bridge compiles as no-ops.
+ * Add the xcframework before Build → iOS so Unity embeds it in the Xcode project.
  */
 #import <Foundation/Foundation.h>
 
@@ -211,6 +214,14 @@ void _StashPayCardBridgeDismissSafariViewController(void) {
 void _StashPayCardBridgeDismissSafariViewControllerWithResult(bool success) {
 #if STASHPAY_AVAILABLE
     [[StashPayCard sharedInstance] dismissSafariViewControllerWithResult:success];
+#endif
+}
+
+bool _StashPayCardBridgeIsSDKAvailable(void) {
+#if STASHPAY_AVAILABLE
+    return true;
+#else
+    return false;
 #endif
 }
 

@@ -9,6 +9,7 @@ using System.Linq;
 using UnityEngine.Networking;
 using System.Threading.Tasks;
 using Stash.Samples;
+using StashPopup;
 
 namespace Stash.Samples
 {
@@ -37,6 +38,7 @@ namespace Stash.Samples
         private Button loginButton;
         private Button refreshTokenButton;
         private Button webshopButton;
+        private Button webshopInGameButton;
         private Button helpButton;
         private Button closeHelpButton;
         private Button watchVideoButton;
@@ -103,6 +105,7 @@ namespace Stash.Samples
             if (loginButton != null) loginButton.clicked -= OnLoginButtonClicked;
             if (refreshTokenButton != null) refreshTokenButton.clicked -= OnRefreshTokenButtonClicked;
             if (webshopButton != null) webshopButton.clicked -= OnWebshopButtonClicked;
+            if (webshopInGameButton != null) webshopInGameButton.clicked -= OnWebshopInGameButtonClicked;
             if (helpButton != null) helpButton.clicked -= OnHelpButtonClicked;
             if (closeHelpButton != null) closeHelpButton.clicked -= OnCloseHelpButtonClicked;
             if (watchVideoButton != null) watchVideoButton.clicked -= OnWatchVideoButtonClicked;
@@ -155,6 +158,7 @@ namespace Stash.Samples
             loginButton = root.Q<Button>("login-button");
             refreshTokenButton = root.Q<Button>("refresh-token-button");
             webshopButton = root.Q<Button>("open-webshop-button");
+            webshopInGameButton = root.Q<Button>("open-webshop-in-game-button");
             
             // Help elements
             helpButton = root.Q<Button>("help-button");
@@ -193,6 +197,9 @@ namespace Stash.Samples
             
             if (webshopButton != null)
                 webshopButton.clicked += OnWebshopButtonClicked;
+            
+            if (webshopInGameButton != null)
+                webshopInGameButton.clicked += OnWebshopInGameButtonClicked;
             
             // Help handlers
             if (helpButton != null)
@@ -360,11 +367,47 @@ namespace Stash.Samples
                     return;
 #endif
                 }
-                await OpenWebshop(userId, userEmail);
+                string url = await GetPreAuthenticatedWebshopUrl(userId, userEmail);
+                if (!string.IsNullOrEmpty(url))
+                    Application.OpenURL(url);
             }
             catch (Exception ex)
             {
                 Debug.LogError($"[StoreAuth] Error in webshop button handler: {ex.Message}");
+            }
+        }
+
+        private async void OnWebshopInGameButtonClicked()
+        {
+            try
+            {
+                string userId, userEmail;
+                if (AuthenticationManager.Instance?.IsAuthenticated() == true)
+                {
+                    var userData = AuthenticationManager.Instance.GetUserData();
+                    userId = userData.UserId;
+                    userEmail = userData.Email;
+                }
+                else
+                {
+#if UNITY_EDITOR
+                    userEmail = $"editor_{Guid.NewGuid().ToString("N").Substring(0, 8)}@example.com";
+                    userId = userEmail;
+#else
+                    Debug.LogWarning("[StoreAuth] Cannot open webshop in game - user not authenticated");
+                    return;
+#endif
+                }
+                string url = await GetPreAuthenticatedWebshopUrl(userId, userEmail);
+                if (string.IsNullOrEmpty(url)) return;
+                var card = StashPayCard.Instance;
+                float previousRatio = card.CardHeightRatioPortrait;
+                card.CardHeightRatioPortrait = 0.80f;
+                card.OpenCheckout(url, () => card.CardHeightRatioPortrait = previousRatio, null, null);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[StoreAuth] Error in webshop in-game button handler: {ex.Message}");
             }
         }
 
@@ -515,19 +558,35 @@ namespace Stash.Samples
 
         private void UpdateWebshopButton(bool isAuthenticated)
         {
-            if (webshopButton == null) return;
-            
-            if (isAuthenticated)
+            if (webshopButton != null)
             {
-                webshopButton.text = "Open Webshop";
-                webshopButton.SetEnabled(true);
-                webshopButton.RemoveFromClassList("disabled-button");
+                if (isAuthenticated)
+                {
+                    webshopButton.text = "Open Webshop";
+                    webshopButton.SetEnabled(true);
+                    webshopButton.RemoveFromClassList("disabled-button");
+                }
+                else
+                {
+                    webshopButton.text = "Please Login First";
+                    webshopButton.SetEnabled(false);
+                    webshopButton.AddToClassList("disabled-button");
+                }
             }
-            else
+            if (webshopInGameButton != null)
             {
-                webshopButton.text = "Please Login First";
-                webshopButton.SetEnabled(false);
-                webshopButton.AddToClassList("disabled-button");
+                if (isAuthenticated)
+                {
+                    webshopInGameButton.text = "Open Webshop in-game";
+                    webshopInGameButton.SetEnabled(true);
+                    webshopInGameButton.RemoveFromClassList("disabled-button");
+                }
+                else
+                {
+                    webshopInGameButton.text = "Please Login First";
+                    webshopInGameButton.SetEnabled(false);
+                    webshopInGameButton.AddToClassList("disabled-button");
+                }
             }
         }
         #endregion
@@ -708,7 +767,8 @@ namespace Stash.Samples
             return value;
         }
 
-        private async Task OpenWebshop(string userId, string userEmail)
+        /// <summary>Fetches a pre-authenticated webshop URL for the given user. Returns null on failure.</summary>
+        private async Task<string> GetPreAuthenticatedWebshopUrl(string userId, string userEmail)
         {
             try
             {
@@ -719,7 +779,6 @@ namespace Stash.Samples
                 };
 
                 string jsonPayload = JsonUtility.ToJson(request);
-
                 string endpoint = GetWebshopGenerateUrlEndpoint();
                 using (var webRequest = new UnityWebRequest(endpoint, "POST"))
                 {
@@ -731,38 +790,30 @@ namespace Stash.Samples
                     if (string.IsNullOrEmpty(apiKey))
                     {
                         Debug.LogError("[StoreAuth] API key not found. Please configure it in settings.");
-                        return;
+                        return null;
                     }
                     webRequest.SetRequestHeader("x-stash-api-key", apiKey);
 
                     var operation = webRequest.SendWebRequest();
                     while (!operation.isDone)
-                    {
                         await Task.Yield();
-                    }
 
                     if (webRequest.result == UnityWebRequest.Result.Success)
                     {
                         var response = JsonUtility.FromJson<WebshopResponse>(webRequest.downloadHandler.text);
                         if (!string.IsNullOrEmpty(response.url))
-                        {
-                            // Opening webshop URL
-                            Application.OpenURL(response.url);
-                        }
-                        else
-                        {
-                            Debug.LogError("[StoreAuth] Empty URL in webshop response");
-                        }
+                            return response.url;
+                        Debug.LogError("[StoreAuth] Empty URL in webshop response");
+                        return null;
                     }
-                    else
-                    {
-                        Debug.LogError($"[StoreAuth] Webshop request failed: {webRequest.error}");
-                    }
+                    Debug.LogError($"[StoreAuth] Webshop request failed: {webRequest.error}");
+                    return null;
                 }
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[StoreAuth] Error opening webshop: {ex.Message}");
+                Debug.LogError($"[StoreAuth] Error getting webshop URL: {ex.Message}");
+                return null;
             }
         }
         #endregion

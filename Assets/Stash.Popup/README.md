@@ -17,9 +17,10 @@ Unity wrapper for the Stash Pay native SDK (stash-native). It integrates in-app 
 
 1. Import the `Stash.Popup` folder into your Unity project's Assets directory.
 2. **Android:** The package includes `StashPay-1.2.4.aar` in `Plugins/Android/`. Ensure your build includes `androidx.appcompat:appcompat:1.6.1` and `androidx.browser:browser:1.7.0` (see [stash-native Android README](https://github.com/stashgg/stash-native/blob/main/Android/README.md)).
-3. **iOS:** Add the Stash Pay xcframework to your Xcode project:
-   - Download [StashPay-1.2.4.xcframework.zip](https://github.com/stashgg/stash-native/releases) (or latest), unzip, and add `StashPay.xcframework` to the Unity-generated Xcode project.
-   - In the target's **Frameworks, Libraries, and Embedded Content**, set the framework to **Embed & Sign**.
+3. **iOS:** Add the Stash Pay xcframework **before building from Unity** so in-app checkout and modal work:
+   - Download [StashPay-1.2.4.xcframework.zip](https://github.com/stashgg/stash-native/releases) (or latest), unzip.
+   - Place the `StashPay.xcframework` folder in `Assets/Stash.Popup/Plugins/iOS/`. Unity will include it in the generated Xcode project.
+   - Build for iOS from Unity. If the xcframework is missing, the wrapper falls back to opening the URL in the system browser and logs a warning.
 
 ## Native dependency (stash-native)
 
@@ -31,13 +32,13 @@ This wrapper targets **stash-native 1.2.4**. To update:
 ## Folder Structure
 
 ### ./Editor
-- **`AddWebKitFramework.cs`** - Adds WebKit and SafariServices to iOS Xcode projects
+- **`AddWebKitFramework.cs`** - Adds WebKit and SafariServices to iOS Xcode projects; sets FRAMEWORK_SEARCH_PATHS when StashPay.xcframework is in Plugins/iOS (Unity includes the xcframework itself)
 - **`StashPopupAndroidPostProcess.cs`** - Adds permissions for the Stash Pay AAR (e.g. foreground service). The AAR declares its own components via manifest merge.
 - **`StashPayCardEditor/`** - Editor window for testing checkout and modal in the Unity Editor.
 
 ### ./Plugins
 - **`Plugins/Android/`** - `StashPay-1.2.4.aar` (native SDK) and `StashPayCardUnityBridge.java` (Unity bridge)
-- **`Plugins/iOS/`** - `StashPayCardBridge.mm` (Unity bridge; requires StashPay.xcframework in the Xcode project)
+- **`Plugins/iOS/`** - `StashPayCardBridge.mm` (Unity bridge). Put `StashPay.xcframework` here before an iOS build so the bridge links to the SDK; the build post-process will embed it.
 
 ### ./Sample
 - **`StashPaySample.cs`** / **`StashPaySample.unity`** - Simple demo: Open Checkout, Open Modal, config toggles, Force Web Checkout, and callback status.
@@ -295,11 +296,24 @@ StashPayCard.Instance.OpenPopup(
 
 ### [iOS] Build Error in Xcode: Undefined symbol
 
-While highly unlikely, if this happens add frameworks in Unity Project Settings → iOS → Other Settings → Linked Frameworks:
+While highly unlikely, however if this happens add frameworks in Unity Project Settings → iOS → Other Settings → Linked Frameworks:
 - `WebKit.framework`
 - `SafariServices.framework`
 
 Clean and rebuild Xcode project.
+
+### [iOS] App crashes with "Library not loaded related to StashPay"
+
+The app is linked with StashPay, but the framework has not been embedded in the app bundle.
+In the Unity Editor, select `StashPay.xcframework` file and make sure "Add to embedded binaries" is enabled in Inspector panel.
+
+Or fix it in Xcode project:
+1. Open the Unity-generated Xcode project (e.g. after **File → Build Settings → iOS → Build**).
+2. Select the **Unity-iPhone** (main app) target in the project navigator.
+3. Open the **General** tab and scroll to **Frameworks, Libraries, and Embedded Content**.
+4. If **StashPay.framework** is missing, click **+** and add it from the project (it should appear under Frameworks or Plugins/iOS). If it is already listed, set it to **Embed & Sign**.
+
+Ensure `StashPay.xcframework` is present in `Assets/Stash.Popup/Plugins/iOS/` before building from Unity so the post-process can add it to the main target’s embed phase.
 
 ### [Android] Blank Checkout Card
 

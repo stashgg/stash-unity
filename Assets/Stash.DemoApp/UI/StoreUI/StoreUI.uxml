@@ -32,6 +32,7 @@
                             </ui:VisualElement>
                         </ui:VisualElement>
                         <ui:Button text="LOGIN" name="login-button" display-tooltip-when-elided="true" class="login-button" />
+                        <ui:Label text="Test account: ondrej@stash.gg / password: teststash" name="login-test-account-note" class="login-test-note" />
                     </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>
@@ -49,6 +50,7 @@
                         <ui:VisualElement class="webshop-button-container">
                             <ui:Label text="Open pre-authenticated webshop right from the game client." class="webshop-description" />
                             <ui:Button text="Open Webshop" name="open-webshop-button" class="action-button" />
+                            <ui:Button text="Open Webshop in-game" name="open-webshop-in-game-button" class="action-button" />
                         </ui:VisualElement>
                     </ui:VisualElement>
                 </ui:VisualElement>

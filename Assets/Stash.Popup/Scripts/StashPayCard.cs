@@ -204,6 +204,7 @@ namespace StashPopup
         }
 
 #elif UNITY_IOS && !UNITY_EDITOR
+        [DllImport("__Internal")] private static extern bool _StashPayCardBridgeIsSDKAvailable();
         [DllImport("__Internal")] private static extern void _StashPayCardBridgeOpenCheckout(string url);
         [DllImport("__Internal")] private static extern void _StashPayCardBridgeOpenModal(string url);
         [DllImport("__Internal")] private static extern void _StashPayCardBridgeOpenModalWithConfig(string url, bool showDragBar, bool allowDismiss, float phoneWPortrait, float phoneHPortrait, float phoneWLandscape, float phoneHLandscape, float tabletWPortrait, float tabletHPortrait, float tabletWLandscape, float tabletHLandscape);
@@ -378,6 +379,12 @@ namespace StashPopup
 #elif UNITY_IOS && !UNITY_EDITOR
             try
             {
+                if (!_StashPayCardBridgeIsSDKAvailable())
+                {
+                    Debug.LogWarning("[StashPayCard] iOS: StashPay.xcframework not linked. Place StashPay.xcframework in Assets/Stash.Popup/Plugins/iOS/ and build from Unity. Falling back to system browser.");
+                    Application.OpenURL(url);
+                    yield break;
+                }
                 SyncForceWebBasedCheckoutToNative();
                 if (isPopup)
                 {
