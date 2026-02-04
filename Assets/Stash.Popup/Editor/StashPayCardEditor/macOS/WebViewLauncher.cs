@@ -49,6 +49,9 @@ namespace StashPopup.Editor.macOS
         [DllImport("libdl.dylib", CallingConvention = CallingConvention.Cdecl)]
         private static extern int dlclose(IntPtr handle);
         
+        // On macOS, RTLD_DEFAULT = (void*)-2: search all loaded images for symbol
+        private static readonly IntPtr RTLD_DEFAULT = new IntPtr(-2);
+        
         private delegate void SetPaymentSuccessCallbackDelegate(IntPtr callbackPtr);
         private delegate void SetPaymentFailureCallbackDelegate(IntPtr callbackPtr);
         private delegate void SetPurchaseProcessingCallbackDelegate(IntPtr callbackPtr);
@@ -101,8 +104,21 @@ namespace StashPopup.Editor.macOS
                 bool callbacksRegistered = false;
                 try
                 {
-                    // Load bundle using dlopen - bundle is in the same directory as this script
-                    string bundlePath = System.IO.Path.Combine(Application.dataPath, "Stash.Popup", "Editor", "StashPayCardEditor", "macOS", BundleName);
+                    // Resolve bundle path: use AssetDatabase so we load the same file Unity uses (works with packages/symlinks)
+                    string bundlePath = null;
+                    string[] guids = AssetDatabase.FindAssets(System.IO.Path.GetFileNameWithoutExtension(BundleName));
+                    foreach (string guid in guids)
+                    {
+                        string p = AssetDatabase.GUIDToAssetPath(guid);
+                        if (p != null && p.EndsWith(BundleName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            bundlePath = System.IO.Path.Combine(Application.dataPath, "..", p);
+                            bundlePath = System.IO.Path.GetFullPath(bundlePath);
+                            break;
+                        }
+                    }
+                    if (string.IsNullOrEmpty(bundlePath))
+                        bundlePath = System.IO.Path.Combine(Application.dataPath, "Stash.Popup", "Editor", "StashPayCardEditor", "macOS", BundleName);
                     Debug.Log($"[WebViewLauncher] Loading bundle from: {bundlePath}");
                     
                     // Try loading the bundle with RTLD_LAZY | RTLD_GLOBAL to make symbols visible
@@ -116,7 +132,6 @@ namespace StashPopup.Editor.macOS
                         if (bundleHandle == IntPtr.Zero)
                         {
                             Debug.LogError($"[WebViewLauncher] ❌ Failed to load bundle: {bundlePath}");
-                            // Try to get error message
                             IntPtr errorPtr = dlerror();
                             if (errorPtr != IntPtr.Zero)
                             {
@@ -126,79 +141,95 @@ namespace StashPopup.Editor.macOS
                         }
                     }
                     
-                    // Since Unity already loads the bundle for CreateWebViewWindow, try RTLD_DEFAULT (0) to search all loaded libraries
-                    // Also try the bundle handle we just loaded
+                    // Prefer the bundle we just loaded (bundleHandle); its symbols are guaranteed visible there.
+                    // RTLD_DEFAULT may not see the bundle if Unity loaded it with RTLD_LOCAL.
                     IntPtr setSuccessPtr = IntPtr.Zero;
                     IntPtr setFailurePtr = IntPtr.Zero;
                     IntPtr setProcessingPtr = IntPtr.Zero;
                     IntPtr setOptinPtr = IntPtr.Zero;
+                    IntPtr searchHandle = bundleHandle != IntPtr.Zero ? bundleHandle : RTLD_DEFAULT;
                     
-                    // Try RTLD_DEFAULT first (searches all loaded libraries)
-                    Debug.Log("[WebViewLauncher] Trying RTLD_DEFAULT to find symbols in already-loaded bundle...");
-                    setSuccessPtr = dlsym(IntPtr.Zero, "_SetPaymentSuccessCallback");
-                    setFailurePtr = dlsym(IntPtr.Zero, "_SetPaymentFailureCallback");
-                    setProcessingPtr = dlsym(IntPtr.Zero, "_SetPurchaseProcessingCallback");
-                    setOptinPtr = dlsym(IntPtr.Zero, "_SetOptinResponseCallback");
-                    
-                    // If that didn't work and we have a bundle handle, try with the handle
-                    if ((setSuccessPtr == IntPtr.Zero || setFailurePtr == IntPtr.Zero || setProcessingPtr == IntPtr.Zero || setOptinPtr == IntPtr.Zero) && bundleHandle != IntPtr.Zero)
+                    // Try bundle handle first (macOS C symbols use leading underscore)
+                    if (bundleHandle != IntPtr.Zero)
                     {
-                        Debug.Log($"[WebViewLauncher] Trying bundle handle {bundleHandle} to find symbols...");
-                        if (setSuccessPtr == IntPtr.Zero) setSuccessPtr = dlsym(bundleHandle, "_SetPaymentSuccessCallback");
-                        if (setFailurePtr == IntPtr.Zero) setFailurePtr = dlsym(bundleHandle, "_SetPaymentFailureCallback");
-                        if (setProcessingPtr == IntPtr.Zero) setProcessingPtr = dlsym(bundleHandle, "_SetPurchaseProcessingCallback");
-                        if (setOptinPtr == IntPtr.Zero) setOptinPtr = dlsym(bundleHandle, "_SetOptinResponseCallback");
+                        dlerror(); // clear previous error
+                        Debug.Log($"[WebViewLauncher] Looking up symbols in bundle handle {bundleHandle}...");
+                        setSuccessPtr = dlsym(bundleHandle, "_SetPaymentSuccessCallback");
+                        setFailurePtr = dlsym(bundleHandle, "_SetPaymentFailureCallback");
+                        setProcessingPtr = dlsym(bundleHandle, "_SetPurchaseProcessingCallback");
+                        setOptinPtr = dlsym(bundleHandle, "_SetOptinResponseCallback");
+                    }
+                    
+                    // Fallback: RTLD_DEFAULT (all loaded images) in case bundle was loaded by Unity elsewhere
+                    if ((setSuccessPtr == IntPtr.Zero || setFailurePtr == IntPtr.Zero || setProcessingPtr == IntPtr.Zero || setOptinPtr == IntPtr.Zero))
+                    {
+                        dlerror();
+                        Debug.Log("[WebViewLauncher] Fallback: trying RTLD_DEFAULT for callback symbols...");
+                        if (setSuccessPtr == IntPtr.Zero) setSuccessPtr = dlsym(RTLD_DEFAULT, "_SetPaymentSuccessCallback");
+                        if (setFailurePtr == IntPtr.Zero) setFailurePtr = dlsym(RTLD_DEFAULT, "_SetPaymentFailureCallback");
+                        if (setProcessingPtr == IntPtr.Zero) setProcessingPtr = dlsym(RTLD_DEFAULT, "_SetPurchaseProcessingCallback");
+                        if (setOptinPtr == IntPtr.Zero) setOptinPtr = dlsym(RTLD_DEFAULT, "_SetOptinResponseCallback");
+                    }
+                    
+                    // Last resort: symbol names without leading underscore
+                    if ((setSuccessPtr == IntPtr.Zero || setFailurePtr == IntPtr.Zero || setProcessingPtr == IntPtr.Zero || setOptinPtr == IntPtr.Zero))
+                    {
+                        dlerror();
+                        Debug.Log("[WebViewLauncher] Fallback: trying symbol names without leading underscore...");
+                        if (setSuccessPtr == IntPtr.Zero) setSuccessPtr = dlsym(searchHandle, "SetPaymentSuccessCallback");
+                        if (setFailurePtr == IntPtr.Zero) setFailurePtr = dlsym(searchHandle, "SetPaymentFailureCallback");
+                        if (setProcessingPtr == IntPtr.Zero) setProcessingPtr = dlsym(searchHandle, "SetPurchaseProcessingCallback");
+                        if (setOptinPtr == IntPtr.Zero) setOptinPtr = dlsym(searchHandle, "SetOptinResponseCallback");
                     }
                     
                     if (bundleHandle != IntPtr.Zero)
-                    {
                         Debug.Log($"[WebViewLauncher] ✓ Bundle loaded successfully, handle={bundleHandle}");
+                    
+                    Debug.Log($"[WebViewLauncher] Function pointers from dlsym: success={setSuccessPtr}, failure={setFailurePtr}, processing={setProcessingPtr}, optin={setOptinPtr}");
+                    
+                    if (setSuccessPtr != IntPtr.Zero && setFailurePtr != IntPtr.Zero && setProcessingPtr != IntPtr.Zero && setOptinPtr != IntPtr.Zero)
+                    {
+                        // Convert to delegates
+                        setPaymentSuccessCallbackFunc = Marshal.GetDelegateForFunctionPointer<SetPaymentSuccessCallbackDelegate>(setSuccessPtr);
+                        setPaymentFailureCallbackFunc = Marshal.GetDelegateForFunctionPointer<SetPaymentFailureCallbackDelegate>(setFailurePtr);
+                        setPurchaseProcessingCallbackFunc = Marshal.GetDelegateForFunctionPointer<SetPurchaseProcessingCallbackDelegate>(setProcessingPtr);
+                        setOptinResponseCallbackFunc = Marshal.GetDelegateForFunctionPointer<SetOptinResponseCallbackDelegate>(setOptinPtr);
                         
-                        Debug.Log($"[WebViewLauncher] Function pointers from dlsym: success={setSuccessPtr}, failure={setFailurePtr}, processing={setProcessingPtr}, optin={setOptinPtr}");
+                        // Convert callback delegates to function pointers
+                        IntPtr successPtr = Marshal.GetFunctionPointerForDelegate(paymentSuccessCallback);
+                        IntPtr failurePtr = Marshal.GetFunctionPointerForDelegate(paymentFailureCallback);
+                        IntPtr processingPtr = Marshal.GetFunctionPointerForDelegate(purchaseProcessingCallback);
+                        IntPtr optinPtr = Marshal.GetFunctionPointerForDelegate(optinResponseCallback);
                         
-                        if (setSuccessPtr != IntPtr.Zero && setFailurePtr != IntPtr.Zero && setProcessingPtr != IntPtr.Zero && setOptinPtr != IntPtr.Zero)
+                        Debug.Log($"[WebViewLauncher] Callback function pointers: success={successPtr}, failure={failurePtr}, processing={processingPtr}, optin={optinPtr}");
+                        
+                        // Register each callback
+                        setPaymentSuccessCallbackFunc(successPtr);
+                        Debug.Log("[WebViewLauncher] ✓ PaymentSuccess callback registered");
+                        
+                        setPaymentFailureCallbackFunc(failurePtr);
+                        Debug.Log("[WebViewLauncher] ✓ PaymentFailure callback registered");
+                        
+                        setPurchaseProcessingCallbackFunc(processingPtr);
+                        Debug.Log("[WebViewLauncher] ✓ PurchaseProcessing callback registered");
+                        
+                        setOptinResponseCallbackFunc(optinPtr);
+                        Debug.Log("[WebViewLauncher] ✓ OptinResponse callback registered");
+                        
+                        callbacksRegistered = true;
+                        Debug.Log("[WebViewLauncher] ✓ All callbacks registered successfully");
+                    }
+                    else
+                    {
+                        Debug.LogError("[WebViewLauncher] ❌ Failed to find callback functions in bundle");
+                        IntPtr errorPtr = dlerror();
+                        if (errorPtr != IntPtr.Zero)
                         {
-                            // Convert to delegates
-                            setPaymentSuccessCallbackFunc = Marshal.GetDelegateForFunctionPointer<SetPaymentSuccessCallbackDelegate>(setSuccessPtr);
-                            setPaymentFailureCallbackFunc = Marshal.GetDelegateForFunctionPointer<SetPaymentFailureCallbackDelegate>(setFailurePtr);
-                            setPurchaseProcessingCallbackFunc = Marshal.GetDelegateForFunctionPointer<SetPurchaseProcessingCallbackDelegate>(setProcessingPtr);
-                            setOptinResponseCallbackFunc = Marshal.GetDelegateForFunctionPointer<SetOptinResponseCallbackDelegate>(setOptinPtr);
-                            
-                            // Convert callback delegates to function pointers
-                            IntPtr successPtr = Marshal.GetFunctionPointerForDelegate(paymentSuccessCallback);
-                            IntPtr failurePtr = Marshal.GetFunctionPointerForDelegate(paymentFailureCallback);
-                            IntPtr processingPtr = Marshal.GetFunctionPointerForDelegate(purchaseProcessingCallback);
-                            IntPtr optinPtr = Marshal.GetFunctionPointerForDelegate(optinResponseCallback);
-                            
-                            Debug.Log($"[WebViewLauncher] Callback function pointers: success={successPtr}, failure={failurePtr}, processing={processingPtr}, optin={optinPtr}");
-                            
-                            // Register each callback
-                            setPaymentSuccessCallbackFunc(successPtr);
-                            Debug.Log("[WebViewLauncher] ✓ PaymentSuccess callback registered");
-                            
-                            setPaymentFailureCallbackFunc(failurePtr);
-                            Debug.Log("[WebViewLauncher] ✓ PaymentFailure callback registered");
-                            
-                            setPurchaseProcessingCallbackFunc(processingPtr);
-                            Debug.Log("[WebViewLauncher] ✓ PurchaseProcessing callback registered");
-                            
-                            setOptinResponseCallbackFunc(optinPtr);
-                            Debug.Log("[WebViewLauncher] ✓ OptinResponse callback registered");
-                            
-                            callbacksRegistered = true;
-                            Debug.Log("[WebViewLauncher] ✓ All callbacks registered successfully");
+                            string errorMsg = Marshal.PtrToStringAnsi(errorPtr);
+                            Debug.LogError($"[WebViewLauncher] dlsym error: {errorMsg}");
                         }
                         else
-                        {
-                            Debug.LogError("[WebViewLauncher] ❌ Failed to find callback functions in bundle");
-                            // Try to get error message
-                            IntPtr errorPtr = dlerror();
-                            if (errorPtr != IntPtr.Zero)
-                            {
-                                string errorMsg = Marshal.PtrToStringAnsi(errorPtr);
-                                Debug.LogError($"[WebViewLauncher] dlsym error: {errorMsg}");
-                            }
-                        }
+                            Debug.LogError("[WebViewLauncher] Ensure WebViewLauncher.bundle was built from WebViewLauncher.mm (run build_webview.sh in the macOS folder).");
                     }
                 }
                 catch (Exception callbackEx)

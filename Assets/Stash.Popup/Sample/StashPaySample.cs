@@ -4,191 +4,146 @@ using UnityEngine.Networking;
 using System.Text;
 using StashPopup;
 
+/// <summary>
+/// Simple sample: Open Checkout, Open Modal, Force Web Checkout, and callback status.
+/// Attach to a GameObject and assign the optional Status Text and buttons in the Inspector or via code.
+/// </summary>
 public class StashPaySample : MonoBehaviour
 {
-    // This is our test API key so you can test the checkout flow right away.
-    // You can find your API key in the Stash Studio to run tests on your own Stash instance.
     private const string API_KEY = "p0SVSU3awmdDv8VUPFZ_adWz_uC81xXsEY95Gg7WSwx9TZAJ5_ch-ePXK2Xh3B6o";
-    
-    [SerializeField] private Text statusText; // Reference to the Text (legacy) component in the scene
-    
+    private const string MODAL_URL = "https://store.howlingwoods.shop/pay/channel-selection";
+
+    [Header("Optional UI")]
+    [SerializeField] private Text statusText;
+    [SerializeField] private Toggle forceWebCheckoutToggle;
+
+    private System.Action _onDismissed;
+    private System.Action _onSuccess;
+    private System.Action _onFailure;
+    private System.Action<string> _onOptin;
+    private System.Action<double> _onPageLoaded;
+    private System.Action _onNetworkError;
+
     void Start()
     {
-        // Subscribe to opt-in response for channel selection (Optional)
-        StashPayCard.Instance.OnOptinResponse += OnChannelSelected;
-    }
-    
-    void OnDestroy()
-    {
-        // Unsubscribe from opt-in response for channel selection (Optional)
-        if (StashPayCard.Instance != null)
+        _onDismissed = () => SetStatus("Dismissed");
+        _onSuccess = () => SetStatus("Success");
+        _onFailure = () => SetStatus("Failure");
+        _onOptin = (s) => SetStatus($"Opt-in: {s}");
+        _onPageLoaded = (ms) => SetStatus($"Page loaded ({ms:F0} ms)");
+        _onNetworkError = () => SetStatus("Network error");
+
+        var card = StashPayCard.Instance;
+        card.OnSafariViewDismissed += _onDismissed;
+        card.OnPaymentSuccess += _onSuccess;
+        card.OnPaymentFailure += _onFailure;
+        card.OnOptinResponse += _onOptin;
+        card.OnPageLoaded += _onPageLoaded;
+        card.OnNetworkError += _onNetworkError;
+
+        if (forceWebCheckoutToggle != null)
         {
-            StashPayCard.Instance.OnOptinResponse -= OnChannelSelected;
+            forceWebCheckoutToggle.isOn = card.ForceWebBasedCheckout;
+            forceWebCheckoutToggle.onValueChanged.AddListener(OnForceWebCheckoutChanged);
         }
     }
-        
-    /// <summary>
-    /// Opens a Stash Pay checkout URL in a card dialog
-    /// </summary>
+
+    void OnDestroy()
+    {
+        var card = StashPayCard.Instance;
+        if (card == null) return;
+        if (_onDismissed != null) card.OnSafariViewDismissed -= _onDismissed;
+        if (_onSuccess != null) card.OnPaymentSuccess -= _onSuccess;
+        if (_onFailure != null) card.OnPaymentFailure -= _onFailure;
+        if (_onOptin != null) card.OnOptinResponse -= _onOptin;
+        if (_onPageLoaded != null) card.OnPageLoaded -= _onPageLoaded;
+        if (_onNetworkError != null) card.OnNetworkError -= _onNetworkError;
+        if (forceWebCheckoutToggle != null)
+            forceWebCheckoutToggle.onValueChanged.RemoveListener(OnForceWebCheckoutChanged);
+    }
+
+    private void SetStatus(string message)
+    {
+        if (statusText != null) statusText.text = message;
+        Debug.Log("[StashPaySample] " + message);
+    }
+
+    private void OnForceWebCheckoutChanged(bool value)
+    {
+        StashPayCard.Instance.ForceWebBasedCheckout = value;
+    }
+
+    /// <summary>Open checkout (generates URL via API then opens).</summary>
     public void OpenCheckout()
     {
+        SetStatus("Opening checkout...");
         StartCoroutine(OpenCheckoutCoroutine());
     }
-    
+
     private System.Collections.IEnumerator OpenCheckoutCoroutine()
     {
-        // You can generate a checkout URL using the Stash API.
-        // https://docs.stash.gg/api/server-quickpay/GenerateQuickPayUrl
-        // For demo purposes this happens on client side, but in production always generate on the backend.
-        // This is a sample payload, but can be customized to your needs.
+        if (forceWebCheckoutToggle != null)
+            StashPayCard.Instance.ForceWebBasedCheckout = forceWebCheckoutToggle.isOn;
 
         var request = new CheckoutRequest
         {
-            regionCode = "USA", // Set your region code here (ISO 3166-1 Alpha-3 format, e.g., "USA", "GBR").
-            currency = "USD", // Set your desired currency here (ISO 4217 format, e.g., "USD", "EUR").
+            regionCode = "USA",
+            currency = "USD",
             item = new CheckoutItem
             {
-                id = "1d56f95f-28df-4ea5-9829-9671241f455e", 
+                id = "1d56f95f-28df-4ea5-9829-9671241f455e",
                 pricePerItem = "9.99",
                 quantity = 1,
                 imageUrl = "https://upload.wikimedia.org/wikipedia/en/2/2d/Angry_Birds_promo_art.png",
                 name = "Test Item",
-                description = "This is a test purchase item"
+                description = "Test purchase"
             },
             user = new CheckoutUser
             {
                 id = "1d56f95f-28df-4ea5-9829-9671241f455e",
-                validatedEmail = "test@domain.com", // (Optional) Set your user's email here. Autofills for reciepts.
-                regionCode = "US", 
-                platform = "IOS" // Set your platform here (IOS/ANDROID). We inject platform-specific optimizations into the checkout link for better performance.
+                validatedEmail = "test@domain.com",
+                regionCode = "US",
+                platform = "IOS"
             }
         };
-        
+
         string json = JsonUtility.ToJson(request);
         byte[] bodyRaw = Encoding.UTF8.GetBytes(json);
-        
-        using (UnityWebRequest www = new UnityWebRequest("https://test-api.stash.gg/sdk/server/checkout_links/generate_quick_pay_url", "POST"))
+
+        using (var www = new UnityWebRequest("https://test-api.stash.gg/sdk/server/checkout_links/generate_quick_pay_url", "POST"))
         {
             www.uploadHandler = new UploadHandlerRaw(bodyRaw);
             www.downloadHandler = new DownloadHandlerBuffer();
             www.SetRequestHeader("Content-Type", "application/json");
-            www.SetRequestHeader("X-Stash-Api-Key", API_KEY); // This is your instance API key. You can find it in the Stash Studio.
-            
+            www.SetRequestHeader("X-Stash-Api-Key", API_KEY);
             yield return www.SendWebRequest();
-            
+
             if (www.result == UnityWebRequest.Result.Success)
             {
                 var response = JsonUtility.FromJson<CheckoutResponse>(www.downloadHandler.text);
-
-                // Open the checkout URL in a Stash Pay card dialog.
-                // This will display the Stash Pay checkout page in a card dialog.
                 StashPayCard.Instance.OpenCheckout(
                     response.url,
-                    dismissCallback: OnCheckoutDismissed,
-                    successCallback: OnPaymentSuccess,
-                    failureCallback: OnPaymentFailure
+                    dismissCallback: () => SetStatus("Dismissed"),
+                    successCallback: () => SetStatus("Success"),
+                    failureCallback: () => SetStatus("Failure")
                 );
             }
             else
             {
-                Debug.LogError($"Failed to generate checkout URL: {www.error}");
+                SetStatus("API error: " + www.error);
             }
         }
     }
-    
-    /// <summary>
-    /// Opens payment channel selection opt-in popup
-    /// </summary>
-    public void OpenOptin()
+
+    /// <summary>Open modal (e.g. channel selection).</summary>
+    public void OpenModal()
     {
-        // Stash provides unique optin URLs for each game, so user can select the payment method they prefer.
-        // https://store.howlingwoods.shop/pay/channel-selection is our sample optin URL.
-        // Advantage of this optin is that you can customize the optin popup remotely in Stash studio on per-player basis.
-        StashPayCard.Instance.OpenPopup(
-            "https://store.howlingwoods.shop/pay/channel-selection",
-            dismissCallback: () => Debug.Log("Opt-in popup closed")
-        );
+        SetStatus("Opening modal...");
+        StashPayCard.Instance.OpenModal(MODAL_URL, dismissCallback: () => SetStatus("Dismissed"));
     }
-    
-    void OnCheckoutDismissed()
-    {
-        Debug.Log("Dialog dismissed");
-        // Checkout dialog was dismissed. This is called when the dialog is dismissed by the user
-        // or when the dialog is closed automatically after purchase success or failure.
-    }
-    
-    void OnPaymentSuccess()
-    {
-        Debug.Log("Payment success - verifying on backend");
-        // Always verify purchase on backend via Stash webhooks or order status API.
-        if (statusText != null)
-        {
-            statusText.text = "Payment success - verifying on backend";
-        }
-    }
-    
-    void OnPaymentFailure()
-    {
-        Debug.Log("Payment failed");
-        // Show error message to user. Purchase failed and was not completed.
-        if (statusText != null)
-        {
-            statusText.text = "Payment failed";
-        }
-    }
-    
-    void OnChannelSelected(string channel)
-    {
-        // Optional
-        // Receives "native_iap" or "stash_pay", based on the response from the optin popup.
-        string paymentMethod = channel.ToUpper();
-        
-        PlayerPrefs.SetString("PaymentMethod", paymentMethod);
-        PlayerPrefs.Save();
-        
-        Debug.Log($"User selected payment method: {paymentMethod}");
-        if (statusText != null)
-        {
-            statusText.text = $"User selected payment method: {paymentMethod}";
-        }
-    }
-    
-    // These are the request and response classes for the checkout link generation API.
-    // As the checkout link generation should happen server side you can disregard these.
-    [System.Serializable]
-    private class CheckoutRequest
-    {
-        public string regionCode;
-        public string currency;
-        public CheckoutItem item;
-        public CheckoutUser user;
-    }
-    
-    [System.Serializable]
-    private class CheckoutItem
-    {
-        public string id;
-        public string pricePerItem;
-        public int quantity;
-        public string imageUrl;
-        public string name;
-        public string description;
-    }
-    
-    [System.Serializable]
-    private class CheckoutUser
-    {
-        public string id;
-        public string validatedEmail;
-        public string regionCode;
-        public string platform;
-    }
-    
-    [System.Serializable]
-    private class CheckoutResponse
-    {
-        public string id;
-        public string url;
-        public string regionCode;
-    }
+
+    [System.Serializable] private class CheckoutRequest { public string regionCode; public string currency; public CheckoutItem item; public CheckoutUser user; }
+    [System.Serializable] private class CheckoutItem { public string id; public string pricePerItem; public int quantity; public string imageUrl; public string name; public string description; }
+    [System.Serializable] private class CheckoutUser { public string id; public string validatedEmail; public string regionCode; public string platform; }
+    [System.Serializable] private class CheckoutResponse { public string id; public string url; public string regionCode; }
 }

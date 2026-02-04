@@ -218,7 +218,8 @@ namespace Stash.Samples
         }
 
         /// <summary>
-        /// Parses JWT payload JSON into claims dictionary
+        /// Parses JWT payload JSON into claims dictionary.
+        /// Uses simple comma split; claim values containing commas may be parsed incorrectly.
         /// </summary>
         private void ParseJwtPayload(string jsonPayload, Dictionary<string, string> claims)
         {

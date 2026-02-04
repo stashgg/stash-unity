@@ -8,10 +8,9 @@ using UnityEngine;
 namespace StashPopup.Editor
 {
     /// <summary>
-    /// Post-processes Android builds to inject required components into the Android manifest:
-    /// - StashPayCardPortraitActivity for the checkout card UI
-    /// - StashKeepAliveService for keeping Unity alive while in Chrome Custom Tabs
-    /// - Required permissions for foreground service
+    /// Post-processes Android builds to add permissions that the Stash Pay AAR may need
+    /// (e.g. for Chrome Custom Tabs keep-alive). The AAR (stash-native 1.2.4+) declares
+    /// its own Activity and components via manifest merge.
     /// </summary>
     public class StashPopupAndroidPostProcess : IPostGenerateGradleAndroidProject
     {
@@ -50,17 +49,10 @@ namespace StashPopup.Editor
                 
                 bool modified = false;
                 
-                // Add permissions for foreground service (required for keep-alive)
+                // Permissions that the Stash Pay AAR may need (e.g. Chrome Custom Tabs keep-alive)
                 modified |= AddPermissionIfMissing(manifest, manifestNode, nsMgr, "android.permission.FOREGROUND_SERVICE");
                 modified |= AddPermissionIfMissing(manifest, manifestNode, nsMgr, "android.permission.FOREGROUND_SERVICE_SHORT_SERVICE");
-                // Android 13+ (API 33+): required for foreground service notification to show in the notification drawer
                 modified |= AddPermissionIfMissing(manifest, manifestNode, nsMgr, "android.permission.POST_NOTIFICATIONS");
-                
-                // Add StashPayCardPortraitActivity
-                modified |= AddActivityIfMissing(manifest, applicationNode, nsMgr);
-                
-                // Add StashKeepAliveService for CCT keep-alive functionality
-                modified |= AddKeepAliveServiceIfMissing(manifest, applicationNode, nsMgr);
                 
                 if (modified)
                 {
@@ -117,67 +109,6 @@ namespace StashPopup.Editor
             return true;
         }
         
-        /// <summary>
-        /// Adds StashPayCardPortraitActivity if it doesn't already exist.
-        /// </summary>
-        private bool AddActivityIfMissing(XmlDocument manifest, XmlNode applicationNode, XmlNamespaceManager nsMgr)
-        {
-            // Check if Activity already exists
-            XmlNode existingActivity = applicationNode.SelectSingleNode(
-                "activity[@android:name='com.stash.popup.StashPayCardPortraitActivity']", nsMgr);
-            
-            if (existingActivity != null)
-            {
-                return false;
-            }
-            
-            // Create the Activity element
-            XmlElement activityElement = manifest.CreateElement("activity");
-            activityElement.SetAttribute("name", ANDROID_NS, "com.stash.popup.StashPayCardPortraitActivity");
-            // NOTE: Don't set screenOrientation in manifest - set it dynamically in onCreate based on device type
-            // This prevents forced portrait rotation on tablets
-            activityElement.SetAttribute("theme", ANDROID_NS, "@android:style/Theme.Translucent.NoTitleBar.Fullscreen");
-            activityElement.SetAttribute("launchMode", ANDROID_NS, "singleTop");
-            activityElement.SetAttribute("taskAffinity", ANDROID_NS, "");
-            activityElement.SetAttribute("excludeFromRecents", ANDROID_NS, "true");
-            activityElement.SetAttribute("configChanges", ANDROID_NS, "orientation|screenSize|keyboardHidden");
-            activityElement.SetAttribute("exported", ANDROID_NS, "false");
-            activityElement.SetAttribute("hardwareAccelerated", ANDROID_NS, "true");
-            activityElement.SetAttribute("noHistory", ANDROID_NS, "true");
-            
-            applicationNode.AppendChild(activityElement);
-            
-            Debug.Log("StashPopup: Added StashPayCardPortraitActivity to manifest");
-            return true;
-        }
-        
-        /// <summary>
-        /// Adds StashKeepAliveService if it doesn't already exist.
-        /// This service keeps the Unity process alive while the user is in Chrome Custom Tabs.
-        /// </summary>
-        private bool AddKeepAliveServiceIfMissing(XmlDocument manifest, XmlNode applicationNode, XmlNamespaceManager nsMgr)
-        {
-            // Check if Service already exists
-            XmlNode existingService = applicationNode.SelectSingleNode(
-                "service[@android:name='com.stash.popup.keepalive.StashKeepAliveService']", nsMgr);
-            
-            if (existingService != null)
-            {
-                return false;
-            }
-            
-            // Create the Service element
-            XmlElement serviceElement = manifest.CreateElement("service");
-            serviceElement.SetAttribute("name", ANDROID_NS, "com.stash.popup.keepalive.StashKeepAliveService");
-            // shortService type is required for Android 14+ (ignored on older versions)
-            serviceElement.SetAttribute("foregroundServiceType", ANDROID_NS, "shortService");
-            serviceElement.SetAttribute("exported", ANDROID_NS, "false");
-            
-            applicationNode.AppendChild(serviceElement);
-            
-            Debug.Log("StashPopup: Added StashKeepAliveService to manifest");
-            return true;
-        }
     }
 }
 

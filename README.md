@@ -14,8 +14,7 @@ All components are optional. Mix and match based on your needs.
 | Component | Product | Description |
 |-----------|---------|-------------|
 | **[Stash.Popup](Assets/Stash.Popup/README.md)** | Stash Pay | In-game popup for Stash Pay checkout on iOS and Android. Includes Sample scene. |
-| **Stash.Webshop** | Stash Webshop | Stash Webshop player account linking. |
-| **Stash.DemoApp** | x | Stash Demo app and playground for testing. **(Don't import)** |
+| **Stash.DemoApp** | — | Stash Demo app and playground for testing. **(Don't import)** |
 
 ## Sample
 
@@ -30,7 +29,7 @@ You can try **Stash.DemoApp** directly in online hosted emulators:
 
 1. Download the [latest release](https://github.com/stashgg/stash-unity/releases) or repository as a zip file.
 2. Import the `.unitypackage` file into your Unity project
-3. Select the components you need (Stash.Webshop for Stash Webshop, Stash.Popup for Stash Pay)
+3. Select the components you need (Stash.Popup for Stash Pay)
 
 ### Import via Git URL
 

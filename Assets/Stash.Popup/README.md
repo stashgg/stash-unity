@@ -4,37 +4,43 @@
 |:--:|:--:|
 | Phone Presentation | Tablet Presentation |
 
-Unity plugin for integrating Stash Pay checkout flows using native WebViews on iOS and Android.
-The plugin also provides SFSafariViewController and Chrome Custom Tabs mode as a fallback or alternative flow.
+Unity wrapper for the Stash Pay native SDK (stash-native). It integrates in-app checkout and modal flows on iOS and Android using pre-built native packages (AAR on Android, xcframework on iOS). The wrapper exposes all native features: **OpenCheckout** and **OpenModal** with full configuration (force portrait, card/tablet ratios, modal sizing), **ForceWebBasedCheckout** (SFSafariViewController / Chrome Custom Tabs), and all callbacks including **OnNetworkError** for initial page load failures.
 
-> **Note:** The Stash.Popup package is optional and enhances the user experience by providing in-app checkout dialogs. Stash Pay can always be integrated by opening the checkout URL in the user's default browser if you prefer not to use the in-app popup or custom in-app browser controller.
+> **Note:** Stash Pay can also be integrated by opening the checkout URL in the user's default browser if you prefer not to use the in-app UI.
 
 ## Requirements
 
 - Unity 2019.4+
-- iOS 12.0+ / Android 13.0+
+- iOS 13.0+ / Android 5.0+ (API 21+)
 
 ## Installation
 
-Import the `Stash.Popup` folder into your Unity project's Assets directory.
+1. Import the `Stash.Popup` folder into your Unity project's Assets directory.
+2. **Android:** The package includes `StashPay-1.2.4.aar` in `Plugins/Android/`. Ensure your build includes `androidx.appcompat:appcompat:1.6.1` and `androidx.browser:browser:1.7.0` (see [stash-native Android README](https://github.com/stashgg/stash-native/blob/main/Android/README.md)).
+3. **iOS:** Add the Stash Pay xcframework to your Xcode project:
+   - Download [StashPay-1.2.4.xcframework.zip](https://github.com/stashgg/stash-native/releases) (or latest), unzip, and add `StashPay.xcframework` to the Unity-generated Xcode project.
+   - In the target's **Frameworks, Libraries, and Embedded Content**, set the framework to **Embed & Sign**.
+
+## Native dependency (stash-native)
+
+This wrapper targets **stash-native 1.2.4**. To update:
+
+- **Android:** Replace `Assets/Stash.Popup/Plugins/Android/StashPay-1.2.4.aar` with the new AAR from [releases](https://github.com/stashgg/stash-native/releases). The thin bridge (`StashPayCardUnityBridge.java`) forwards calls to the AAR and sends callbacks to Unity.
+- **iOS:** Replace the embedded `StashPay.xcframework` in your Xcode project with the new xcframework from the same releases. The thin bridge (`StashPayCardBridge.mm`) forwards calls to the SDK and implements the delegate to send callbacks to Unity.
 
 ## Folder Structure
 
 ### ./Editor
-Dependency post-processing scripts and editor purchase simulator tool:
-- **`AddWebKitFramework.cs`** - Adds WebKit and SafariServices frameworks to iOS Xcode projects
-- **`StashPopupAndroidPostProcess.cs`** - Injects `StashPayCardPortraitActivity` into Android manifest
-- **`StashPayCardEditor/`** - Unity extension for testing full checkout flow inside editor.
+- **`AddWebKitFramework.cs`** - Adds WebKit and SafariServices to iOS Xcode projects
+- **`StashPopupAndroidPostProcess.cs`** - Adds permissions for the Stash Pay AAR (e.g. foreground service). The AAR declares its own components via manifest merge.
+- **`StashPayCardEditor/`** - Editor window for testing checkout and modal in the Unity Editor.
 
 ### ./Plugins
-Native platform implementations for Stash Pay purchase card:
-- **`Plugins/iOS/`** - Objective-C/Objective-C++ code for the native Stash Dialog
-- **`Plugins/Android/`** - Java code for the native Stash Dialog
+- **`Plugins/Android/`** - `StashPay-1.2.4.aar` (native SDK) and `StashPayCardUnityBridge.java` (Unity bridge)
+- **`Plugins/iOS/`** - `StashPayCardBridge.mm` (Unity bridge; requires StashPay.xcframework in the Xcode project)
 
 ### ./Sample
-Sample scene demonstrating package usage, use as a reference implementation:
-- **`StashPaySample.cs`** - Shows `OpenCheckout()` and `OpenOptin()` with web request integration
-- **`StashPaySample.unity`** - Sample scene with buttons to try checkout
+- **`StashPaySample.cs`** / **`StashPaySample.unity`** - Simple demo: Open Checkout, Open Modal, config toggles, Force Web Checkout, and callback status.
 
 
 ## Best Practices
@@ -329,25 +335,33 @@ dependencies {
 
 ### Methods
 
-**`OpenCheckout(string url, Action onDismiss, Action onSuccess, Action onFailure)`**
-Opens Stash Pay checkout in a sliding card from the bottom of the screen.
+**`OpenCheckout(string url, Action onDismiss = null, Action onSuccess = null, Action onFailure = null)`**
+Opens Stash Pay checkout (sliding card on phone, centered modal on tablet). Respects `ForcePortraitOnCheckout` and card/tablet ratio settings.
 
-**`OpenPopup(string url, Action onDismiss = null, Action onSuccess = null, Action onFailure = null, PopupSizeConfig? customSize = null)`**
-Opens Stash opt-in and other remote Stash dialogs in a centered modal popup. Size can be customized using `PopupSizeConfig`. If not provided, uses platform-specific default sizing.
+**`OpenModal(string url, Action onDismiss = null, Action onSuccess = null, Action onFailure = null, StashPayModalConfig? config = null)`**
+Opens a centered modal (e.g. opt-in / channel selection). Use `config` for drag bar, dismiss behavior, and phone/tablet size ratios.
 
-**`ResetPresentationState()`**
-Dismisses current dialog and resets state.
+**`OpenPopup(...)`**
+Legacy overload; equivalent to `OpenModal` with optional `PopupSizeConfig` for custom size.
 
-### Properties
+**`ResetPresentationState()`** – Dismisses current dialog and resets state.
 
-**`ForceWebBasedCheckout`** (bool)
-- `false` - Use Stash Pay native card (default)
-- `true` - Use SFSafariViewController/Chrome Custom Tabs for checkout.
+**`DismissSafariViewController()`** / **`DismissSafariViewController(bool success)`** – For web-based checkout deep link handling (iOS).
 
-**`IsCurrentlyPresented`** (bool, read-only)
-- Returns whether a dialog is currently open.
+### Checkout configuration (before OpenCheckout)
+
+**`ForcePortraitOnCheckout`** (bool) – Portrait-locked activity on phone when true.  
+**`CardHeightRatioPortrait`**, **`CardWidthRatioLandscape`**, **`CardHeightRatioLandscape`** – Phone card size (0.1–1.0).  
+**`TabletWidthRatioPortrait`**, **`TabletHeightRatioPortrait`**, **`TabletWidthRatioLandscape`**, **`TabletHeightRatioLandscape`** – Tablet card size.
+
+### Other properties
+
+**`ForceWebBasedCheckout`** (bool) – Use SFSafariViewController/Chrome Custom Tabs instead of in-app card.  
+**`IsCurrentlyPresented`** (bool, read-only) – Whether a dialog is currently open.
 
 ### Events
+
+**`OnPaymentSuccess`**, **`OnPaymentFailure`**, **`OnSafariViewDismissed`** (dialog dismissed), **`OnOptinResponse(string)`**, **`OnPageLoaded(double loadTimeMs)`**, **`OnNetworkError`** (initial page load failed; dialog is auto-dismissed).
 
 **`OnNativeException`** (event `Action<string, Exception>`)
 - Fired when an unhandled exception occurs during native plugin operations.
@@ -360,13 +374,9 @@ Dismisses current dialog and resets state.
 
 ### Types
 
-**`PopupSizeConfig`** (struct) - Only for opt-in popups.
-- `portraitWidthMultiplier` (float) - Width multiplier for portrait orientation
-- `portraitHeightMultiplier` (float) - Height multiplier for portrait orientation
-- `landscapeWidthMultiplier` (float) - Width multiplier for landscape orientation
-- `landscapeHeightMultiplier` (float) - Height multiplier for landscape orientation
+**`StashPayModalConfig`** (struct) – Modal appearance and size (drag bar, allow dismiss, phone/tablet ratios). Use **`StashPayModalConfig.Default`** for defaults.
 
-**Note:** Each platform (iOS and Android) has its own default sizing. When `customSize` is not provided, the platform-specific defaults are used.
+**`PopupSizeConfig`** (struct) – Legacy size config for `OpenPopup`; prefer `StashPayModalConfig` with `OpenModal`.
 
 ## Device Testing & Issues
 
