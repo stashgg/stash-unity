@@ -851,14 +851,16 @@ jobs:
           echo "Looking for IPA files:"
           find build/iOS/iOS -name "*.ipa" -type f
       
-          # Verify IPA exists
-          if [ ! -f "build/iOS/iOS/export/StashDemo.ipa" ]; then
+          # Verify IPA exists (Xcode names it from the product/scheme, e.g. StashUnity.ipa)
+          IPA_FILE=$(find build/iOS/iOS/export -name "*.ipa" -type f | head -1)
+          if [ -z "$IPA_FILE" ] || [ ! -f "$IPA_FILE" ]; then
             echo "ERROR: IPA file not found!"
             exit 1
           fi
           
-          echo "✅ IPA file found: build/iOS/iOS/export/StashDemo.ipa"
-          du -h build/iOS/iOS/export/StashDemo.ipa
+          echo "✅ IPA file found: $IPA_FILE"
+          du -h "$IPA_FILE"
+          echo "IPA_FILE=$IPA_FILE" >> $GITHUB_ENV
       
       # iOS-simulator: Get version from git tag
       - name: Get version from git tag (simulator)
@@ -1098,7 +1100,7 @@ jobs:
         if: matrix.platform == 'iOS' && (github.event_name == 'push' || github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.upload_to_testflight == true))
         uses: apple-actions/upload-testflight-build@v1
         with:
-          app-path: 'build/iOS/iOS/export/StashDemo.ipa'
+          app-path: ${{ env.IPA_FILE }}
           issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
@@ -1110,57 +1112,6 @@ jobs:
           name: Build-${{ matrix.platform }}
           path: build/${{ matrix.platform }}
           retention-days: 7
-      
-      # Authenticate with Google Cloud Storage for artifact uploads
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v3
-        with:
-          credentials_json: ${{ secrets.PIE_PROD_GCP_SERVICE_ACCOUNT_CREDENTIALS_FOR_UPLOAD_DEMO }}
-            
-      # Android: Locate the APK file for upload to GCS
-      - name: Find Android APK for upload
-        if: matrix.platform == 'Android'
-        run: |
-          APK_FILE=$(find build/Android -name "*.apk" -type f | head -1)
-          if [ -z "$APK_FILE" ]; then
-            echo "ERROR: APK file not found in build/Android"
-            exit 1
-          fi
-          echo "Found APK: $APK_FILE"
-          echo "APK_FILE=$APK_FILE" >> $GITHUB_ENV
-      
-      # Android: Upload APK to GCS latest/ directory for direct download
-      - name: Upload latest Android APK to GCS
-        if: matrix.platform == 'Android'
-        uses: google-github-actions/upload-cloud-storage@v3
-        with:
-          path: ${{ env.APK_FILE }}
-          destination: stash_sdk_demo/Android/latest/StashDemo.apk
-          parent: false
-          gzip: false
-          process_gcloudignore: false
-      
-      # iOS: Upload IPA to GCS latest/ directory for direct download
-      - name: Upload latest iOS IPA to GCS
-        if: matrix.platform == 'iOS'
-        uses: google-github-actions/upload-cloud-storage@v3
-        with:
-          path: build/iOS/iOS/export/StashDemo.ipa
-          destination: stash_sdk_demo/iOS/latest/StashDemo.ipa
-          parent: false
-          gzip: false
-          process_gcloudignore: false
-      
-      # iOS-simulator: Upload simulator build to GCS
-      - name: Upload iOS simulator build to GCS
-        if: matrix.platform == 'iOS-simulator'
-        uses: google-github-actions/upload-cloud-storage@v3
-        with:
-          path: ${{ env.SIMULATOR_ZIP }}
-          destination: stash_sdk_demo/iOS-simulator/latest/iOS-simulator-latest.zip
-          parent: false
-          gzip: false
-          process_gcloudignore: false
       
       # Create zip archive for non-Android/iOS/iOS-simulator platforms (macOS, Windows, etc.)
       - name: Create latest build archive
@@ -1213,17 +1164,6 @@ jobs:
           
           echo "Created archive: $ZIP_FILE"
           ls -lh "$ZIP_FILE" || dir "$ZIP_FILE"
-      
-      # Upload zip archive to GCS latest/ directory for direct download
-      - name: Upload latest build archive to GCS
-        if: matrix.platform != 'Android' && matrix.platform != 'iOS' && matrix.platform != 'iOS-simulator'
-        uses: google-github-actions/upload-cloud-storage@v3
-        with:
-          path: ${{ github.workspace }}/${{ matrix.platform }}-latest.zip
-          destination: stash_sdk_demo/${{ matrix.platform }}/latest/${{ matrix.platform }}-latest.zip
-          parent: false
-          gzip: false
-          process_gcloudignore: false
       
       # macOS: Upload build artifact for Stash CLI upload job
       - name: Upload macOS build artifact
