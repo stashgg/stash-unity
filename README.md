@@ -64,14 +64,8 @@ You can build **Stash.DemoApp** in Unity to test Stash flows in your own project
 
 Before using Stash.Popup, make sure your game server is set up to create Stash Pay checkout URLs using the Stash API. If you haven't already set up checkout URL generation, see our [integration guide](https://docs.stash.gg/guides/stash-pay/integration) for instructions.
 
-Stash.Popup supports two presentation modes: **in-app card dialog** and **in-app browser**. To see how each presentation mode looks, refer to our documentation:
 
-- [Presentation Options for iOS](https://docs.stash.gg/guides/stash-pay/ios-android-integration/presentation-options-ios)
-- [Presentation Options for Android](https://docs.stash.gg/guides/stash-pay/ios-android-integration/presentation-options-android)
-
-We recommend implementing both so you can switch between these modes as you need.
-
-### Using In-app card dialog
+### Using Drawer Dialog
 
 Use `OpenCheckout()` to display a Stash Pay URL in a native card dialog inside your game:
 
@@ -115,18 +109,15 @@ public class MyStore : MonoBehaviour
 }
 ```
 
-You can customize the checkout card size (e.g. for webshop or full-page flows) by setting `CardHeightRatioPortrait` (and other ratio properties) before calling `OpenCheckout()`. Restore the previous value in the dismiss callback if you need different sizes elsewhere.
-
 > **iOS Development Note:**  
 > The first Stash checkout call may be slow when running under the Xcode debugger (especially if connected wirelessly), due to `WKWebView` processes being heavily instrumented by Xcode. This delay only affects debug sessions on the first call, not production builds.
 
+Check the ./Sample folder for more detailed implementation details.
 
 
-## Full Unity API Reference
+## Full API Reference
 
 All public API lives on the **`StashPayCard`** singleton. Access it via **`StashPayCard.Instance`**.
-
-**Checkout vs modal config:** Both **checkout** and **modal** support passing config at call site: use **`OpenCheckout(url, dismiss, success, failure, StashPayCheckoutConfig?)`** or **`OpenModal(url, dismiss, success, failure, StashPayModalConfig?)`**. Checkout also has instance properties (e.g. `CardHeightRatioPortrait`) so you can "set once" and use the 4-arg **`OpenCheckout(url, ...)`** for a consistent look everywhere; use the config overload when one flow needs different sizing (e.g. webshop at 0.8 height, IAP at 0.68).
 
 ---
 
@@ -145,37 +136,9 @@ All public API lives on the **`StashPayCard`** singleton. Access it via **`Stash
 | **`void OpenCheckout(string url, Action dismissCallback = null, Action successCallback = null, Action failureCallback = null)`** | Opens checkout using **current instance properties** (ForcePortraitOnCheckout, card/tablet ratios). Use when you want one global checkout look for the whole app. |
 | **`void OpenCheckout(string url, Action dismissCallback, Action successCallback, Action failureCallback, StashPayCheckoutConfig? config)`** | Opens checkout with **per-call config**. When `config` is set, that config is used for this open only; previous instance state is restored when the dialog is dismissed. Use for different sizes per flow (e.g. webshop vs. IAP) without mutating global state. |
 | **`void OpenModal(string url, Action dismissCallback = null, Action successCallback = null, Action failureCallback = null, StashPayModalConfig? config = null)`** | Opens a URL in a centered modal (e.g. opt-in / channel selection). Optional `config` controls drag bar, allow dismiss, and phone/tablet size ratios. If `config` is null, platform defaults are used. |
-| **`void OpenPopup(string url, Action dismissCallback = null, Action successCallback = null, Action failureCallback = null, PopupSizeConfig? customSize = null)`** | Legacy. Opens a centered modal like `OpenModal`. Optional `customSize` sets portrait/landscape size multipliers. Prefer `OpenModal` with `StashPayModalConfig` for new code. |
 | **`void ResetPresentationState()`** | Dismisses any currently presented checkout card or modal and resets internal state. Effect only on iOS and Android; no-op in Editor. |
-| **`void DismissSafariViewController()`** | **iOS only.** Dismisses the current SFSafariViewController and invokes `OnSafariViewDismissed`. No success/failure callbacks. Use when the user returns via deeplink and you only need to close the browser. |
+| **`void DismissSafariViewController()`** | **iOS only.** Dismisses the current SFSafariViewController and invokes `OnSafariViewDismissed`. No success/failure callbacks. Use for browser (not in-app) checkouts when the user returns via deeplink and you only need to close the browser. |
 | **`void DismissSafariViewController(bool success)`** | **iOS only.** Dismisses the current SFSafariViewController and invokes `OnPaymentSuccess` (if `success` is true) or `OnPaymentFailure` (if false). Use when handling deeplinks (`stash/purchaseSuccess` or `stash/purchaseFailure`). |
-
----
-
-### Properties (checkout configuration)
-
-These apply to **`OpenCheckout`** when you use the 4-argument overload (no config). Set them before calling `OpenCheckout`; they are sent to the native layer when the checkout is opened. If you use **`OpenCheckout(..., StashPayCheckoutConfig? config)`** with a non-null config, that call ignores these properties and uses the config instead (and restores these properties on dismiss).
-
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| **`ForcePortraitOnCheckout`** | `bool` | `false` | When true, checkout on phone opens in a portrait-locked activity; when false, overlay uses current orientation. |
-| **`CardHeightRatioPortrait`** | `float` | `0.68f` | Card height as ratio of screen height in portrait (0.1–1.0). |
-| **`CardWidthRatioLandscape`** | `float` | `0.9f` | Card width as ratio of screen width in landscape (0.1–1.0). |
-| **`CardHeightRatioLandscape`** | `float` | `0.6f` | Card height as ratio of screen height in landscape (0.1–1.0). |
-| **`TabletWidthRatioPortrait`** | `float` | `0.4f` | Tablet card width in portrait (0.1–1.0). |
-| **`TabletHeightRatioPortrait`** | `float` | `0.5f` | Tablet card height in portrait (0.1–1.0). |
-| **`TabletWidthRatioLandscape`** | `float` | `0.3f` | Tablet card width in landscape (0.1–1.0). |
-| **`TabletHeightRatioLandscape`** | `float` | `0.6f` | Tablet card height in landscape (0.1–1.0). |
-| **`CardHeightRatio`** | `float` | (same as above) | Legacy alias for `CardHeightRatioPortrait`. Prefer `CardHeightRatioPortrait`. |
-
----
-
-### Properties (other)
-
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| **`ForceWebBasedCheckout`** | `bool` | `false` | When true, checkout opens in SFSafariViewController (iOS) or Chrome Custom Tabs (Android) instead of the in-app card. Success/failure are then delivered via deeplinks. |
-| **`IsCurrentlyPresented`** | `bool` (read-only) | — | True if a checkout card or modal is currently visible. Use to avoid opening a second dialog. |
 
 ---
 
@@ -232,17 +195,6 @@ Used with **`OpenModal`** to control modal appearance and size. All values are r
 | **`tabletHeightRatioLandscape`** | `float` | `0.4f` | Tablet modal height (landscape). |
 
 **Static:** **`StashPayModalConfig.Default`** – Returns a struct with the defaults above. Copy and override fields as needed.
-
-#### `PopupSizeConfig` (struct)
-
-Legacy size config for **`OpenPopup`**. Prefer **`StashPayModalConfig`** with **`OpenModal`** for new code.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| **`portraitWidthMultiplier`** | `float` | Portrait width (multiplier). |
-| **`portraitHeightMultiplier`** | `float` | Portrait height (multiplier). |
-| **`landscapeWidthMultiplier`** | `float` | Landscape width (multiplier). |
-| **`landscapeHeightMultiplier`** | `float` | Landscape height (multiplier). |
 
 
 ### Unity Editor Simulator 
