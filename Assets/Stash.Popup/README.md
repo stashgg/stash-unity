@@ -32,13 +32,15 @@ This wrapper targets **stash-native 1.2.4**. To update:
 ## Folder Structure
 
 ### ./Editor
-- **`AddWebKitFramework.cs`** - Adds WebKit and SafariServices to iOS Xcode projects; sets FRAMEWORK_SEARCH_PATHS when StashPay.xcframework is in Plugins/iOS (Unity includes the xcframework itself)
 - **`StashPopupAndroidPostProcess.cs`** - Adds permissions for the Stash Pay AAR (e.g. foreground service). The AAR declares its own components via manifest merge.
-- **`StashPayCardEditor/`** - Editor window for testing checkout and modal in the Unity Editor.
+- **`StashPayCardEditor/`** - Editor window for testing checkout and modal in the Unity Editor (Windows and macOS).
 
 ### ./Plugins
-- **`Plugins/Android/`** - `StashPay-1.2.4.aar` (native SDK) and `StashPayCardUnityBridge.java` (Unity bridge)
-- **`Plugins/iOS/`** - `StashPayCardBridge.mm` (Unity bridge). Put `StashPay.xcframework` here before an iOS build so the bridge links to the SDK; the build post-process will embed it.
+- **`Plugins/Android/`** - `StashPay-1.2.4.aar` (native SDK) and `StashPayCardUnityBridge.java` (Unity bridge).
+- **`Plugins/iOS/`** - `StashPayCardBridge.mm` (Unity bridge). Place `StashPay.xcframework` here before building for iOS so the bridge links to the SDK; ensure the framework is set to **Embed & Sign** in the generated Xcode project (see [Troubleshooting](#ios-app-crashes-with-library-not-loaded-related-to-stashpay)).
+
+### ./Scripts
+- **`StashPayCard.cs`** - Singleton API: `OpenCheckout`, `OpenModal`, `OpenPopup`, configuration properties, and events.
 
 ### ./Sample
 - **`StashPaySample.cs`** / **`StashPaySample.unity`** - Simple demo: Open Checkout, Open Modal, config toggles, Force Web Checkout, and callback status.
@@ -105,10 +107,10 @@ public class MyStore : MonoBehaviour
 }
 ```
 
+You can customize the checkout card size (e.g. for webshop or full-page flows) by setting `CardHeightRatioPortrait` (and other ratio properties) before calling `OpenCheckout()`. Restore the previous value in the dismiss callback if you need different sizes elsewhere.
+
 > **iOS Development Note:**  
 > The first Stash checkout call may be slow when running under the Xcode debugger (especially if connected wirelessly), due to `WKWebView` processes being heavily instrumented by Xcode. This delay only affects debug sessions on the first call, not production builds.
-
-
 
 ### Using In-app browser
 
@@ -207,7 +209,7 @@ void OnDestroy()
 ```
 ### Automatic Fallback Behavior
 
-When `OpenCheckout()` or `OpenPopup()` encounters an exception:
+When `OpenCheckout()`, `OpenModal()`, or `OpenPopup()` encounters an exception:
 - The exception is logged and reported via `OnNativeException` event
 - On iOS and Android, the operation falls back to opening the URL in the default browser (`Application.OpenURL()`)
 - This ensures users can still complete their purchase even if the native dialog fails.
