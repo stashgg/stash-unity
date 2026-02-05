@@ -197,7 +197,7 @@ Used with **`OpenModal`** to control modal appearance and size. All values are r
 **Static:** **`StashPayModalConfig.Default`** – Returns a struct with the defaults above. Copy and override fields as needed.
 
 
-### Unity Editor Simulator 
+## Unity Editor Simulator 
 
 <div align="center">
   <img src="https://github.com/stashgg/stash-unity/blob/main/.github/popup_editor.png?raw=true" width="800px" /><br/>
@@ -206,7 +206,7 @@ Used with **`OpenModal`** to control modal appearance and size. All values are r
 </br>
 </br>
 
-Stash.Popup package includes a Unity editor extension that allows you to test Stash Pay checkout dialogs directly in the Unity Editor without building to a device.
+Package includes a Unity editor extension that allows you to test Stash Pay checkout dialogs directly in the Unity Editor without building to a device.
 
 When you call `OpenCheckout()` in the Editor, the extension automatically intercepts these calls and displays the flow in an "emulator" window within Unity editor. This enables you to interact with the Stash Pay UI, complete purchases, and verify callback events. You can finish both test and production purchases.
 
@@ -270,7 +270,6 @@ dependencies {
 ## Documentation
 
 - [Stash Documentation](https://docs.stash.gg) - Full API reference and integration guides.
-- [Stash.Popup Readme](Assets/Stash.Popup/README.md) - Native checkout popup integration
 
 ## Versioning
 
@@ -284,4 +283,3 @@ This package follows [Semantic Versioning](https://semver.org/) (major.minor.pat
 
 - Documentation: https://docs.stash.gg
 - Email: developers@stash.gg
-- Issues: [GitHub Issues](https://github.com/stashgg/stash-unity/issues/new)
