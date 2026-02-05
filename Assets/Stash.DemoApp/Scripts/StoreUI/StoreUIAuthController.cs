@@ -400,10 +400,9 @@ namespace Stash.Samples
                 }
                 string url = await GetPreAuthenticatedWebshopUrl(userId, userEmail);
                 if (string.IsNullOrEmpty(url)) return;
-                var card = StashPayCard.Instance;
-                float previousRatio = card.CardHeightRatioPortrait;
-                card.CardHeightRatioPortrait = 0.80f;
-                card.OpenCheckout(url, () => card.CardHeightRatioPortrait = previousRatio, null, null);
+                var config = StashPayCheckoutConfig.Default;
+                config.cardHeightRatioPortrait = 0.80f;
+                StashPayCard.Instance.OpenCheckout(url, null, null, null, config);
             }
             catch (Exception ex)
             {

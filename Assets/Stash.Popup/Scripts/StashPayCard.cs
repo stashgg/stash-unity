@@ -39,6 +39,35 @@ namespace StashPopup
     }
 
     /// <summary>
+    /// Configuration for checkout presentation (OpenCheckout). Pass optionally to OpenCheckout for per-call config;
+    /// otherwise use StashPayCard instance properties (ForcePortraitOnCheckout, CardHeightRatioPortrait, etc.).
+    /// </summary>
+    public struct StashPayCheckoutConfig
+    {
+        public bool forcePortraitOnCheckout;
+        public float cardHeightRatioPortrait;
+        public float cardWidthRatioLandscape;
+        public float cardHeightRatioLandscape;
+        public float tabletWidthRatioPortrait;
+        public float tabletHeightRatioPortrait;
+        public float tabletWidthRatioLandscape;
+        public float tabletHeightRatioLandscape;
+
+        /// <summary>Default checkout config (matches StashPayCard default property values).</summary>
+        public static StashPayCheckoutConfig Default => new StashPayCheckoutConfig
+        {
+            forcePortraitOnCheckout = false,
+            cardHeightRatioPortrait = 0.68f,
+            cardWidthRatioLandscape = 0.9f,
+            cardHeightRatioLandscape = 0.6f,
+            tabletWidthRatioPortrait = 0.4f,
+            tabletHeightRatioPortrait = 0.5f,
+            tabletWidthRatioLandscape = 0.3f,
+            tabletHeightRatioLandscape = 0.6f
+        };
+    }
+
+    /// <summary>
     /// Legacy popup size configuration (multipliers). Use StashPayModalConfig for new code.
     /// </summary>
     public struct PopupSizeConfig
@@ -305,9 +334,54 @@ namespace StashPopup
         /// );
         /// </code>
         /// </summary>
+        /// <summary>Opens checkout using current instance configuration (ForcePortraitOnCheckout, card/tablet ratios).</summary>
         public void OpenCheckout(string url, Action dismissCallback = null, Action successCallback = null, Action failureCallback = null)
         {
-            StartCoroutine(OpenURLInternal(url, dismissCallback, successCallback, failureCallback, false));
+            OpenCheckout(url, dismissCallback, successCallback, failureCallback, null);
+        }
+
+        /// <summary>Opens checkout. When <paramref name="config"/> is set, uses that config for this call only and restores previous state on dismiss.</summary>
+        public void OpenCheckout(string url, Action dismissCallback, Action successCallback, Action failureCallback, StashPayCheckoutConfig? config)
+        {
+            if (config.HasValue)
+            {
+                var c = config.Value;
+                var saved = new StashPayCheckoutConfig
+                {
+                    forcePortraitOnCheckout = _forcePortraitOnCheckout,
+                    cardHeightRatioPortrait = _cardHeightRatioPortrait,
+                    cardWidthRatioLandscape = _cardWidthRatioLandscape,
+                    cardHeightRatioLandscape = _cardHeightRatioLandscape,
+                    tabletWidthRatioPortrait = _tabletWidthRatioPortrait,
+                    tabletHeightRatioPortrait = _tabletHeightRatioPortrait,
+                    tabletWidthRatioLandscape = _tabletWidthRatioLandscape,
+                    tabletHeightRatioLandscape = _tabletHeightRatioLandscape
+                };
+                ApplyCheckoutConfig(c);
+                Action wrappedDismiss = () =>
+                {
+                    ApplyCheckoutConfig(saved);
+                    dismissCallback?.Invoke();
+                };
+                StartCoroutine(OpenURLInternal(url, wrappedDismiss, successCallback, failureCallback, false));
+            }
+            else
+            {
+                StartCoroutine(OpenURLInternal(url, dismissCallback, successCallback, failureCallback, false));
+            }
+        }
+
+        private void ApplyCheckoutConfig(StashPayCheckoutConfig c)
+        {
+            _forcePortraitOnCheckout = c.forcePortraitOnCheckout;
+            _cardHeightRatioPortrait = Mathf.Clamp(c.cardHeightRatioPortrait, 0.1f, 1f);
+            _cardWidthRatioLandscape = Mathf.Clamp(c.cardWidthRatioLandscape, 0.1f, 1f);
+            _cardHeightRatioLandscape = Mathf.Clamp(c.cardHeightRatioLandscape, 0.1f, 1f);
+            _tabletWidthRatioPortrait = Mathf.Clamp(c.tabletWidthRatioPortrait, 0.1f, 1f);
+            _tabletHeightRatioPortrait = Mathf.Clamp(c.tabletHeightRatioPortrait, 0.1f, 1f);
+            _tabletWidthRatioLandscape = Mathf.Clamp(c.tabletWidthRatioLandscape, 0.1f, 1f);
+            _tabletHeightRatioLandscape = Mathf.Clamp(c.tabletHeightRatioLandscape, 0.1f, 1f);
+            ApplyCheckoutConfigToNative();
         }
         
         // Internal handler: opens URL as checkout or modal/popup

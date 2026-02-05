@@ -349,50 +349,125 @@ dependencies {
 
 ## API Reference
 
+All public API lives on the **`StashPayCard`** singleton. Access it via **`StashPayCard.Instance`**.
+
+**Checkout vs modal config:** Both **checkout** and **modal** support passing config at call site: use **`OpenCheckout(url, dismiss, success, failure, StashPayCheckoutConfig?)`** or **`OpenModal(url, dismiss, success, failure, StashPayModalConfig?)`**. Checkout also has instance properties (e.g. `CardHeightRatioPortrait`) so you can "set once" and use the 4-arg **`OpenCheckout(url, ...)`** for a consistent look everywhere; use the config overload when one flow needs different sizing (e.g. webshop at 0.8 height, IAP at 0.68).
+
+---
+
+### Singleton
+
+| Member | Description |
+|--------|-------------|
+| **`StashPayCard Instance`** | Static read-only. The single `StashPayCard` instance. Created on first access and persisted across scenes (`DontDestroyOnLoad`). |
+
+---
+
 ### Methods
 
-**`OpenCheckout(string url, Action onDismiss = null, Action onSuccess = null, Action onFailure = null)`**
-Opens Stash Pay checkout (sliding card on phone, centered modal on tablet). Respects `ForcePortraitOnCheckout` and card/tablet ratio settings.
+| Signature | Description |
+|-----------|-------------|
+| **`void OpenCheckout(string url, Action dismissCallback = null, Action successCallback = null, Action failureCallback = null)`** | Opens checkout using **current instance properties** (ForcePortraitOnCheckout, card/tablet ratios). Use when you want one global checkout look for the whole app. |
+| **`void OpenCheckout(string url, Action dismissCallback, Action successCallback, Action failureCallback, StashPayCheckoutConfig? config)`** | Opens checkout with **per-call config**. When `config` is set, that config is used for this open only; previous instance state is restored when the dialog is dismissed. Use for different sizes per flow (e.g. webshop vs. IAP) without mutating global state. |
+| **`void OpenModal(string url, Action dismissCallback = null, Action successCallback = null, Action failureCallback = null, StashPayModalConfig? config = null)`** | Opens a URL in a centered modal (e.g. opt-in / channel selection). Optional `config` controls drag bar, allow dismiss, and phone/tablet size ratios. If `config` is null, platform defaults are used. |
+| **`void OpenPopup(string url, Action dismissCallback = null, Action successCallback = null, Action failureCallback = null, PopupSizeConfig? customSize = null)`** | Legacy. Opens a centered modal like `OpenModal`. Optional `customSize` sets portrait/landscape size multipliers. Prefer `OpenModal` with `StashPayModalConfig` for new code. |
+| **`void ResetPresentationState()`** | Dismisses any currently presented checkout card or modal and resets internal state. Effect only on iOS and Android; no-op in Editor. |
+| **`void DismissSafariViewController()`** | **iOS only.** Dismisses the current SFSafariViewController and invokes `OnSafariViewDismissed`. No success/failure callbacks. Use when the user returns via deeplink and you only need to close the browser. |
+| **`void DismissSafariViewController(bool success)`** | **iOS only.** Dismisses the current SFSafariViewController and invokes `OnPaymentSuccess` (if `success` is true) or `OnPaymentFailure` (if false). Use when handling deeplinks (`stash/purchaseSuccess` or `stash/purchaseFailure`). |
 
-**`OpenModal(string url, Action onDismiss = null, Action onSuccess = null, Action onFailure = null, StashPayModalConfig? config = null)`**
-Opens a centered modal (e.g. opt-in / channel selection). Use `config` for drag bar, dismiss behavior, and phone/tablet size ratios.
+---
 
-**`OpenPopup(...)`**
-Legacy overload; equivalent to `OpenModal` with optional `PopupSizeConfig` for custom size.
+### Properties (checkout configuration)
 
-**`ResetPresentationState()`** – Dismisses current dialog and resets state.
+These apply to **`OpenCheckout`** when you use the 4-argument overload (no config). Set them before calling `OpenCheckout`; they are sent to the native layer when the checkout is opened. If you use **`OpenCheckout(..., StashPayCheckoutConfig? config)`** with a non-null config, that call ignores these properties and uses the config instead (and restores these properties on dismiss).
 
-**`DismissSafariViewController()`** / **`DismissSafariViewController(bool success)`** – For web-based checkout deep link handling (iOS).
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| **`ForcePortraitOnCheckout`** | `bool` | `false` | When true, checkout on phone opens in a portrait-locked activity; when false, overlay uses current orientation. |
+| **`CardHeightRatioPortrait`** | `float` | `0.68f` | Card height as ratio of screen height in portrait (0.1–1.0). |
+| **`CardWidthRatioLandscape`** | `float` | `0.9f` | Card width as ratio of screen width in landscape (0.1–1.0). |
+| **`CardHeightRatioLandscape`** | `float` | `0.6f` | Card height as ratio of screen height in landscape (0.1–1.0). |
+| **`TabletWidthRatioPortrait`** | `float` | `0.4f` | Tablet card width in portrait (0.1–1.0). |
+| **`TabletHeightRatioPortrait`** | `float` | `0.5f` | Tablet card height in portrait (0.1–1.0). |
+| **`TabletWidthRatioLandscape`** | `float` | `0.3f` | Tablet card width in landscape (0.1–1.0). |
+| **`TabletHeightRatioLandscape`** | `float` | `0.6f` | Tablet card height in landscape (0.1–1.0). |
+| **`CardHeightRatio`** | `float` | (same as above) | Legacy alias for `CardHeightRatioPortrait`. Prefer `CardHeightRatioPortrait`. |
 
-### Checkout configuration (before OpenCheckout)
+---
 
-**`ForcePortraitOnCheckout`** (bool) – Portrait-locked activity on phone when true.  
-**`CardHeightRatioPortrait`**, **`CardWidthRatioLandscape`**, **`CardHeightRatioLandscape`** – Phone card size (0.1–1.0).  
-**`TabletWidthRatioPortrait`**, **`TabletHeightRatioPortrait`**, **`TabletWidthRatioLandscape`**, **`TabletHeightRatioLandscape`** – Tablet card size.
+### Properties (other)
 
-### Other properties
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| **`ForceWebBasedCheckout`** | `bool` | `false` | When true, checkout opens in SFSafariViewController (iOS) or Chrome Custom Tabs (Android) instead of the in-app card. Success/failure are then delivered via deeplinks. |
+| **`IsCurrentlyPresented`** | `bool` (read-only) | — | True if a checkout card or modal is currently visible. Use to avoid opening a second dialog. |
 
-**`ForceWebBasedCheckout`** (bool) – Use SFSafariViewController/Chrome Custom Tabs instead of in-app card.  
-**`IsCurrentlyPresented`** (bool, read-only) – Whether a dialog is currently open.
+---
 
 ### Events
 
-**`OnPaymentSuccess`**, **`OnPaymentFailure`**, **`OnSafariViewDismissed`** (dialog dismissed), **`OnOptinResponse(string)`**, **`OnPageLoaded(double loadTimeMs)`**, **`OnNetworkError`** (initial page load failed; dialog is auto-dismissed).
+Subscribe to these on `StashPayCard.Instance` to react to user actions and lifecycle.
 
-**`OnNativeException`** (event `Action<string, Exception>`)
-- Fired when an unhandled exception occurs during native plugin operations.
-- Parameters:
-  - `string operation` - The name of the operation that failed (e.g., "OpenCheckout", "OpenPopup")
-  - `Exception exception` - The exception that occurred
-- **Platform Notes:**
-  - **Android:** Java exceptions are catchable and will trigger this event.
-  - **iOS:** Only `NSException` objects caught in `@try/@catch` blocks trigger this event. Crashes and memory violations cannot be caught.
+| Event | Signature | When it fires |
+|-------|------------|----------------|
+| **`OnSafariViewDismissed`** | `event Action` | Checkout or modal was dismissed by the user (closed without completing, or after completing in browser mode). |
+| **`OnPaymentSuccess`** | `event Action` | User completed a payment successfully inside the in-app dialog. Not fired in web-based checkout; use deeplinks. |
+| **`OnPaymentFailure`** | `event Action` | Payment failed inside the in-app dialog. Not fired in web-based checkout; use deeplinks. |
+| **`OnOptinResponse`** | `event Action<string>` | Opt-in / channel selection response (e.g. `"NATIVE_IAP"` or `"STASH_PAY"`). |
+| **`OnPageLoaded`** | `event Action<double>` | Page finished loading. Argument is load time in milliseconds. |
+| **`OnNetworkError`** | `event Action` | Initial page load failed (no connection, 4xx/5xx, timeout). Dialog is auto-dismissed; `OnSafariViewDismissed` is not called. |
+| **`OnNativeException`** | `event Action<string, Exception>` | Unhandled exception during a native plugin call. First argument: operation name (e.g. `"OpenCheckout"`, `"OpenModal"`). Second: the exception. **Android:** Java exceptions trigger this. **iOS:** Only exceptions during P/Invoke marshalling; native crashes are not catchable. |
+
+---
 
 ### Types
 
-**`StashPayModalConfig`** (struct) – Modal appearance and size (drag bar, allow dismiss, phone/tablet ratios). Use **`StashPayModalConfig.Default`** for defaults.
+#### `StashPayCheckoutConfig` (struct)
 
-**`PopupSizeConfig`** (struct) – Legacy size config for `OpenPopup`; prefer `StashPayModalConfig` with `OpenModal`.
+Used with **`OpenCheckout(url, dismiss, success, failure, config)`** for per-call checkout configuration. When provided, the config is applied for that call only; instance properties are restored when the dialog is dismissed.
+
+| Field | Type | Default (in `Default`) | Description |
+|-------|------|------------------------|-------------|
+| **`forcePortraitOnCheckout`** | `bool` | `false` | Portrait-locked on phone when true. |
+| **`cardHeightRatioPortrait`** | `float` | `0.68f` | Card height ratio in portrait (0.1–1.0). |
+| **`cardWidthRatioLandscape`** | `float` | `0.9f` | Card width ratio in landscape (0.1–1.0). |
+| **`cardHeightRatioLandscape`** | `float` | `0.6f` | Card height ratio in landscape (0.1–1.0). |
+| **`tabletWidthRatioPortrait`** | `float` | `0.4f` | Tablet width in portrait (0.1–1.0). |
+| **`tabletHeightRatioPortrait`** | `float` | `0.5f` | Tablet height in portrait (0.1–1.0). |
+| **`tabletWidthRatioLandscape`** | `float` | `0.3f` | Tablet width in landscape (0.1–1.0). |
+| **`tabletHeightRatioLandscape`** | `float` | `0.6f` | Tablet height in landscape (0.1–1.0). |
+
+**Static:** **`StashPayCheckoutConfig.Default`** – Returns a struct with the defaults above. Copy and override fields as needed.
+
+#### `StashPayModalConfig` (struct)
+
+Used with **`OpenModal`** to control modal appearance and size. All values are ratios in the range 0.1–1.0 unless noted.
+
+| Field | Type | Default (in `Default`) | Description |
+|-------|------|------------------------|-------------|
+| **`showDragBar`** | `bool` | `true` | Whether to show the drag bar. |
+| **`allowDismiss`** | `bool` | `true` | Whether the user can dismiss the modal. |
+| **`phoneWidthRatioPortrait`** | `float` | `0.8f` | Phone modal width (portrait). |
+| **`phoneHeightRatioPortrait`** | `float` | `0.5f` | Phone modal height (portrait). |
+| **`phoneWidthRatioLandscape`** | `float` | `0.5f` | Phone modal width (landscape). |
+| **`phoneHeightRatioLandscape`** | `float` | `0.8f` | Phone modal height (landscape). |
+| **`tabletWidthRatioPortrait`** | `float` | `0.4f` | Tablet modal width (portrait). |
+| **`tabletHeightRatioPortrait`** | `float` | `0.3f` | Tablet modal height (portrait). |
+| **`tabletWidthRatioLandscape`** | `float` | `0.3f` | Tablet modal width (landscape). |
+| **`tabletHeightRatioLandscape`** | `float` | `0.4f` | Tablet modal height (landscape). |
+
+**Static:** **`StashPayModalConfig.Default`** – Returns a struct with the defaults above. Copy and override fields as needed.
+
+#### `PopupSizeConfig` (struct)
+
+Legacy size config for **`OpenPopup`**. Prefer **`StashPayModalConfig`** with **`OpenModal`** for new code.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| **`portraitWidthMultiplier`** | `float` | Portrait width (multiplier). |
+| **`portraitHeightMultiplier`** | `float` | Portrait height (multiplier). |
+| **`landscapeWidthMultiplier`** | `float` | Landscape width (multiplier). |
+| **`landscapeHeightMultiplier`** | `float` | Landscape height (multiplier). |
 
 ## Device Testing & Issues
 
