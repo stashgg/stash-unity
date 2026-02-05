@@ -1,13 +1,17 @@
-# Stash SDK for Unity ![buildtest](https://github.com/stashgg/stash-unity/actions/workflows/main.yml/badge.svg)
+# Stash for Unity ![buildtest](https://github.com/stashgg/stash-unity/actions/workflows/main.yml/badge.svg)
 
-Unity package for integrating Stash Pay checkout flows and web shop functionality. The package is lightweight and wraps Stash API endpoints without external dependencies.
+<p align="left">
+  <img src="https://github.com/stashgg/stash-native/raw/main/.github/assets/stash_unity.png" width="128" height="128" alt="Stash Unity Logo"/>
+</p>
+
+Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native) for integrating Stash services and in-app Stash Pay checkout and webshop. 
 
 ## Requirements
 
 - Unity 2019.4+ (LTS recommended)
 - iOS 12.0+ / Android API 21+
 
-## Components
+## Package Components
 
 All components are optional. Mix and match based on your needs.
 
@@ -16,14 +20,14 @@ All components are optional. Mix and match based on your needs.
 | **[Stash.Popup](Assets/Stash.Popup/README.md)** | Stash Pay | In-game popup for Stash Pay checkout on iOS and Android. Includes Sample scene. |
 | **Stash.DemoApp** | — | Stash Demo app and playground for testing. **(Don't import)** |
 
-## Sample
+## Sample Apps
 
-You can try **Stash.DemoApp** directly in online hosted emulators:
+You can build **Stash.DemoApp** in Unity to test Stash flows in your own project, or try them right away in your browser using the Appetize online emulator:
 
 - **iOS:** [Open in Appetize.io](https://appetize.io/app/b_eyszozcrmyt2zifoh5bjyiifha)
 - **Android:** [Open in Appetize.io](https://appetize.io/app/b_e7zfxgltohxm2rd5aw4zplzmwq?device=pixel7&osVersion=13.0&toolbar=true)
 
-## Installation
+## Downloads
 
 ### Import package manually
 
@@ -37,10 +41,11 @@ You can try **Stash.DemoApp** directly in online hosted emulators:
 2. Click **+** → **Add package from git URL**
 3. Enter: `https://github.com/stashgg/stash-unity.git?path=Assets`
 
+
 ## Documentation
 
 - [Stash Documentation](https://docs.stash.gg) - Full API reference and integration guides.
-- [Stash.Popup Documentation](Assets/Stash.Popup/README.md) - Native checkout popup integration
+- [Stash.Popup Readme](Assets/Stash.Popup/README.md) - Native checkout popup integration
 
 ## Versioning
 
