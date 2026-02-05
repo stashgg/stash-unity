@@ -17,7 +17,7 @@ All components are optional. Mix and match based on your needs.
 
 | Component | Description |
 |-----------|-------------|
-| **Stash.Popup | Stash-native wrapper. |
+| **Stash.Popup** | Stash-native wrapper. |
 | **Stash.DemoApp** | Stash Demo app and playground for testing. **(No need to import, demo app only)** |
 
 ## Sample Apps
