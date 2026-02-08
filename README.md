@@ -1,4 +1,4 @@
-# Stash for Unity [![Lint](https://github.com/stashgg/stash-unity/actions/workflows/lint.yml/badge.svg)](https://github.com/stashgg/stash-unity/actions/workflows/lint.yml) ![buildtest](https://github.com/stashgg/stash-unity/actions/workflows/main.yml/badge.svg) 
+# Stash for Unity [![Lint](https://github.com/stashgg/stash-unity/actions/workflows/lint.yml/badge.svg)](https://github.com/stashgg/stash-unity/actions/workflows/lint.yml) ![buildtest](https://github.com/stashgg/stash-unity/actions/workflows/main.yml/badge.svg)
 
 <p align="left">
   <img src="https://github.com/stashgg/stash-native/raw/main/.github/assets/stash_unity.png" width="128" height="128" alt="Stash Unity Logo"/>
@@ -13,7 +13,8 @@ Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native
 
 ## Sample Scene
 
-Try the sample scene in the **./Sample** folder, or try our demo in the Appetize online simulator:
+Try the sample scene in the **./Sample** folder, or try our demo in the Appetize online simulator.
+When using the sample scene, input your own test API key in `StashLinkGenerator.cs`.
 
 - **iOS:** [Open in Appetize.io](https://appetize.io/app/b_eyszozcrmyt2zifoh5bjyiifha)
 - **Android:** [Open in Appetize.io](https://appetize.io/app/b_e7zfxgltohxm2rd5aw4zplzmwq?device=pixel7&osVersion=13.0&toolbar=true)
