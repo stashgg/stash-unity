@@ -75,4 +75,59 @@ public class StashSample : MonoBehaviour
         StashNative.Instance.OpenBrowser(TEST_URL);
     }
 
+    /// <summary>Generate a checkout URL via StashLinkGenerator and open it in a default card.</summary>
+    public void GenerateLinkAndOpen()
+    {
+        if (linkGenerator == null)
+        {
+            SetStatus("LinkGenerator not assigned.");
+            return;
+        }
+
+        // Request checkout URL from the Stash API.
+        linkGenerator.RequestCheckoutUrl(
+            onUrl: url =>
+            {
+                // Open the returned URL in the native card.
+                var config = StashNativeCardConfig.Default;
+                StashNative.Instance.OpenCard(url,
+                    () => SetStatus("Dismissed"),
+                    () => SetStatus("Success"),
+                    () => SetStatus("Failure"),
+                    config);
+            },
+            onError: error =>
+            {
+                SetStatus("Failed to generate link: " + error);
+            });
+    }
+
+    /// <summary>Generate a pre-authenticated webshop URL via StashLinkGenerator and open it in a default card.</summary>
+    public void GenerateWebshopLinkAndOpen()
+    {
+        if (linkGenerator == null)
+        {
+            SetStatus("LinkGenerator not assigned.");
+            return;
+        }
+
+        // Request pre-auth webshop URL (target: HOME, or use LOYALTY, ROOT, STORE, DEFAULT).
+        linkGenerator.RequestAuthenticatedWebshopUrl(
+            onUrl: url =>
+            {
+                // Open the returned URL in the native card.
+                var config = StashNativeCardConfig.Default;
+                StashNative.Instance.OpenCard(url,
+                    () => SetStatus("Dismissed"),
+                    () => SetStatus("Success"),
+                    () => SetStatus("Failure"),
+                    config);
+            },
+            onError: error =>
+            {
+                SetStatus("Failed to generate webshop link: " + error);
+            },
+            target: "DEFAULT");
+    }
+
 }
