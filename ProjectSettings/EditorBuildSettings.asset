@@ -6,9 +6,6 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Stash.DemoApp/Scenes/StashSample.unity
-    guid: 70dcec3dffb0e4d5192db4d3bf206c0b
-  - enabled: 1
-    path: Assets/Stash.Popup/Sample/StashPaySample.unity
+    path: Assets/Stash.Native/Sample/StashSample.unity
     guid: 150500767c18b40099b95c41a2a3dd29
   m_configObjects: {}

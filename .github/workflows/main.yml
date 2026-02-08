@@ -9,12 +9,9 @@
 #   - secrets.APPSTORE_KEY_ID
 #   - secrets.APPSTORE_ISSUER_ID
 
-name: Build & Deploy
+name: Build & Deploy For Testing
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       platform:
@@ -22,7 +19,6 @@ on:
         required: true
         type: choice
         options:
-          # StandaloneWindows64 and StandaloneOSX temporarily disabled
           - Android
           - iOS
           - iOS-simulator
@@ -30,30 +26,29 @@ on:
         description: 'Upload to TestFlight (iOS only)'
         required: false
         type: boolean
+        default: false
+      upload_to_appetize:
+        description: 'Upload to Appetize (Android, iOS simulator)'
+        required: false
+        type: boolean
         default: true
-  workflow_run:
-    workflows: ["Create Release"]
-    types:
-      - completed
+      upload_to_browserstack:
+        description: 'Upload to BrowserStack (Android, iOS)'
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   determine-platforms:
     runs-on: ubuntu-latest
-    # Skip if workflow_run event but release workflow didn't succeed
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     outputs:
       platforms: ${{ steps.set-platforms.outputs.platforms }}
       buildNumber: ${{ steps.generate-build-number.outputs.buildNumber }}
     steps:
       - id: set-platforms
         run: |
-          # Temporarily disabled: StandaloneWindows64, StandaloneOSX (and their Stash Studio uploads)
-          if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "workflow_run" ]; then
-            echo 'platforms=["Android","iOS","iOS-simulator"]' >> $GITHUB_OUTPUT
-          else
-            echo "platforms=[\"${{ github.event.inputs.platform }}\"]" >> $GITHUB_OUTPUT
-          fi
-      
+          echo "platforms=[\"${{ github.event.inputs.platform }}\"]" >> $GITHUB_OUTPUT
+
       - id: generate-build-number
         run: |
           # Generate build number from Unix epoch seconds
@@ -61,16 +56,16 @@ jobs:
           BUILD_NUMBER=$(date +%s)
           echo "Build number (epoch seconds): $BUILD_NUMBER"
           echo "buildNumber=$BUILD_NUMBER" >> $GITHUB_OUTPUT
-  
+
   build:
     name: Build for ${{ matrix.platform }}
     needs: determine-platforms
-    runs-on: ${{ (matrix.platform == 'iOS' || matrix.platform == 'iOS-simulator' || matrix.platform == 'StandaloneOSX') && 'macos-latest' || 'ubuntu-latest' }}
+    runs-on: ${{ (matrix.platform == 'iOS' || matrix.platform == 'iOS-simulator') && 'macos-latest' || 'ubuntu-latest' }}
     strategy:
       matrix:
         platform: ${{ fromJSON(needs.determine-platforms.outputs.platforms) }}
       fail-fast: false
-    
+
     steps:
       # Checkout repository with LFS support
       - name: Checkout repository
@@ -79,7 +74,7 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
           lfs: true
-      
+
       # Cache Unity Library folder
       - name: Cache Unity Library
         continue-on-error: true
@@ -90,12 +85,12 @@ jobs:
           restore-keys: |
             Library-${{ matrix.platform }}-
             Library-
-      
+
       # Free up disk space for Android builds
       - name: Free disk space (Android only)
         if: matrix.platform == 'Android'
         uses: jlumbroso/free-disk-space@v1.3.1
-      
+
       # iOS: Clean up any existing certificate/keychain state to avoid conflicts
       - name: Clean iOS certificate state
         if: matrix.platform == 'iOS'
@@ -103,18 +98,18 @@ jobs:
           # Create App Store Connect API key for certificate management
           mkdir -p ~/.appstoreconnect/private_keys
           echo "${{ secrets.APPSTORE_PRIVATE_KEY }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8
-          
+
           # Delete any existing keychains that might have conflicting certificates
           security list-keychains | grep -o '/[^"]*\.keychain' | xargs -I {} security delete-keychain {} 2>/dev/null || true
-          
+
           # Reset the keychain list to system defaults
           security list-keychains -s ~/Library/Keychains/login.keychain-db /Library/Keychains/System.keychain
-          
+
           # Clear any cached Xcode signing state
           rm -rf ~/Library/Developer/Xcode/DerivedData/*/Build/Intermediates.noindex/ArchiveIntermediates/*/IntermediateBuildFilesPath/XCBuildData/*.xcbuilddata 2>/dev/null || true
-          
+
           echo "Certificate state cleaned successfully"
-      
+
       # iOS: Setup certificates and keychain for code signing
       - name: Setup iOS certificates
         if: matrix.platform == 'iOS'
@@ -122,28 +117,28 @@ jobs:
           # Create a unique keychain to avoid conflicts
           KEYCHAIN_NAME="build-$(date +%s).keychain"
           KEYCHAIN_PASSWORD="${{ secrets.IOS_P12_PASSWORD }}"
-          
+
           echo "Creating keychain: $KEYCHAIN_NAME"
-          
+
           # Create and configure keychain
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
-          
+
           # Add to keychain search list so Xcode can find it
           security list-keychains -s "$KEYCHAIN_NAME" ~/Library/Keychains/login.keychain-db /Library/Keychains/System.keychain
-          
+
           # Set as default and unlock
           security default-keychain -s "$KEYCHAIN_NAME"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
           security set-keychain-settings -t 3600 -u "$KEYCHAIN_NAME"
-          
+
           echo "Keychain created and configured"
           echo "Keychain search list:"
           security list-keychains
-          
+
           # Import certificate
           echo "Importing certificate..."
           echo "${{ secrets.IOS_P12_BASE64 }}" | base64 --decode > certificate.p12
-          
+
           # Check if P12 file was created successfully
           if [ -f certificate.p12 ]; then
             echo "P12 file created successfully, size: $(wc -c < certificate.p12) bytes"
@@ -151,7 +146,7 @@ jobs:
             echo "ERROR: P12 file was not created"
             exit 1
           fi
-          
+
           # Import the certificate with additional flags
           security import certificate.p12 -k "$KEYCHAIN_NAME" -P "${{ secrets.IOS_P12_PASSWORD }}" -T /usr/bin/codesign -T /usr/bin/productbuild -T /usr/bin/productsign || {
             echo "ERROR: Certificate import failed"
@@ -161,29 +156,29 @@ jobs:
             ls -la "$KEYCHAIN_NAME" 2>/dev/null || echo "Keychain file not found"
             exit 1
           }
-          
+
           echo "Certificate imported successfully"
-          
+
           # Set key partition list for all common tools
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME" || {
             echo "WARNING: Failed to set key partition list, but continuing..."
           }
-          
+
           # Make the keychain readable by all processes
           security set-keychain-settings -t 7200 -l "$KEYCHAIN_NAME"
-          
+
           echo "Checking imported certificates:"
           security find-identity -v -p codesigning "$KEYCHAIN_NAME"
-          
+
           # Store keychain name for later steps
           echo "KEYCHAIN_NAME=$KEYCHAIN_NAME" >> $GITHUB_ENV
           echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
-          
+
           # Clean up certificate file
           rm certificate.p12
-          
+
           echo "Certificate setup completed"
-      
+
       # iOS: Download provisioning profiles from App Store Connect
       - name: Download iOS provisioning profiles
         if: matrix.platform == 'iOS'
@@ -194,7 +189,7 @@ jobs:
           issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
-      
+
       # iOS: Verify certificates and provisioning profiles are correctly installed
       - name: Verify iOS setup
         if: matrix.platform == 'iOS'
@@ -202,11 +197,11 @@ jobs:
           echo "Available signing identities in default keychain:"
           security find-identity -v -p codesigning
           echo ""
-          
+
           echo "Available signing identities in our build keychain:"
           security find-identity -v -p codesigning "$KEYCHAIN_NAME"
           echo ""
-          
+
           # Debug keychain information
           echo "Current default keychain:"
           security default-keychain
@@ -214,17 +209,17 @@ jobs:
           echo "All keychains:"
           security list-keychains
           echo ""
-          
+
           # Check if we have any certificates in our build keychain
           CERT_COUNT=$(security find-identity -v -p codesigning "$KEYCHAIN_NAME" | grep -c "valid identities found" | head -1)
           echo "Found $CERT_COUNT certificates in build keychain"
-          
+
           # Check if we have a distribution certificate
           if security find-identity -v -p codesigning "$KEYCHAIN_NAME" | grep -q "Distribution"; then
-            echo "✅ Distribution certificate found"
+            echo "Distribution certificate found"
             echo "CERT_TYPE=distribution" >> $GITHUB_ENV
           else
-            echo "⚠️  No Distribution certificate found."
+            echo "WARNING: No Distribution certificate found."
             if security find-identity -v -p codesigning "$KEYCHAIN_NAME" | grep -q "Development"; then
               echo "   Found Development certificate - this can work for TestFlight uploads."
               echo "CERT_TYPE=development" >> $GITHUB_ENV
@@ -233,7 +228,7 @@ jobs:
               echo "CERT_TYPE=none" >> $GITHUB_ENV
             fi
           fi
-          
+
           echo ""
           echo "Installed provisioning profiles:"
           ls -la ~/Library/MobileDevice/Provisioning\ Profiles/
@@ -244,7 +239,7 @@ jobs:
             security cms -D -i "$profile" | grep -E 'TeamIdentifier|UUID|Name|com.stash.sdkdemo' -A1
             echo "---"
           done
-      
+
       # iOS-simulator: Configure Unity project for simulator build
       - name: Configure Unity for simulator build
         if: matrix.platform == 'iOS-simulator'
@@ -257,29 +252,26 @@ jobs:
             echo "ERROR: Failed to modify iOSSimulatorArchitecture"
             exit 1
           fi
-          echo "✅ Set iOSSimulatorArchitecture to 0 (x86_64 simulator)"
-          
+          echo "Set iOSSimulatorArchitecture to 0 (x86_64 simulator)"
+
           # Set iPhoneSdkVersion to simulator SDK version
           # iPhoneSdkVersion: 989 = simulator, 988 = device
           if ! sed -i '' 's/iPhoneSdkVersion: [0-9]*/iPhoneSdkVersion: 989/' ProjectSettings/ProjectSettings.asset; then
             echo "ERROR: Failed to modify iPhoneSdkVersion"
             exit 1
           fi
-          echo "✅ Set iPhoneSdkVersion to 989 (simulator SDK)"
-          
+          echo "Set iPhoneSdkVersion to 989 (simulator SDK)"
+
           # Verify the changes
           echo "Current iOS simulator settings:"
           grep "iOSSimulatorArchitecture\|iPhoneSdkVersion" ProjectSettings/ProjectSettings.asset
-          
+
           # Tell git to ignore this change so Unity builder doesn't complain about dirty state
           git update-index --assume-unchanged ProjectSettings/ProjectSettings.asset
-          echo "✅ Told git to ignore changes to ProjectSettings.asset"
-      
-      
-      # Build Unity project (with retry on failure)
+          echo "Told git to ignore changes to ProjectSettings.asset"
+
+
       - name: Build Unity project
-        id: unity-build
-        continue-on-error: true
         uses: game-ci/unity-builder@v4
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
@@ -287,52 +279,14 @@ jobs:
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
           targetPlatform: ${{ (matrix.platform == 'iOS' || matrix.platform == 'iOS-simulator') && 'iOS' || matrix.platform }}
-          buildName: ${{ matrix.platform == 'iOS' && 'iOS' || (matrix.platform == 'iOS-simulator' && 'iOS-simulator' || (matrix.platform == 'StandaloneOSX' && 'macOS' || matrix.platform)) }}
+          buildName: ${{ matrix.platform == 'iOS' && 'iOS' || (matrix.platform == 'iOS-simulator' && 'iOS-simulator' || matrix.platform) }}
           androidExportType: ${{ matrix.platform == 'Android' && 'androidPackage' || '' }}
           androidKeystoreName: ${{ matrix.platform == 'Android' && 'user.keystore' || '' }}
           androidKeystoreBase64: ${{ matrix.platform == 'Android' && secrets.ANDROID_KEYSTORE_BASE64 || '' }}
           androidKeystorePass: ${{ matrix.platform == 'Android' && secrets.ANDROID_KEYSTORE_PASS || '' }}
           androidKeyaliasName: ${{ matrix.platform == 'Android' && secrets.ANDROID_KEYALIAS_NAME || '' }}
           androidKeyaliasPass: ${{ matrix.platform == 'Android' && secrets.ANDROID_KEYALIAS_PASS || '' }}
-      
-      # Clean up generated files before retry to avoid dirty branch error
-      - name: Clean generated files before retry
-        if: steps.unity-build.outcome == 'failure'
-        run: |
-          echo "Cleaning up generated files..."
-          # Use sudo to change permissions (files created by Docker may have root ownership)
-          sudo chmod -R 777 Assets/Editor 2>/dev/null || true
-          sudo chmod 777 Assets/Editor.meta 2>/dev/null || true
-          sudo chmod 777 user.keystore 2>/dev/null || true
-          # Remove files generated by Unity builder that cause dirty branch errors
-          sudo rm -rf Assets/Editor Assets/Editor.meta user.keystore || true
-          # Force clean untracked files
-          git clean -ffd || true
-          # Tell git to ignore changes to ProjectSettings if modified
-          git update-index --assume-unchanged ProjectSettings/ProjectSettings.asset 2>/dev/null || true
-          # Reset to clean state
-          git reset --hard HEAD || true
-          echo "✅ Repository cleaned for retry"
-      
-      # Retry Unity build if first attempt failed
-      # Unity sometimes fails to build if too many builds in matrix are triggered at once with the same license.
-      - name: Retry Unity build (If first attempt failed)
-        if: steps.unity-build.outcome == 'failure'
-        uses: game-ci/unity-builder@v4
-        env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-        with:
-          targetPlatform: ${{ (matrix.platform == 'iOS' || matrix.platform == 'iOS-simulator') && 'iOS' || matrix.platform }}
-          buildName: ${{ matrix.platform == 'iOS' && 'iOS' || (matrix.platform == 'iOS-simulator' && 'iOS-simulator' || (matrix.platform == 'StandaloneOSX' && 'macOS' || matrix.platform)) }}
-          androidExportType: ${{ matrix.platform == 'Android' && 'androidPackage' || '' }}
-          androidKeystoreName: ${{ matrix.platform == 'Android' && 'user.keystore' || '' }}
-          androidKeystoreBase64: ${{ matrix.platform == 'Android' && secrets.ANDROID_KEYSTORE_BASE64 || '' }}
-          androidKeystorePass: ${{ matrix.platform == 'Android' && secrets.ANDROID_KEYSTORE_PASS || '' }}
-          androidKeyaliasName: ${{ matrix.platform == 'Android' && secrets.ANDROID_KEYALIAS_NAME || '' }}
-          androidKeyaliasPass: ${{ matrix.platform == 'Android' && secrets.ANDROID_KEYALIAS_PASS || '' }}
-      
+
       # iOS-simulator: Prepare Xcode project for simulator
       - name: Prepare Xcode project for simulator
         if: matrix.platform == 'iOS-simulator'
@@ -343,22 +297,22 @@ jobs:
           echo "Searching for Unity-iPhone.xcodeproj..."
           echo "Checking build/iOS-simulator/..."
           XCODE_PROJECT_DIR=$(find build/iOS-simulator -name "Unity-iPhone.xcodeproj" -type d 2>/dev/null | head -1 | xargs dirname)
-          
+
           if [ -z "$XCODE_PROJECT_DIR" ]; then
             echo "Not found in build/iOS-simulator/, checking build/iOS/iOS-simulator/..."
             XCODE_PROJECT_DIR=$(find build/iOS/iOS-simulator -name "Unity-iPhone.xcodeproj" -type d 2>/dev/null | head -1 | xargs dirname)
           fi
-          
+
           if [ -z "$XCODE_PROJECT_DIR" ]; then
             echo "Not found in build/iOS/iOS-simulator/, checking build/iOS/iOS/..."
             XCODE_PROJECT_DIR=$(find build/iOS/iOS -name "Unity-iPhone.xcodeproj" -type d 2>/dev/null | head -1 | xargs dirname)
           fi
-          
+
           if [ -z "$XCODE_PROJECT_DIR" ]; then
             echo "Not found in build/iOS/iOS/, checking build/iOS/..."
             XCODE_PROJECT_DIR=$(find build/iOS -name "Unity-iPhone.xcodeproj" -type d 2>/dev/null | head -1 | xargs dirname)
           fi
-          
+
           if [ -z "$XCODE_PROJECT_DIR" ]; then
             echo "ERROR: Could not find Unity-iPhone.xcodeproj in any expected location"
             echo "Build directory structure:"
@@ -369,36 +323,36 @@ jobs:
             fi
             exit 1
           fi
-          
+
           echo "Found Xcode project at: $XCODE_PROJECT_DIR"
           cd "$XCODE_PROJECT_DIR"
-          
+
           echo "Configuring Xcode project for iOS simulator build..."
-          
+
           # Set ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES to NO (same as device build)
           sed -i '' 's/ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES/ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO/g' Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' 's/ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = "$(inherited)"/ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO/g' Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' 's/EMBEDDED_CONTENT_CONTAINS_SWIFT = YES/EMBEDDED_CONTENT_CONTAINS_SWIFT = NO/g' Unity-iPhone.xcodeproj/project.pbxproj
-          
+
           # Configure for simulator build (ONLY_ACTIVE_ARCH can be YES for simulator)
           echo "Build configuration updated for simulator build"
           echo "XCODE_PROJECT_DIR=$XCODE_PROJECT_DIR" >> $GITHUB_ENV
-      
+
       # iOS: Prepare Xcode project
       - name: Prepare Xcode project
         if: matrix.platform == 'iOS'
         run: |
           cd build/iOS/iOS/
-          
+
           # Create App Store Connect API key directory
           mkdir -p ~/.appstoreconnect/private_keys
           echo "${{ secrets.APPSTORE_PRIVATE_KEY }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8
           chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8
-          
+
           # Ensure our keychain is active and unlocked
           security default-keychain -s "$KEYCHAIN_NAME"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
-          
+
           # Fix Unity framework issue: Set "Embedded Content Contains Swift Code" to NO
           # This prevents the "Invalid Bundle contains disallowed file 'Frameworks'" error
           # See: https://stackoverflow.com/questions/25880134/invalid-bundle-contains-disallowed-file-frameworks
@@ -410,27 +364,27 @@ jobs:
           # Also set EMBEDDED_CONTENT_CONTAINS_SWIFT to NO if present
           sed -i '' 's/EMBEDDED_CONTENT_CONTAINS_SWIFT = YES/EMBEDDED_CONTENT_CONTAINS_SWIFT = NO/g' Unity-iPhone.xcodeproj/project.pbxproj
           echo "Embedded Content Contains Swift Code configured to NO"
-           
+
           # Force device-only builds by excluding simulator architectures
           echo "Configuring for device-only build..."
           # Set ONLY_ACTIVE_ARCH to NO for Release builds
           sed -i '' 's/ONLY_ACTIVE_ARCH = YES/ONLY_ACTIVE_ARCH = NO/g' Unity-iPhone.xcodeproj/project.pbxproj
-          
+
           echo "Build configuration updated for device-only build"
-      
+
       # iOS: Verify build configuration
       - name: Verify build configuration
         if: matrix.platform == 'iOS'
         run: |
           cd build/iOS/iOS/
-          
+
           echo "Available SDKs:"
           xcodebuild -showsdks | grep -i ios
-          
+
           echo ""
           echo "Available destinations:"
           xcodebuild -project Unity-iPhone.xcodeproj -scheme Unity-iPhone -showdestinations | grep -i ios
-          
+
           echo ""
           echo "Verifying we're building for device (iphoneos), not simulator..."
           SDK_VERSION=$(xcodebuild -version -sdk iphoneos Path 2>/dev/null | head -1)
@@ -438,8 +392,8 @@ jobs:
             echo "ERROR: iphoneos SDK not found!"
             exit 1
           fi
-          echo "✅ Using device SDK: $SDK_VERSION"
-      
+          echo "Using device SDK: $SDK_VERSION"
+
       # iOS: Clean Xcode project
       - name: Clean Xcode project
         if: matrix.platform == 'iOS'
@@ -451,38 +405,38 @@ jobs:
             -configuration Release \
             -sdk iphoneos \
             -destination 'generic/platform=iOS'
-      
+
       # iOS: Get version from git tag
       - name: Get version from git tag
         if: matrix.platform == 'iOS'
         run: |
           echo "Getting version information from git..."
-          
+
           # Fetch all tags to ensure we have the latest
           git fetch --tags --force 2>/dev/null || echo "Note: Could not fetch tags (may not have remote access)"
-          
+
           # Get latest tag (version)
           # Try to get the most recent tag, sorted by version
           LATEST_TAG=$(git tag --sort=-version:refname 2>/dev/null | head -1 || echo "")
-          
+
           if [ -z "$LATEST_TAG" ]; then
             # Fallback: try git describe which might work even if tags aren't sorted
             LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           fi
-          
+
           if [ -z "$LATEST_TAG" ]; then
-            echo "⚠️  WARNING: No git tags found, using default version 1.0.0"
+            echo "WARNING: No git tags found, using default version 1.0.0"
             LATEST_TAG="1.0.0"
           else
             # Remove 'v' prefix if present (e.g., "v1.0.0" -> "1.0.0")
             LATEST_TAG=$(echo "$LATEST_TAG" | sed 's/^v//')
             echo "Latest tag (version): $LATEST_TAG"
           fi
-          
+
           # Store as environment variable for later steps
           echo "MARKETING_VERSION=$LATEST_TAG" >> $GITHUB_ENV
-          echo "✅ MARKETING_VERSION set to: $LATEST_TAG"
-      
+          echo "MARKETING_VERSION set to: $LATEST_TAG"
+
       # iOS: Set build number from shared value
       - name: Set build number
         if: matrix.platform == 'iOS'
@@ -490,29 +444,29 @@ jobs:
           # Use the shared build number generated in determine-platforms job
           BUILD_NUMBER="${{ needs.determine-platforms.outputs.buildNumber }}"
           echo "Build number (epoch seconds): $BUILD_NUMBER"
-          
+
           # Store as environment variable for later steps
           echo "CURRENT_PROJECT_VERSION=$BUILD_NUMBER" >> $GITHUB_ENV
-          echo "✅ CURRENT_PROJECT_VERSION set to: $BUILD_NUMBER"
-      
+          echo " CURRENT_PROJECT_VERSION set to: $BUILD_NUMBER"
+
       # iOS: Set version in Xcode project
       - name: Set version in Xcode project
         if: matrix.platform == 'iOS'
         run: |
           cd build/iOS/iOS/
-          
+
           echo "Setting version in Xcode project:"
           echo "  MARKETING_VERSION: $MARKETING_VERSION"
           echo "  CURRENT_PROJECT_VERSION: $CURRENT_PROJECT_VERSION"
-          
+
           # Update MARKETING_VERSION in project.pbxproj
           sed -i '' "s/MARKETING_VERSION = [^;]*;/MARKETING_VERSION = $MARKETING_VERSION;/g" Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' "s/MARKETING_VERSION = \"[^\"]*\";/MARKETING_VERSION = $MARKETING_VERSION;/g" Unity-iPhone.xcodeproj/project.pbxproj
-          
+
           # Update CURRENT_PROJECT_VERSION in project.pbxproj
           sed -i '' "s/CURRENT_PROJECT_VERSION = [^;]*;/CURRENT_PROJECT_VERSION = $CURRENT_PROJECT_VERSION;/g" Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' "s/CURRENT_PROJECT_VERSION = \"[^\"]*\";/CURRENT_PROJECT_VERSION = $CURRENT_PROJECT_VERSION;/g" Unity-iPhone.xcodeproj/project.pbxproj
-          
+
           # Find and update Info.plist file directly (Unity generates this)
           # Look for Info.plist in the project directory
           if [ -f "Info.plist" ]; then
@@ -520,9 +474,9 @@ jobs:
             plutil -replace CFBundleVersion -string "$CURRENT_PROJECT_VERSION" Info.plist
             plutil -replace CFBundleShortVersionString -string "$MARKETING_VERSION" Info.plist
             plutil -replace ITSAppUsesNonExemptEncryption -bool NO Info.plist
-            echo "✅ Updated Info.plist"
+            echo "Updated Info.plist"
           fi
-          
+
           # Also check for Info.plist in any subdirectories Unity might create
           find . -name "Info.plist" -type f | while read plist; do
             echo "Updating $plist..."
@@ -530,14 +484,14 @@ jobs:
             plutil -replace CFBundleShortVersionString -string "$MARKETING_VERSION" "$plist" 2>/dev/null || true
             plutil -replace ITSAppUsesNonExemptEncryption -bool NO "$plist" 2>/dev/null || true
           done
-          
+
           # Verify the changes in project file
           echo "Verifying project.pbxproj changes:"
           grep "MARKETING_VERSION = " Unity-iPhone.xcodeproj/project.pbxproj | head -3
           grep "CURRENT_PROJECT_VERSION = " Unity-iPhone.xcodeproj/project.pbxproj | head -3
-          
-          echo "✅ Version set in Xcode project and Info.plist files"
-      
+
+          echo " Version set in Xcode project and Info.plist files"
+
       # iOS: Build archive for device
       - name: Build & verify iOS archive
         if: matrix.platform == 'iOS'
@@ -548,15 +502,15 @@ jobs:
           APP_STORE_CONNECT_API_KEY_IS_KEY_CONTENT_BASE64: false
         run: |
           cd build/iOS/iOS/
-          
+
           # Ensure keychain is unlocked and in search path
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
           security list-keychains -s "$KEYCHAIN_NAME" ~/Library/Keychains/login.keychain-db /Library/Keychains/System.keychain
-          
+
           echo "Setting iOS app version:"
           echo "  MARKETING_VERSION (version): $MARKETING_VERSION"
           echo "  CURRENT_PROJECT_VERSION (build): $CURRENT_PROJECT_VERSION"
-          
+
           # Build archive for device (not simulator) using manual signing
           # Use generic iOS device destination to avoid simulator
           # Manual signing requires explicit CODE_SIGN_IDENTITY and PROVISIONING_PROFILE_SPECIFIER
@@ -583,10 +537,10 @@ jobs:
               OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_NAME" \
             ONLY_ACTIVE_ARCH=NO \
             EXCLUDED_ARCHS[sdk=iphonesimulator*]="arm64"
-          
+
           echo "Archive created successfully"
           ls -la Unity-iPhone.xcarchive/
-          
+
           # Verify bundle identifiers are correct
           echo ""
           echo "Verifying bundle identifiers..."
@@ -595,7 +549,7 @@ jobs:
             # Check main app bundle identifier
             MAIN_BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw "$APP_BUNDLE/Info.plist" 2>/dev/null || echo "")
             echo "Main app bundle ID: $MAIN_BUNDLE_ID"
-            
+
             # Check UnityFramework bundle identifier
             UNITY_FRAMEWORK_PLIST="$APP_BUNDLE/Frameworks/UnityFramework.framework/Info.plist"
             if [ -f "$UNITY_FRAMEWORK_PLIST" ]; then
@@ -603,26 +557,26 @@ jobs:
               if [ -n "$UNITY_FRAMEWORK_BUNDLE_ID" ]; then
                 echo "UnityFramework bundle ID: $UNITY_FRAMEWORK_BUNDLE_ID"
                 if [ "$UNITY_FRAMEWORK_BUNDLE_ID" = "$MAIN_BUNDLE_ID" ]; then
-                  echo "⚠️  WARNING: UnityFramework has same bundle ID as main app!"
+                  echo "WARNING: UnityFramework has same bundle ID as main app!"
                 elif [ "$UNITY_FRAMEWORK_BUNDLE_ID" = "${MAIN_BUNDLE_ID}.UnityFramework" ]; then
-                  echo "✅ UnityFramework has unique bundle ID"
+                  echo "UnityFramework has unique bundle ID"
                 else
                   echo "ℹ️  UnityFramework bundle ID is different: $UNITY_FRAMEWORK_BUNDLE_ID"
                 fi
               else
-                echo "⚠️  WARNING: UnityFramework has no bundle ID (this will cause validation errors)"
+                echo "WARNING: UnityFramework has no bundle ID (this will cause validation errors)"
               fi
             fi
-            
+
             # Check for nested Frameworks folder (the Unity issue)
             if [ -d "$APP_BUNDLE/Frameworks/UnityFramework.framework/Frameworks" ]; then
-              echo "⚠️  WARNING: Found nested Frameworks folder in UnityFramework.framework"
+              echo "WARNING: Found nested Frameworks folder in UnityFramework.framework"
               echo "   This should be fixed by ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=NO"
             else
-              echo "✅ No nested Frameworks folder found"
+              echo "No nested Frameworks folder found"
             fi
           fi
-          
+
           # Verify archive is built for device, not simulator
           echo ""
           echo "Verifying archive architecture..."
@@ -633,9 +587,9 @@ jobs:
             lipo -info "$ARCHIVE_BINARY" || echo "lipo info:"
             echo ""
             echo "Checking for simulator architectures (should be empty):"
-            lipo -info "$ARCHIVE_BINARY" 2>&1 | grep -i simulator && echo "⚠️  WARNING: Simulator architectures found!" || echo "✅ No simulator architectures found"
+            lipo -info "$ARCHIVE_BINARY" 2>&1 | grep -i simulator && echo "WARNING: Simulator architectures found!" || echo "No simulator architectures found"
           fi
-          
+
           # Verify build number in archive
           echo ""
           echo "Verifying build number in archive..."
@@ -646,62 +600,62 @@ jobs:
             echo "Archive version: $ARCHIVE_VERSION (expected: $MARKETING_VERSION)"
             echo "Archive build: $ARCHIVE_BUILD (expected: $CURRENT_PROJECT_VERSION)"
           fi
-      
+
       # iOS: Fix UnityFramework bundle identifier in archive (post-archive fix)
       - name: Fix UnityFramework bundle identifier in archive
         if: matrix.platform == 'iOS'
         run: |
           cd build/iOS/iOS/
-          
+
           echo "Fixing UnityFramework bundle identifier in archive..."
-          
+
           # Find the app bundle in the archive
           APP_BUNDLE=$(find Unity-iPhone.xcarchive -name "*.app" -type d | head -1)
           if [ -z "$APP_BUNDLE" ]; then
             echo "ERROR: Could not find app bundle in archive"
                 exit 1
               fi
-          
+
           MAIN_BUNDLE_ID="com.stash.sdkdemo"
           UNITY_FRAMEWORK_BUNDLE_ID="${MAIN_BUNDLE_ID}.UnityFramework"
           UNITY_FRAMEWORK_PLIST="$APP_BUNDLE/Frameworks/UnityFramework.framework/Info.plist"
-          
+
           if [ ! -f "$UNITY_FRAMEWORK_PLIST" ]; then
             echo "UnityFramework.framework/Info.plist not found, skipping fix"
             exit 0
           fi
-          
+
           # Check current bundle ID
           CURRENT_BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw "$UNITY_FRAMEWORK_PLIST" 2>/dev/null || echo "")
           echo "UnityFramework current bundle ID: $CURRENT_BUNDLE_ID"
           echo "Target bundle ID: $UNITY_FRAMEWORK_BUNDLE_ID"
-          
+
           # Always update the bundle ID if it doesn't match, and re-sign
           if [ "$CURRENT_BUNDLE_ID" != "$UNITY_FRAMEWORK_BUNDLE_ID" ]; then
-            echo "⚠️  UnityFramework has bundle ID: $CURRENT_BUNDLE_ID, updating to: $UNITY_FRAMEWORK_BUNDLE_ID"
-            
+            echo "WARNING: UnityFramework has bundle ID: $CURRENT_BUNDLE_ID, updating to: $UNITY_FRAMEWORK_BUNDLE_ID"
+
             # Update the bundle ID in Info.plist
             plutil -replace CFBundleIdentifier -string "$UNITY_FRAMEWORK_BUNDLE_ID" "$UNITY_FRAMEWORK_PLIST"
-            echo "✅ Updated Info.plist bundle ID to: $UNITY_FRAMEWORK_BUNDLE_ID"
-            
+            echo "Updated Info.plist bundle ID to: $UNITY_FRAMEWORK_BUNDLE_ID"
+
             # Get the codesign identity from the app's existing signature or keychain
             # For App Store builds, we must use "Apple Distribution"
             echo "Finding codesign identity for App Store build..."
             CODESIGN_IDENTITY=$(codesign -dvv "$APP_BUNDLE" 2>&1 | grep "Authority" | head -1 | sed -E 's/.*Authority=([^ ]+).*/\1/' || echo "")
-            
+
             # If not found in signature, try to get Apple Distribution from keychain
             if [ -z "$CODESIGN_IDENTITY" ]; then
               CODESIGN_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_NAME" | grep "Apple Distribution" | head -1 | sed -E 's/.*"([^"]+)".*/\1/' || echo "")
             fi
-            
+
             # If still not found, try system keychain
             if [ -z "$CODESIGN_IDENTITY" ]; then
               CODESIGN_IDENTITY=$(security find-identity -v -p codesigning | grep "Apple Distribution" | head -1 | sed -E 's/.*"([^"]+)".*/\1/' || echo "")
             fi
-            
+
             # For App Store builds, we must use Apple Distribution (not Apple Development)
             if [ -z "$CODESIGN_IDENTITY" ] || [[ ! "$CODESIGN_IDENTITY" =~ "Distribution" ]]; then
-              echo "⚠️  WARNING: Could not find Apple Distribution identity"
+              echo "WARNING: Could not find Apple Distribution identity"
               echo "Available identities:"
               security find-identity -v -p codesigning "$KEYCHAIN_NAME" || true
               echo "Using Apple Distribution as fallback for manual signing..."
@@ -709,63 +663,63 @@ jobs:
             else
               echo "Using codesign identity: $CODESIGN_IDENTITY"
             fi
-            
+
             # Remove existing signature from framework
             echo "Removing existing signature from UnityFramework.framework..."
             codesign --remove-signature "$APP_BUNDLE/Frameworks/UnityFramework.framework" 2>/dev/null || {
               # If remove-signature doesn't work, just delete the _CodeSignature folder
               rm -rf "$APP_BUNDLE/Frameworks/UnityFramework.framework/_CodeSignature" 2>/dev/null || true
             }
-            
+
             # Re-sign the framework with the new bundle ID
             echo "Re-signing UnityFramework.framework with bundle ID: $UNITY_FRAMEWORK_BUNDLE_ID..."
             codesign --force --sign "$CODESIGN_IDENTITY" \
               --identifier "$UNITY_FRAMEWORK_BUNDLE_ID" \
               --timestamp=none \
               "$APP_BUNDLE/Frameworks/UnityFramework.framework" || {
-              echo "⚠️  First attempt failed, trying with - option (let system choose identity)..."
+              echo "WARNING: First attempt failed, trying with - option (let system choose identity)..."
               codesign --force --sign "-" \
                 --identifier "$UNITY_FRAMEWORK_BUNDLE_ID" \
                 --timestamp=none \
                 "$APP_BUNDLE/Frameworks/UnityFramework.framework" || {
-                echo "❌ ERROR: Failed to re-sign framework"
+                echo "Error: ERROR: Failed to re-sign framework"
                 exit 1
               }
             }
-            
+
             # Verify the signature
             echo "Verifying framework signature..."
             codesign -vv "$APP_BUNDLE/Frameworks/UnityFramework.framework" 2>&1 || {
-              echo "⚠️  WARNING: Framework signature verification failed"
+              echo "WARNING: Framework signature verification failed"
             }
-            
+
             # Check that the identifier in the signature matches
             SIGNATURE_ID=$(codesign -dvv "$APP_BUNDLE/Frameworks/UnityFramework.framework" 2>&1 | grep "Identifier" | head -1 | sed -E 's/.*Identifier=([^ ]+).*/\1/' || echo "")
             if [ "$SIGNATURE_ID" = "$UNITY_FRAMEWORK_BUNDLE_ID" ]; then
-              echo "✅ Verified: Framework signature identifier matches: $SIGNATURE_ID"
+              echo "Verified: Framework signature identifier matches: $SIGNATURE_ID"
             else
-              echo "⚠️  WARNING: Signature identifier is: $SIGNATURE_ID, expected: $UNITY_FRAMEWORK_BUNDLE_ID"
+              echo "WARNING: Signature identifier is: $SIGNATURE_ID, expected: $UNITY_FRAMEWORK_BUNDLE_ID"
             fi
-            
+
             # Verify the bundle ID in Info.plist
             VERIFY_BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw "$UNITY_FRAMEWORK_PLIST" 2>/dev/null || echo "")
             if [ "$VERIFY_BUNDLE_ID" = "$UNITY_FRAMEWORK_BUNDLE_ID" ]; then
-              echo "✅ Verified: Info.plist bundle ID is: $VERIFY_BUNDLE_ID"
+              echo "Verified: Info.plist bundle ID is: $VERIFY_BUNDLE_ID"
             else
-              echo "⚠️  WARNING: Info.plist bundle ID is: $VERIFY_BUNDLE_ID, expected: $UNITY_FRAMEWORK_BUNDLE_ID"
+              echo "WARNING: Info.plist bundle ID is: $VERIFY_BUNDLE_ID, expected: $UNITY_FRAMEWORK_BUNDLE_ID"
             fi
           else
-            echo "✅ UnityFramework already has correct bundle ID: $UNITY_FRAMEWORK_BUNDLE_ID"
-            
+            echo "UnityFramework already has correct bundle ID: $UNITY_FRAMEWORK_BUNDLE_ID"
+
             # Verify the signature matches the bundle ID
             SIGNATURE_ID=$(codesign -dvv "$APP_BUNDLE/Frameworks/UnityFramework.framework" 2>&1 | grep "Identifier" | head -1 | sed -E 's/.*Identifier=([^ ]+).*/\1/' || echo "")
             if [ "$SIGNATURE_ID" != "$UNITY_FRAMEWORK_BUNDLE_ID" ]; then
-              echo "⚠️  WARNING: Signature identifier ($SIGNATURE_ID) doesn't match bundle ID ($UNITY_FRAMEWORK_BUNDLE_ID)"
+              echo "WARNING: Signature identifier ($SIGNATURE_ID) doesn't match bundle ID ($UNITY_FRAMEWORK_BUNDLE_ID)"
               echo "Re-signing framework to fix signature..."
-              
+
               # Get codesign identity
               CODESIGN_IDENTITY=$(codesign -dvv "$APP_BUNDLE" 2>&1 | grep "Authority" | head -1 | sed -E 's/.*Authority=([^ ]+).*/\1/' || echo "Apple Distribution")
-              
+
               # Remove and re-sign
               codesign --remove-signature "$APP_BUNDLE/Frameworks/UnityFramework.framework" 2>/dev/null || true
               codesign --force --sign "$CODESIGN_IDENTITY" \
@@ -777,16 +731,16 @@ jobs:
                   --timestamp=none \
                   "$APP_BUNDLE/Frameworks/UnityFramework.framework"
               }
-              echo "✅ Re-signed framework with correct identifier"
+              echo "Re-signed framework with correct identifier"
             fi
           fi
-      
+
       # iOS: Create export options
       - name: Create export options plist
         if: matrix.platform == 'iOS'
         run: |
           cd build/iOS/iOS/
-          
+
           cat > exportOptions.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -814,10 +768,10 @@ jobs:
           </dict>
           </plist>
           EOF
-          
+
           echo "Export options created:"
           cat exportOptions.plist
-      
+
       # iOS: Export IPA
       - name: Export IPA
         if: matrix.platform == 'iOS'
@@ -828,19 +782,19 @@ jobs:
           APP_STORE_CONNECT_API_KEY_IS_KEY_CONTENT_BASE64: false
         run: |
           cd build/iOS/iOS/
-          
+
           # Ensure keychain is unlocked
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
-          
+
           # Export IPA using manual signing (provisioning profile specified in exportOptions.plist)
           xcodebuild -exportArchive \
             -archivePath Unity-iPhone.xcarchive \
             -exportOptionsPlist exportOptions.plist \
             -exportPath export
-      
+
           echo "IPA export completed"
           ls -la export/
-      
+
       # iOS: Verify IPA
       - name: Verify IPA
         if: matrix.platform == 'iOS'
@@ -850,45 +804,45 @@ jobs:
           echo ""
           echo "Looking for IPA files:"
           find build/iOS/iOS -name "*.ipa" -type f
-      
+
           # Verify IPA exists (Xcode names it from the product/scheme, e.g. StashUnity.ipa)
           IPA_FILE=$(find build/iOS/iOS/export -name "*.ipa" -type f | head -1)
           if [ -z "$IPA_FILE" ] || [ ! -f "$IPA_FILE" ]; then
             echo "ERROR: IPA file not found!"
             exit 1
           fi
-          
-          echo "✅ IPA file found: $IPA_FILE"
+
+          echo "IPA file found: $IPA_FILE"
           du -h "$IPA_FILE"
           echo "IPA_FILE=$IPA_FILE" >> $GITHUB_ENV
-      
+
       # iOS-simulator: Get version from git tag
       - name: Get version from git tag (simulator)
         if: matrix.platform == 'iOS-simulator'
         run: |
           echo "Getting version information from git..."
-          
+
           # Fetch all tags to ensure we have the latest
           git fetch --tags --force 2>/dev/null || echo "Note: Could not fetch tags (may not have remote access)"
-          
+
           # Get latest tag (version)
           LATEST_TAG=$(git tag --sort=-version:refname 2>/dev/null | head -1 || echo "")
-          
+
           if [ -z "$LATEST_TAG" ]; then
             LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           fi
-          
+
           if [ -z "$LATEST_TAG" ]; then
-            echo "⚠️  WARNING: No git tags found, using default version 1.0.0"
+            echo "WARNING: No git tags found, using default version 1.0.0"
             LATEST_TAG="1.0.0"
           else
             LATEST_TAG=$(echo "$LATEST_TAG" | sed 's/^v//')
             echo "Latest tag (version): $LATEST_TAG"
           fi
-          
+
           echo "MARKETING_VERSION=$LATEST_TAG" >> $GITHUB_ENV
-          echo "✅ MARKETING_VERSION set to: $LATEST_TAG"
-      
+          echo "MARKETING_VERSION set to: $LATEST_TAG"
+
       # iOS-simulator: Set build number from shared value
       - name: Set build number (simulator)
         if: matrix.platform == 'iOS-simulator'
@@ -897,8 +851,8 @@ jobs:
           BUILD_NUMBER="${{ needs.determine-platforms.outputs.buildNumber }}"
           echo "Build number (epoch seconds): $BUILD_NUMBER"
           echo "CURRENT_PROJECT_VERSION=$BUILD_NUMBER" >> $GITHUB_ENV
-          echo "✅ CURRENT_PROJECT_VERSION set to: $BUILD_NUMBER"
-      
+          echo " CURRENT_PROJECT_VERSION set to: $BUILD_NUMBER"
+
       # iOS-simulator: Set version in Xcode project
       - name: Set version in Xcode project (simulator)
         if: matrix.platform == 'iOS-simulator'
@@ -922,34 +876,34 @@ jobs:
             fi
           fi
           cd "$XCODE_PROJECT_DIR"
-          
+
           echo "Setting version in Xcode project:"
           echo "  MARKETING_VERSION: $MARKETING_VERSION"
           echo "  CURRENT_PROJECT_VERSION: $CURRENT_PROJECT_VERSION"
-          
+
           # Update MARKETING_VERSION in project.pbxproj
           sed -i '' "s/MARKETING_VERSION = [^;]*;/MARKETING_VERSION = $MARKETING_VERSION;/g" Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' "s/MARKETING_VERSION = \"[^\"]*\";/MARKETING_VERSION = $MARKETING_VERSION;/g" Unity-iPhone.xcodeproj/project.pbxproj
-          
+
           # Update CURRENT_PROJECT_VERSION in project.pbxproj
           sed -i '' "s/CURRENT_PROJECT_VERSION = [^;]*;/CURRENT_PROJECT_VERSION = $CURRENT_PROJECT_VERSION;/g" Unity-iPhone.xcodeproj/project.pbxproj
           sed -i '' "s/CURRENT_PROJECT_VERSION = \"[^\"]*\";/CURRENT_PROJECT_VERSION = $CURRENT_PROJECT_VERSION;/g" Unity-iPhone.xcodeproj/project.pbxproj
-          
+
           # Update Info.plist files
           if [ -f "Info.plist" ]; then
             plutil -replace CFBundleVersion -string "$CURRENT_PROJECT_VERSION" Info.plist
             plutil -replace CFBundleShortVersionString -string "$MARKETING_VERSION" Info.plist
             plutil -replace ITSAppUsesNonExemptEncryption -bool NO Info.plist
           fi
-          
+
           find . -name "Info.plist" -type f | while read plist; do
             plutil -replace CFBundleVersion -string "$CURRENT_PROJECT_VERSION" "$plist" 2>/dev/null || true
             plutil -replace CFBundleShortVersionString -string "$MARKETING_VERSION" "$plist" 2>/dev/null || true
             plutil -replace ITSAppUsesNonExemptEncryption -bool NO "$plist" 2>/dev/null || true
           done
-          
-          echo "✅ Version set in Xcode project and Info.plist files"
-      
+
+          echo " Version set in Xcode project and Info.plist files"
+
       # iOS-simulator: Build for simulator
       - name: Build iOS simulator app
         if: matrix.platform == 'iOS-simulator'
@@ -973,10 +927,10 @@ jobs:
             fi
           fi
           cd "$XCODE_PROJECT_DIR"
-          
+
           echo "Building for iOS simulator..."
           echo "Building .app bundle for simulator (no simulator needed for build-only)"
-          
+
           # Build for simulator using SDK only (no destination needed for building)
           # The -sdk iphonesimulator flag is sufficient to build for simulator architecture
           # We don't need to boot or specify a simulator device - we're just building, not running
@@ -995,7 +949,7 @@ jobs:
             CODE_SIGNING_ALLOWED="NO" \
             CODE_SIGNING_REQUIRED="NO" \
             ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=NO 2>&1; then
-              echo "⚠️  Build without destination failed, trying with generic destination..."
+              echo "WARNING: Build without destination failed, trying with generic destination..."
               # Fallback: try with generic destination (some projects require it)
               xcodebuild build \
                 -project Unity-iPhone.xcodeproj \
@@ -1013,9 +967,9 @@ jobs:
                 CODE_SIGNING_REQUIRED="NO" \
                 ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=NO
           fi
-          
-          echo "✅ Simulator build completed"
-          
+
+          echo "Simulator build completed"
+
           # Find the built app in DerivedData (use absolute path)
           APP_BUNDLE=$(find "$(pwd)/DerivedData" -name "*.app" -type d -path "*/Build/Products/Release-iphonesimulator/*" | head -1)
           if [ -n "$APP_BUNDLE" ]; then
@@ -1023,7 +977,7 @@ jobs:
             ls -la "$APP_BUNDLE"
             echo "APP_BUNDLE_PATH=$APP_BUNDLE" >> $GITHUB_ENV
           else
-            echo "⚠️  WARNING: Could not find built .app bundle in DerivedData"
+            echo "WARNING: Could not find built .app bundle in DerivedData"
             echo "Searching in alternative locations..."
             APP_BUNDLE=$(find "$(pwd)" -name "*.app" -type d | head -1)
             if [ -n "$APP_BUNDLE" ]; then
@@ -1034,7 +988,7 @@ jobs:
               exit 1
             fi
           fi
-      
+
       # iOS-simulator: Create simulator build archive
       - name: Create iOS simulator build archive
         if: matrix.platform == 'iOS-simulator'
@@ -1069,7 +1023,7 @@ jobs:
           else
             APP_BUNDLE="$APP_BUNDLE_PATH"
           fi
-          
+
           if [ -z "$APP_BUNDLE" ] || [ ! -d "$APP_BUNDLE" ]; then
             echo "ERROR: Could not find built .app bundle"
             echo "Searched in:"
@@ -1080,31 +1034,31 @@ jobs:
             echo "  - build/ (entire directory)"
             exit 1
           fi
-          
+
           echo "Found app bundle: $APP_BUNDLE"
-          
+
           # Create zip archive of the .app bundle
           cd ${{ github.workspace }}
           ZIP_FILE="${{ github.workspace }}/iOS-simulator-latest.zip"
-          
+
           # Use ditto to create a proper macOS zip (preserves metadata, permissions, symlinks)
           APP_NAME=$(basename "$APP_BUNDLE")
           ditto -ck --sequesterRsrc --keepParent "$APP_BUNDLE" "$ZIP_FILE"
-          
-          echo "✅ Created simulator build archive: $ZIP_FILE"
+
+          echo "Created simulator build archive: $ZIP_FILE"
           ls -lh "$ZIP_FILE"
           echo "SIMULATOR_ZIP=$ZIP_FILE" >> $GITHUB_ENV
-      
+
       # iOS: Upload to TestFlight using Apple's recommended action
       - name: Upload to TestFlight
-        if: matrix.platform == 'iOS' && (github.event_name == 'push' || github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.event.inputs.upload_to_testflight == true))
+        if: matrix.platform == 'iOS' && github.event.inputs.upload_to_testflight == 'true'
         uses: apple-actions/upload-testflight-build@v1
         with:
           app-path: ${{ env.IPA_FILE }}
           issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
-      
+
       # Upload build artifacts to GitHub Actions for download/debugging
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -1112,379 +1066,134 @@ jobs:
           name: Build-${{ matrix.platform }}
           path: build/${{ matrix.platform }}
           retention-days: 7
-      
-      # Create zip archive for non-Android/iOS/iOS-simulator platforms (macOS, Windows, etc.)
-      - name: Create latest build archive
-        if: matrix.platform != 'Android' && matrix.platform != 'iOS' && matrix.platform != 'iOS-simulator'
-        shell: bash
-        run: |
-          cd ${{ github.workspace }}
-          ZIP_FILE="${{ github.workspace }}/${{ matrix.platform }}-latest.zip"
-          
-          if [ "${{ matrix.platform }}" = "StandaloneOSX" ]; then
-            # For macOS, find the .app bundle and use ditto (standard macOS tool)
-            APP_FILE=$(find build/StandaloneOSX -name "*.app" -type d | head -1)
-            if [ -z "$APP_FILE" ]; then
-              echo "ERROR: .app file not found in build/StandaloneOSX"
-              exit 1
-            fi
-            echo "Found macOS app: $APP_FILE"
-            APP_NAME=$(basename "$APP_FILE")
-            # Find the actual executable inside the .app bundle
-            MACOS_DIR="$APP_FILE/Contents/MacOS"
-            if [ -d "$MACOS_DIR" ]; then
-              EXECUTABLE_NAME=$(ls "$MACOS_DIR" | head -1)
-              if [ -z "$EXECUTABLE_NAME" ]; then
-                echo "ERROR: No executable found in $MACOS_DIR"
-                exit 1
-              fi
-              EXECUTABLE_PATH="$APP_NAME/Contents/MacOS/$EXECUTABLE_NAME"
-            else
-              # Fallback: assume executable name matches app name (without .app)
-              EXECUTABLE_NAME=$(basename "$APP_FILE" .app)
-              EXECUTABLE_PATH="$APP_NAME/Contents/MacOS/$EXECUTABLE_NAME"
-            fi
-            echo "App name: $APP_NAME"
-            echo "Executable name: $EXECUTABLE_NAME"
-            echo "Executable path (relative to zip): $EXECUTABLE_PATH"
-            # Use ditto to create a proper macOS zip (preserves metadata, permissions, symlinks)
-            ditto -ck --sequesterRsrc --keepParent "$APP_FILE" "$ZIP_FILE"
-            echo "EXECUTABLE_PATH=$EXECUTABLE_PATH" >> $GITHUB_ENV
-          elif [ "${{ matrix.platform }}" = "StandaloneWindows64" ]; then
-            # For Windows, use standard zip (building on Ubuntu)
-            cd build/${{ matrix.platform }}
-            zip -r "$ZIP_FILE" . -q
-            cd ${{ github.workspace }}
-          else
-            # For other platforms, use standard zip
-            cd build/${{ matrix.platform }}
-            zip -r "$ZIP_FILE" . -q
-            cd ${{ github.workspace }}
-          fi
-          
-          echo "Created archive: $ZIP_FILE"
-          ls -lh "$ZIP_FILE" || dir "$ZIP_FILE"
-      
-      # macOS: Upload build artifact for Stash CLI upload job
-      - name: Upload macOS build artifact
-        if: matrix.platform == 'StandaloneOSX'
+
+      # Upload iOS-simulator zip for Appetize (direct file upload)
+      - name: Upload iOS simulator zip
+        if: matrix.platform == 'iOS-simulator'
         uses: actions/upload-artifact@v4
         with:
-          name: macos-build-${{ github.run_number }}
-          path: |
-            ${{ github.workspace }}/StandaloneOSX-latest.zip
-            build/StandaloneOSX
-          retention-days: 1
-      
-      # Windows: Upload build artifact for Stash CLI upload job
-      - name: Upload Windows build artifact
-        if: matrix.platform == 'StandaloneWindows64'
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-build-${{ github.run_number }}
-          path: |
-            ${{ github.workspace }}/StandaloneWindows64-latest.zip
-            build/StandaloneWindows64
-          retention-days: 1
-      
-  # Upload MacOS build to Stash Studio using Stash CLI - Test Stash CLI on MacOS
-  upload-macos-to-stash:
-    name: Upload macOS build to Stash Studio
-    needs: [determine-platforms, build]
-    if: always() && contains(needs.determine-platforms.outputs.platforms, 'StandaloneOSX')
-    runs-on: macos-latest
-    steps:
-      # Checkout repository (needed for bash scripts)
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      
-      # Download the macOS build artifact uploaded from the build job
-      - name: Download macOS build artifact
-        uses: actions/download-artifact@v4
-        with:
-          pattern: macos-build-*
-          path: .
-          merge-multiple: false
-          if-no-artifacts-found: error
-      
-      # Extract files from artifact subdirectory to workspace root
-      - name: Find artifact directory and move files
-        shell: bash
-        run: |
-          # Find the artifact directory (it will be named macos-build-*)
-          ARTIFACT_DIR=$(find . -maxdepth 1 -type d -name "macos-build-*" | head -1)
-          if [ -z "$ARTIFACT_DIR" ]; then
-            echo "ERROR: macOS build artifact directory not found"
-            exit 1
-          fi
-          echo "Found artifact directory: $ARTIFACT_DIR"
-          
-          # Move files from artifact directory to workspace root
-          if [ -f "$ARTIFACT_DIR/StandaloneOSX-latest.zip" ]; then
-            mv "$ARTIFACT_DIR/StandaloneOSX-latest.zip" .
-            echo "✅ Moved StandaloneOSX-latest.zip to workspace root"
-          fi
-          
-          if [ -d "$ARTIFACT_DIR/build/StandaloneOSX" ]; then
-            mkdir -p build
-            mv "$ARTIFACT_DIR/build/StandaloneOSX" build/
-            echo "✅ Moved build/StandaloneOSX to workspace"
-          fi
-          
-          # Verify files exist
-          if [ ! -f "StandaloneOSX-latest.zip" ] && [ ! -d "build/StandaloneOSX" ]; then
-            echo "ERROR: macOS build artifact not found after extraction"
-            exit 1
-          fi
-          echo "✅ macOS build artifact verified"
-      
-      # Find the macOS .app bundle and extract executable path
-      - name: Find macOS executable
-        shell: bash
-        run: |
-          APP_FILE=$(find build/StandaloneOSX -name "*.app" -type d | head -1)
-          if [ -z "$APP_FILE" ]; then
-            echo "ERROR: .app file not found in build/StandaloneOSX"
-            exit 1
-          fi
-          echo "Found macOS app: $APP_FILE"
-          APP_NAME=$(basename "$APP_FILE")
-          # Find the actual executable inside the .app bundle
-          MACOS_DIR="$APP_FILE/Contents/MacOS"
-          if [ -d "$MACOS_DIR" ]; then
-            EXECUTABLE_NAME=$(ls "$MACOS_DIR" | head -1)
-            if [ -z "$EXECUTABLE_NAME" ]; then
-              echo "ERROR: No executable found in $MACOS_DIR"
-              exit 1
-            fi
-            EXECUTABLE_PATH="$APP_NAME/Contents/MacOS/$EXECUTABLE_NAME"
-          else
-            # Fallback: assume executable name matches app name (without .app)
-            EXECUTABLE_NAME=$(basename "$APP_FILE" .app)
-            EXECUTABLE_PATH="$APP_NAME/Contents/MacOS/$EXECUTABLE_NAME"
-          fi
-          echo "App name: $APP_NAME"
-          echo "Executable name: $EXECUTABLE_NAME"
-          echo "Executable path (relative to zip): $EXECUTABLE_PATH"
-          echo "EXECUTABLE_PATH=$EXECUTABLE_PATH" >> $GITHUB_ENV
-      
-      # Install Stash CLI on macOS runner (required for upload)
-      - name: Install Stash CLI
-        continue-on-error: true
-        run: |
-          /bin/bash -c "$(curl -fsSL https://cli.stash.gg/install.sh)"
-          echo "✅ Stash CLI installed"
-          stash-cli --version
-      
-      # Upload macOS build to Stash Studio using Stash CLI
-      - name: Upload macOS build to Stash Studio
-        run: |
-          stash-cli upload \
-            --env=test \
-            --secret="${{ secrets.STASH_API_KEY }}" \
-            --file_path="${{ github.workspace }}/StandaloneOSX-latest.zip" \
-            --executable_path="${{ env.EXECUTABLE_PATH }}" \
-            --platform=mac \
-            --channel=2b9989ec-c4dd-43cd-833d-ad0478148e5e
-          echo "✅ Build uploaded to Stash Studio"
-  
-  # Upload Windows build to Stash Studio using Stash CLI - Test Stash CLI on Windows
-  upload-windows-to-stash:
-    name: Upload Windows build to Stash Studio
-    needs: [determine-platforms, build]
-    if: always() && contains(needs.determine-platforms.outputs.platforms, 'StandaloneWindows64')
-    runs-on: windows-latest
-    steps:
-      # Checkout repository (needed for bash scripts)
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      
-      # Download the Windows build artifact uploaded from the build job
-      - name: Download Windows build artifact
-        uses: actions/download-artifact@v4
-        with:
-          pattern: windows-build-*
-          path: .
-          merge-multiple: false
-          if-no-artifacts-found: error
-      
-      # Extract files from artifact subdirectory to workspace root
-      - name: Find artifact directory and move files
-        shell: bash
-        run: |
-          # Find the artifact directory (it will be named windows-build-*)
-          ARTIFACT_DIR=$(find . -maxdepth 1 -type d -name "windows-build-*" | head -1)
-          if [ -z "$ARTIFACT_DIR" ]; then
-            echo "ERROR: Windows build artifact directory not found"
-            exit 1
-          fi
-          echo "Found artifact directory: $ARTIFACT_DIR"
-          
-          # Move files from artifact directory to workspace root
-          if [ -f "$ARTIFACT_DIR/StandaloneWindows64-latest.zip" ]; then
-            mv "$ARTIFACT_DIR/StandaloneWindows64-latest.zip" .
-            echo "✅ Moved StandaloneWindows64-latest.zip to workspace root"
-          fi
-          
-          if [ -d "$ARTIFACT_DIR/build/StandaloneWindows64" ]; then
-            mkdir -p build
-            mv "$ARTIFACT_DIR/build/StandaloneWindows64" build/
-            echo "✅ Moved build/StandaloneWindows64 to workspace"
-          fi
-          
-          # Verify files exist
-          if [ ! -f "StandaloneWindows64-latest.zip" ] && [ ! -d "build/StandaloneWindows64" ]; then
-            echo "ERROR: Windows build artifact not found after extraction"
-            exit 1
-          fi
-          echo "✅ Windows build artifact verified"
-      
-      # Locate the main .exe file for Stash Studio upload
-      - name: Find Windows executable
-        shell: bash
-        run: |
-          EXE_FILE=$(find build/StandaloneWindows64 -name "*.exe" -type f | head -1)
-          if [ -z "$EXE_FILE" ]; then
-            echo "ERROR: .exe file not found in build/StandaloneWindows64"
-            exit 1
-          fi
-          echo "Found Windows executable: $EXE_FILE"
-          # Get relative path inside the zip (zip contains files from build/StandaloneWindows64/)
-          EXE_NAME=$(basename "$EXE_FILE")
-          EXE_RELATIVE_PATH="$EXE_NAME"
-          echo "Executable path (relative to zip): $EXE_RELATIVE_PATH"
-          echo "EXECUTABLE_PATH=$EXE_RELATIVE_PATH" >> $GITHUB_ENV
-      
-      # Install Stash CLI on Windows runner (required for upload)
-      - name: Install Stash CLI
-        continue-on-error: true
-        shell: powershell
-        run: |
-          IEX (Invoke-WebRequest 'https://cli.stash.gg/install.ps1')
-          echo "✅ Stash CLI installed"
-          # Refresh environment variables to pick up the new PATH
-          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-          stash-cli --version
-      
-      # Upload Windows build to Stash Studio using Stash CLI
-      - name: Upload Windows build to Stash Studio
-        shell: powershell
-        run: |
-          # Refresh environment variables to ensure stash-cli is in PATH
-          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-          stash-cli upload `
-            --env=test `
-            --secret="${{ secrets.STASH_API_KEY }}" `
-            --file_path="${{ github.workspace }}/StandaloneWindows64-latest.zip" `
-            --executable_path="${{ env.EXECUTABLE_PATH }}" `
-            --platform=windows `
-            --channel=2b9989ec-c4dd-43cd-833d-ad0478148e5e
-          echo "✅ Build uploaded to Stash Studio"
-  
-  # Upload builds to Appetize after Android and/or iOS-simulator builds complete
+          name: iOS-simulator-zip
+          path: ${{ github.workspace }}/iOS-simulator-latest.zip
+          retention-days: 7
+
+  # Upload builds to Appetize (direct file upload from artifacts)
   upload-to-appetize:
     name: Upload builds to Appetize
     needs: [determine-platforms, build]
-    if: always() && (contains(needs.determine-platforms.outputs.platforms, 'Android') || contains(needs.determine-platforms.outputs.platforms, 'iOS-simulator'))
+    if: always() && (contains(needs.determine-platforms.outputs.platforms, 'Android') || contains(needs.determine-platforms.outputs.platforms, 'iOS-simulator')) && github.event.inputs.upload_to_appetize == 'true'
     runs-on: ubuntu-latest
     steps:
+      - name: Download Android build artifact
+        if: contains(needs.determine-platforms.outputs.platforms, 'Android')
+        uses: actions/download-artifact@v4
+        with:
+          name: Build-Android
+          path: build-android
+
+      - name: Download iOS simulator zip artifact
+        if: contains(needs.determine-platforms.outputs.platforms, 'iOS-simulator')
+        uses: actions/download-artifact@v4
+        with:
+          name: iOS-simulator-zip
+          path: build-ios-simulator
+
       - name: Upload Android build to Appetize
         if: contains(needs.determine-platforms.outputs.platforms, 'Android')
         run: |
-          echo "Uploading Android build to Appetize..."
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST https://api.appetize.io/v1/apps/b_e7zfxgltohxm2rd5aw4zplzmwq \
-            -H "X-API-KEY: ${{ secrets.APPETIZE_API_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "url": "https://storage.googleapis.com/stash_sdk_demo/Android/latest/StashDemo.apk/Android.apk",
-              "platform": "android",
-              "note": "Commit: ${{ github.sha }}"
-            }')
-          
-          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-          
-          echo "Response status: $HTTP_CODE"
-          echo "Response body: $BODY"
-          
-          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-            echo "✅ Android build uploaded successfully to Appetize"
-          else
-            echo "❌ Failed to upload Android build to Appetize (HTTP $HTTP_CODE)"
+          APK=$(find build-android -name "*.apk" -type f | head -1)
+          if [ -z "$APK" ] || [ ! -f "$APK" ]; then
+            echo "Error: No .apk found in Android build artifact"
             exit 1
           fi
-      
+          echo "Uploading Android build to Appetize (direct file upload)..."
+          HTTP_CODE=$(curl -s -w "%{http_code}" -o /tmp/response.json -X POST https://api.appetize.io/v1/apps/b_e7zfxgltohxm2rd5aw4zplzmwq \
+            -H "X-API-KEY: ${{ secrets.APPETIZE_API_KEY }}" \
+            -F "file=@$APK" \
+            -F "platform=android" \
+            -F "note=Commit: ${{ github.sha }}")
+          cat /tmp/response.json
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "Error: Failed to upload Android build to Appetize (HTTP $HTTP_CODE)"
+            exit 1
+          fi
+          echo "Android build uploaded successfully to Appetize"
+
       - name: Upload iOS Simulator build to Appetize
         if: contains(needs.determine-platforms.outputs.platforms, 'iOS-simulator')
         run: |
-          echo "Uploading iOS Simulator build to Appetize..."
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST https://api.appetize.io/v1/apps/b_eyszozcrmyt2zifoh5bjyiifha \
-            -H "X-API-KEY: ${{ secrets.APPETIZE_API_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "url": "https://storage.googleapis.com/stash_sdk_demo/iOS-simulator/latest/iOS-simulator-latest.zip/iOS-simulator-latest.zip",
-              "platform": "ios",
-              "note": "Commit: ${{ github.sha }}"
-            }')
-          
-          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-          
-          echo "Response status: $HTTP_CODE"
-          echo "Response body: $BODY"
-          
-          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-            echo "✅ iOS Simulator build uploaded successfully to Appetize"
-          else
-            echo "❌ Failed to upload iOS Simulator build to Appetize (HTTP $HTTP_CODE)"
+          ZIP=$(find build-ios-simulator -name "*.zip" -type f | head -1)
+          if [ -z "$ZIP" ] || [ ! -f "$ZIP" ]; then
+            echo "Error: No .zip found in iOS simulator artifact"
             exit 1
           fi
-  
-  # Upload builds to BrowserStack after Android and/or iOS builds complete
+          echo "Uploading iOS Simulator build to Appetize (direct file upload)..."
+          HTTP_CODE=$(curl -s -w "%{http_code}" -o /tmp/response.json -X POST https://api.appetize.io/v1/apps/b_eyszozcrmyt2zifoh5bjyiifha \
+            -H "X-API-KEY: ${{ secrets.APPETIZE_API_KEY }}" \
+            -F "file=@$ZIP" \
+            -F "platform=ios" \
+            -F "note=Commit: ${{ github.sha }}")
+          cat /tmp/response.json
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "Error: Failed to upload iOS Simulator build to Appetize (HTTP $HTTP_CODE)"
+            exit 1
+          fi
+          echo "iOS Simulator build uploaded successfully to Appetize"
+
+  # Upload builds to BrowserStack (direct file upload from artifacts)
   upload-to-browserstack:
     name: Upload builds to BrowserStack
     needs: [determine-platforms, build]
-    if: always() && (contains(needs.determine-platforms.outputs.platforms, 'Android') || contains(needs.determine-platforms.outputs.platforms, 'iOS'))
+    if: always() && (contains(needs.determine-platforms.outputs.platforms, 'Android') || contains(needs.determine-platforms.outputs.platforms, 'iOS')) && github.event.inputs.upload_to_browserstack == 'true'
     runs-on: ubuntu-latest
     steps:
+      - name: Download Android build artifact
+        if: contains(needs.determine-platforms.outputs.platforms, 'Android')
+        uses: actions/download-artifact@v4
+        with:
+          name: Build-Android
+          path: build-android
+
+      - name: Download iOS build artifact
+        if: contains(needs.determine-platforms.outputs.platforms, 'iOS')
+        uses: actions/download-artifact@v4
+        with:
+          name: Build-iOS
+          path: build-ios
+
       - name: Upload Android build to BrowserStack
         if: contains(needs.determine-platforms.outputs.platforms, 'Android')
         run: |
-          echo "Uploading Android build to BrowserStack..."
-          RESPONSE=$(curl -s -w "\n%{http_code}" -u "${{ secrets.BROWSERSTACK_USERNAME }}:${{ secrets.BROWSERSTACK_ACCESS_KEY }}" \
-            -X POST "https://api-cloud.browserstack.com/app-live/upload" \
-            -F "data={\"url\": \"https://storage.googleapis.com/stash_sdk_demo/Android/latest/StashDemo.apk/Android.apk\"}")
-          
-          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-          
-          echo "Response status: $HTTP_CODE"
-          echo "Response body: $BODY"
-          
-          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-            echo "✅ Android build uploaded successfully to BrowserStack"
-          else
-            echo "❌ Failed to upload Android build to BrowserStack (HTTP $HTTP_CODE)"
+          APK=$(find build-android -name "*.apk" -type f | head -1)
+          if [ -z "$APK" ] || [ ! -f "$APK" ]; then
+            echo "Error: No .apk found in Android build artifact"
             exit 1
           fi
-      
+          echo "Uploading Android build to BrowserStack (direct file upload)..."
+          HTTP_CODE=$(curl -s -w "%{http_code}" -o /tmp/response.txt -u "${{ secrets.BROWSERSTACK_USERNAME }}:${{ secrets.BROWSERSTACK_ACCESS_KEY }}" \
+            -X POST "https://api-cloud.browserstack.com/app-live/upload" \
+            -F "file=@$APK")
+          cat /tmp/response.txt
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "Error: Failed to upload Android build to BrowserStack (HTTP $HTTP_CODE)"
+            exit 1
+          fi
+          echo "Android build uploaded successfully to BrowserStack"
+
       - name: Upload iOS build to BrowserStack
         if: contains(needs.determine-platforms.outputs.platforms, 'iOS')
         run: |
-          echo "Uploading iOS build to BrowserStack..."
-          RESPONSE=$(curl -s -w "\n%{http_code}" -u "${{ secrets.BROWSERSTACK_USERNAME }}:${{ secrets.BROWSERSTACK_ACCESS_KEY }}" \
-            -X POST "https://api-cloud.browserstack.com/app-live/upload" \
-            -F "data={\"url\": \"https://storage.googleapis.com/stash_sdk_demo/iOS/latest/StashDemo.ipa/StashDemo.ipa\"}")
-          
-          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-          
-          echo "Response status: $HTTP_CODE"
-          echo "Response body: $BODY"
-          
-          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-            echo "✅ iOS build uploaded successfully to BrowserStack"
-          else
-            echo "❌ Failed to upload iOS build to BrowserStack (HTTP $HTTP_CODE)"
+          IPA=$(find build-ios -name "*.ipa" -type f | head -1)
+          if [ -z "$IPA" ] || [ ! -f "$IPA" ]; then
+            echo "Error: No .ipa found in iOS build artifact"
             exit 1
           fi
+          echo "Uploading iOS build to BrowserStack (direct file upload)..."
+          HTTP_CODE=$(curl -s -w "%{http_code}" -o /tmp/response.txt -u "${{ secrets.BROWSERSTACK_USERNAME }}:${{ secrets.BROWSERSTACK_ACCESS_KEY }}" \
+            -X POST "https://api-cloud.browserstack.com/app-live/upload" \
+            -F "file=@$IPA")
+          cat /tmp/response.txt
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "Error: Failed to upload iOS build to BrowserStack (HTTP $HTTP_CODE)"
+            exit 1
+          fi
+          echo "iOS build uploaded successfully to BrowserStack"

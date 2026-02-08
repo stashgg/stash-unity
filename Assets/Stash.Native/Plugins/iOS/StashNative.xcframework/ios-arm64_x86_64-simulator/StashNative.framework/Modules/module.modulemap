@@ -1,0 +1,6 @@
+framework module StashNative {
+  umbrella header "StashNative.h"
+  export *
+
+  module * { export * }
+}

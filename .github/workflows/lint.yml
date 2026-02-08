@@ -1,0 +1,44 @@
+# Lint - strict C# formatting. No Unity or .sln required; lints all C# under Assets directly (--folder).
+
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  csharp:
+    name: C# format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Verify C# whitespace (all .cs under Assets, no solution)
+        run: dotnet format whitespace Assets --folder --verify-no-changes --verbosity minimal
+        env:
+          DOTNET_NOLOGO: true
+
+  shell:
+    name: Shell scripts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run ShellCheck
+        run: |
+          sudo apt-get update && sudo apt-get install -y shellcheck
+          shopt -s globstar nullglob
+          for f in Assets/**/*.sh .github/**/*.sh; do
+            [ -f "$f" ] && shellcheck -x "$f" || true
+          done
+        continue-on-error: true
