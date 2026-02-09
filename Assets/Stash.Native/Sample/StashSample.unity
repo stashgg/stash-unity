@@ -542,7 +542,7 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 583433997}
         m_TargetAssemblyTypeName: StashSample, Assembly-CSharp
-        m_MethodName: GenerateLinkAndOpen
+        m_MethodName: GenerateWebshopLinkAndOpen
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
