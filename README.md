@@ -199,7 +199,7 @@ Optional per-call config for **`OpenModal`**. **`StashNativeModalConfig.Default`
 ## Unity Editor Simulator
 
 <div align="center">
-  <img src="https://github.com/stashgg/stash-unity/blob/main/.github/popup_editor.png?raw=true" width="800px" /><br/>
+  <img src="https://storage.googleapis.com/stash_sdk_demo/popup_editor.png" width="800px" /><br/>
   <em>Unity Editor Simulation</em>
 </div>
 </br>
