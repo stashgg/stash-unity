@@ -72,11 +72,16 @@ public class MyStore : MonoBehaviour
 {
     void PurchaseItem(string checkoutUrl)
     {
+        var config = StashNativeCardConfig.Default;
+        // If your game is locked to landscape orientation, force portrait for checkout:
+        // config.forcePortrait = true;
+        
         StashNative.Instance.OpenCard(
             STASH_URL_TO_OPEN,
             dismissCallback: OnDialogDismissed,
             successCallback: OnPaymentSuccess,
-            failureCallback: OnPaymentFailure
+            failureCallback: OnPaymentFailure,
+            config: config
         );
     }
 
@@ -85,6 +90,8 @@ public class MyStore : MonoBehaviour
     void OnPaymentFailure() => ShowErrorMessage("Payment could not be processed");
 }
 ```
+
+**Note for landscape-locked games:** If your Unity game is locked to landscape orientation (`defaultScreenOrientation: 4`), set `config.forcePortrait = true` to ensure checkout displays in portrait mode. Portrait orientation must be enabled in Unity Player Settings (iOS: `allowedAutorotateToPortrait: 1`) for this to work.
 
 All callbacks and config are optional; you can pass only the ones you need or use the global events instead. See the API reference below for more details about configuration options.
 
@@ -176,7 +183,7 @@ Optional per-call config for **`OpenCard`**. **`StashNativeCardConfig.Default`**
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| **`forcePortrait`** | `false` | Portrait-locked on phone when true. |
+| **`forcePortrait`** | `false` | Portrait-locked on phone when true. **Required for landscape-locked games:** Set to `true` if your Unity game is locked to landscape orientation to ensure checkout displays in portrait. Portrait orientation must be enabled in Unity Player Settings (iOS: `allowedAutorotateToPortrait: 1`). |
 | **`cardHeightRatioPortrait`** | `0.68f` | Card height ratio portrait (0.1–1.0). |
 | **`cardWidthRatioLandscape`** | `0.9f` | Card width ratio landscape. |
 | **`cardHeightRatioLandscape`** | `0.6f` | Card height ratio landscape. |
