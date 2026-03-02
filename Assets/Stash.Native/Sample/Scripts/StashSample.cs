@@ -32,6 +32,7 @@ public class StashSample : MonoBehaviour
         // config.tabletHeightRatioPortrait = 0.45f;
         // config.tabletWidthRatioLandscape = 0.25f;
         // config.tabletHeightRatioLandscape = 0.5f;
+        // If your game is locked to landscape, uncomment this to force portrait for checkout:
         // config.forcePortrait = true;
 
         StashNative.Instance.OpenCard(TEST_URL,
@@ -90,6 +91,8 @@ public class StashSample : MonoBehaviour
             {
                 // Open the returned URL in the native card.
                 var config = StashNativeCardConfig.Default;
+                // If your game is locked to landscape, uncomment this to force portrait for checkout:
+                // config.forcePortrait = true;
                 StashNative.Instance.OpenCard(url,
                     () => SetStatus("Dismissed"),
                     () => SetStatus("Success"),
