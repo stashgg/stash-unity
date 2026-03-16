@@ -60,19 +60,40 @@ jobs:
             cat Packages/gg.stash.unity/package.json | grep '"version"'
           fi
 
+      - name: Append changelog
+        env:
+          CHANGELOG_INPUT: ${{ inputs.changelog }}
+        run: |
+          VERSION="${{ steps.validate-version.outputs.version }}"
+          DATE=$(date +%Y-%m-%d)
+          CHANGELOG_FILE="Packages/gg.stash.unity/CHANGELOG.md"
+          # Header: everything before the first "## ["
+          HEADER=$(awk '/^## \[/ {exit} {print}' "$CHANGELOG_FILE")
+          # Rest: from first "## [" to end
+          REST=$(awk '/^## \[/ {p=1} p' "$CHANGELOG_FILE")
+          {
+            printf '%s\n' "$HEADER"
+            echo "## [$VERSION] - $DATE"
+            echo ""
+            printf '%s\n' "$CHANGELOG_INPUT"
+            echo ""
+            printf '%s\n' "$REST"
+          } > "${CHANGELOG_FILE}.new"
+          mv "${CHANGELOG_FILE}.new" "$CHANGELOG_FILE"
+
       - name: Configure Git
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Commit package version and create tag
+      - name: Commit package version and changelog, create tag
         run: |
           VERSION="${{ steps.validate-version.outputs.version }}"
-          if git diff --quiet Packages/gg.stash.unity/package.json 2>/dev/null; then
-            echo "No package.json change (version already $VERSION)"
+          git add Packages/gg.stash.unity/package.json Packages/gg.stash.unity/CHANGELOG.md
+          if git diff --staged --quiet 2>/dev/null; then
+            echo "No changes (version already $VERSION)"
           else
-            git add Packages/gg.stash.unity/package.json
-            git commit -m "chore: set package version to $VERSION"
+            git commit -m "chore: release v$VERSION - update package version and changelog"
             git push origin HEAD
           fi
           git tag -a "v$VERSION" -m "Release v$VERSION"
