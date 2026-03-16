@@ -76,6 +76,3 @@ crashlytics-build.properties
 *.orig
 *.swp
 *~
-
-# Optional: uncomment to ignore the reference patch (keep repo minimal)
-# Use_NPM-like_package_format*.patch
