@@ -50,15 +50,33 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
+      - name: Update package.json version
+        run: |
+          VERSION="${{ steps.validate-version.outputs.version }}"
+          # Update version in UPM package manifest so it matches the release tag
+          if [ -f Packages/gg.stash.unity/package.json ]; then
+            sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" Packages/gg.stash.unity/package.json
+            rm -f Packages/gg.stash.unity/package.json.bak
+            cat Packages/gg.stash.unity/package.json | grep '"version"'
+          fi
+
       - name: Configure Git
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Create git tag
+      - name: Commit package version and create tag
         run: |
-          git tag -a "v${{ steps.validate-version.outputs.version }}" -m "Release v${{ steps.validate-version.outputs.version }}"
-          git push origin "v${{ steps.validate-version.outputs.version }}"
+          VERSION="${{ steps.validate-version.outputs.version }}"
+          if git diff --quiet Packages/gg.stash.unity/package.json 2>/dev/null; then
+            echo "No package.json change (version already $VERSION)"
+          else
+            git add Packages/gg.stash.unity/package.json
+            git commit -m "chore: set package version to $VERSION"
+            git push origin HEAD
+          fi
+          git tag -a "v$VERSION" -m "Release v$VERSION"
+          git push origin "v$VERSION"
 
       - name: Format release body
         id: format-body

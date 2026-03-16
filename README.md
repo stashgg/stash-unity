@@ -8,47 +8,59 @@ Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native
 
 ## Requirements
 
-- Unity 2019.4+ (LTS recommended)
+- Unity 2021.3+ (LTS recommended)
 - iOS 12.0+ / Android API 21+
 
-## Sample Scene
+## Installation (UPM)
 
-Try the sample scene in the **./Sample** folder, or try our demo in the Appetize online simulator.
-When using the sample scene, input your own test API key in `StashLinkGenerator.cs`.
+This package is distributed via the Unity Package Manager (UPM).
+
+### Add from Git URL (recommended)
+
+1. Open **Window > Package Manager**
+2. Click **+** → **Add package from git URL**
+3. Enter: `https://github.com/stashgg/stash-unity.git?path=Packages/gg.stash.unity`
+
+### Add via manifest.json
+
+Add to your project's `Packages/manifest.json` under `dependencies`:
+
+```json
+"gg.stash.unity": "https://github.com/stashgg/stash-unity.git?path=Packages/gg.stash.unity"
+```
+
+### Import sample (optional)
+
+After adding the package, you can import the sample scene and scripts:
+
+1. Open **Window > Package Manager**
+2. Select **Stash for Unity** in the list
+3. Expand **Samples** and click **Import** next to **Stash Integration Sample**
+4. Input your test API key in `StashLinkGenerator.cs` (in the imported sample)
+
+### Manual / .unitypackage
+
+1. Download the [latest release](https://github.com/stashgg/stash-unity/releases)
+2. Import the `.unitypackage` file into your Unity project and select the components you need
+
+## Sample / Demo
 
 - **iOS:** [Open in Appetize.io](https://appetize.io/app/b_eyszozcrmyt2zifoh5bjyiifha)
 - **Android:** [Open in Appetize.io](https://appetize.io/app/b_e7zfxgltohxm2rd5aw4zplzmwq?device=pixel7&osVersion=13.0&toolbar=true)
 
-## Downloads
-
-### Import package manually
-
-1. Download the [latest release](https://github.com/stashgg/stash-unity/releases) or repository as a zip file.
-2. Import the `.unitypackage` file into your Unity project
-3. Select the components you need (Stash.Popup for Stash Pay)
-
-### Import via Git URL
-
-1. Open **Window > Package Manager**
-2. Click **+** → **Add package from git URL**
-3. Enter: `https://github.com/stashgg/stash-unity.git?path=Assets`
-
 # Quick Start
 
-##  Folder Structure
+## Package structure
 
-#### ./Plugins
-- **`Plugins/Android/`** - Contains the StashNative AAR and Unity bridge for Android.
-- **`Plugins/iOS/`** - Contains the Unity bridge and native framework for iOS.
+When installed via UPM, the package lives under `Packages/gg.stash.unity/` with this layout:
 
-#### ./Scripts
-- **`StashNative.cs`** - Singleton API that wraps and provides calls to the native iOS and Android libraries: use `OpenCard`, `OpenModal`, `OpenBrowser`, `CloseBrowser`, and listen to events for integration.
-
-#### ./Editor
-- **`StashEditorPlugin/`** - **(Optional)** Editor window for testing Stash card and modal flows directly in the Unity Editor (Windows and macOS). Lets you simulate UI, trigger events, and test callback handling within the editor without building. The editor plugin is under active development and may not be fully stable.
-
-#### ./Sample
-- **`StashSample.cs`** / **`StashSample.unity`** - **(Optional)** Reference implementation and demo scene: Open Card, Open Modal, Open Browser, and callback status.
+| Path | Description |
+|------|-------------|
+| **Runtime/** | **`StashNative.cs`** – Singleton API: `OpenCard`, `OpenModal`, `OpenBrowser`, `CloseBrowser`, and events. |
+| **Editor/** | **(Optional)** Editor window for testing card/modal flows in the Unity Editor (Windows and macOS). |
+| **Plugins/Android/** | StashNative AAR and Unity bridge for Android. |
+| **Plugins/iOS/** | Unity bridge and StashNative.xcframework for iOS. |
+| **Samples~/StashSample/** | Optional sample scene and scripts; import via Package Manager (see Installation). |
 
 
 ##  Usage
@@ -233,7 +245,7 @@ Or fix it in Xcode project:
 3. Open the **General** tab and scroll to **Frameworks, Libraries, and Embedded Content**.
 4. If **StashNative.framework** is missing, click **+** and add it from the project (it should appear under Frameworks or Plugins/iOS). If it is already listed, set it to **Embed & Sign**.
 
-Ensure `StashNative.xcframework` is present in `Assets/Stash.Popup/Plugins/iOS/` before building from Unity so the post-process can add it to the main target’s embed phase.
+Ensure `StashNative.xcframework` is present in `Packages/gg.stash.unity/Plugins/iOS/` before building from Unity so the post-process can add it to the main target’s embed phase.
 
 ### [Android] Bridge does not compile
 
