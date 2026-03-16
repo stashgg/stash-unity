@@ -1,4 +1,4 @@
-# Lint - strict C# formatting. No Unity or .sln required; lints all C# under Assets directly (--folder).
+# Lint - strict C# formatting. No Unity or .sln required; lints C# under the UPM package (--folder).
 
 name: Lint
 
@@ -22,8 +22,14 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
-      - name: Verify C# whitespace (all .cs under Assets, no solution)
-        run: dotnet format whitespace Assets --folder --verify-no-changes --verbosity minimal
+      - name: Verify C# whitespace (UPM package and Assets if present)
+        run: |
+          if [ -d Packages/gg.stash.unity ]; then
+            dotnet format whitespace Packages/gg.stash.unity --folder --verify-no-changes --verbosity minimal
+          fi
+          if [ -d Assets ]; then
+            dotnet format whitespace Assets --folder --verify-no-changes --verbosity minimal
+          fi
         env:
           DOTNET_NOLOGO: true
 
@@ -38,7 +44,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y shellcheck
           shopt -s globstar nullglob
-          for f in Assets/**/*.sh .github/**/*.sh; do
+          for f in Assets/**/*.sh Packages/**/*.sh .github/**/*.sh; do
             [ -f "$f" ] && shellcheck -x "$f" || true
           done
         continue-on-error: true
