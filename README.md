@@ -38,11 +38,6 @@ After adding the package, you can import the sample scene and scripts:
 3. Expand **Samples** and click **Import** next to **Stash Integration Sample**
 4. Input your test API key in `StashLinkGenerator.cs` (in the imported sample)
 
-### Manual / .unitypackage
-
-1. Download the [latest release](https://github.com/stashgg/stash-unity/releases)
-2. Import the `.unitypackage` file into your Unity project and select the components you need
-
 ## Sample / Demo
 
 - **iOS:** [Open in Appetize.io](https://appetize.io/app/b_eyszozcrmyt2zifoh5bjyiifha)
@@ -87,7 +82,7 @@ public class MyStore : MonoBehaviour
         var config = StashNativeCardConfig.Default;
         // If your game is locked to landscape orientation, force portrait for checkout:
         // config.forcePortrait = true;
-        
+
         StashNative.Instance.OpenCard(
             STASH_URL_TO_OPEN,
             dismissCallback: OnDialogDismissed,
