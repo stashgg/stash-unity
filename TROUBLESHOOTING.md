@@ -31,23 +31,6 @@ The Unity bridge expects the StashNative AAR to expose `StashNative` and related
 
 Ensure internet permission in your AndroidManifest.xml.
 
-### [Android] Crash when enabling keep-alive: `NoSuchMethodError` on `ServiceCompat.startForeground`
-
-The Stash Native foreground service uses **`ServiceCompat.startForeground(Service, int, Notification, int)`** (foreground service type). That overload exists only in **newer AndroidX Core** artifacts. Unity builds often end up with **`androidx.core:core:1.2.0`** (or similar) from old transitive dependencies, so the class loads but the method is missing and the app crashes on the main thread.
-
-**Fix:** Force a modern Core into the app (pick **1.12.0** or newer, e.g. **1.13.1**):
-
-1. Enable **Custom Main Gradle Template** (same as in the Custom Tabs section below) so you have `Assets/Plugins/Android/mainTemplate.gradle`.
-2. Inside the `dependencies { }` block, **before** the `**DEPS**` line, add:
-
-```gradle
-    implementation 'androidx.core:core:1.13.1'
-```
-
-3. If you use **External Dependency Manager (EDM)**, add `androidx.core:core:1.13.1` to your Android dependencies (or a `*Dependencies.xml` file) and run **Assets → External Dependency Manager → Android Resolver → Force Resolve** so the old `androidx.core.core-1.2.0.aar` in `Assets/Plugins/Android` is replaced.
-
-Rebuild the APK and confirm the merged libraries no longer ship an ancient `core` only.
-
 ### [Android] System browser used instead of in-app Chrome Custom Tabs
 
 When using browser mode, some Unity projects launch Chrome Custom Tabs while others fall back to a system browser window. (This may be due to differences in Android dependencies between Unity versions.) While both flows are valid, Chrome Custom Tabs generally provide a superior experience. If you notice your app is not using Chrome Custom Tabs, you can resolve this by including the [AndroidX Browser library (`androidx.browser:browser`)](https://developer.android.com/jetpack/androidx/releases/browser), which supports [Android Custom Tabs](https://developer.android.com/develop/ui/views/layout/webapps/overview-of-android-custom-tabs).
@@ -63,13 +46,12 @@ When using browser mode, some Unity projects launch Chrome Custom Tabs while oth
    - Open the file and find the `dependencies` block
    - Add: `implementation 'androidx.browser:browser:1.7.0'` (or newer, e.g. `1.9.0`)
 
-Example (Custom Tabs + recommended Core for keep-alive):
+Example:
 
 ```gradle
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
-    implementation 'androidx.core:core:1.13.1'
-    implementation 'androidx.browser:browser:1.9.0'
+    implementation 'androidx.browser:browser:1.7.0'
 **DEPS**}
 ```
 
