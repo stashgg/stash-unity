@@ -13,12 +13,9 @@ Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native
 
 ### Android: Gradle dependencies (Optional)
 
-Some Unity Android builds resolve **old** AndroidX artifacts transitively. Stash recommends pinning two libraries so **`OpenBrowser()`** can use **Chrome Custom Tabs** and (if you enable it) **keep-alive** does not crash on missing APIs.
-
 | Dependency | Why add it |
 |------------|------------|
 | **`androidx.browser:browser`** | **`OpenBrowser()`** uses Custom Tabs when this is on the classpath; otherwise Android may open the plain system browser. |
-| **`androidx.core:core`** (1.12.0+, e.g. **1.13.1**) | Keep-alive calls **`ServiceCompat.startForeground(...)`** overloads that are **not** in common old pins like **1.2.x**; without a newer core you may see **`NoSuchMethodError`**. |
 
 **Steps (custom main Gradle template):**
 
@@ -27,11 +24,8 @@ Some Unity Android builds resolve **old** AndroidX artifacts transitively. Stash
 3. Open `mainTemplate.gradle`, find the `dependencies { }` block, and **before** the `**DEPS**` line Unity injects, add:
 
 ```gradle
-    implementation 'androidx.core:core:1.13.1'
-    implementation 'androidx.browser:browser:1.9.0'
+    implementation 'androidx.browser:browser:1.7.0'
 ```
-
-Use **1.9.0** or a [newer `androidx.browser` release](https://developer.android.com/jetpack/androidx/releases/browser) if you prefer; **1.7.0+** is generally fine for Custom Tabs.
 
 4. Save and rebuild the APK/AAB.
 
