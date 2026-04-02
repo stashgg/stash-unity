@@ -154,7 +154,7 @@ StashNative.Instance.CloseBrowser();
 
 ### Android keep-alive (optional)
 
-When your app opens Chrome Custom Tabs or the system browser, Android may suspend or terminate the Unity process on devices with low memory. To prevent your game being killed / suspended while users complete external payments, the Stash SDK supports an optional short-lived foreground service that keeps the app alive with a low-priority notification. This feature is **disabled by default**. For details about required manifest entries and notification permissions, refer to the [stash-native README](https://github.com/stashgg/stash-native/blob/main/README.md). Enable keep-alive with the following:
+Android may kill or suspend your game during external payments in Chrome Custom Tabs or the browser, especially on low-memory devices. To prevent this, you can enable Stash's optional keep-alive foreground service (off by default). This service will automaticaly spawn when browser opens and unload when user returns to the game. See the [stash-native README](https://github.com/stashgg/stash-native/blob/main/README.md) for manifest and permission details. Enable it like this:
 
 ```csharp
 #if UNITY_ANDROID && !UNITY_EDITOR
