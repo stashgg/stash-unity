@@ -154,7 +154,7 @@ StashNative.Instance.CloseBrowser();
 
 ### Android keep-alive (optional)
 
-When the user leaves your app for Chrome Custom Tabs or the system browser, low-memory devices may kill the process. The native SDK can run a short foreground service with a low-priority notification. This is **off by default**. See the [stash-native README](https://github.com/stashgg/stash-native/blob/main/README.md) for manifest and notification permission notes.
+When your app opens Chrome Custom Tabs or the system browser, Android may suspend or terminate the Unity process on devices with low memory. To prevent your game being killed / suspended while users complete external payments, the Stash SDK supports an optional short-lived foreground service that keeps the app alive with a low-priority notification. This feature is **disabled by default**. For details about required manifest entries and notification permissions, refer to the [stash-native README](https://github.com/stashgg/stash-native/blob/main/README.md). Enable keep-alive with the following:
 
 ```csharp
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -168,8 +168,6 @@ StashNative.Instance.SetKeepAliveConfig(new StashNativeKeepAliveConfig
 #endif
 StashNative.Instance.OpenBrowser(checkoutUrl);
 ```
-
-**Gradle / AndroidX:** Keep-alive needs a current **`androidx.core:core`** in the final APK. Many Unity projects (especially with External Dependency Manager) still merge **`core-1.2.x`**, which does **not** include `ServiceCompat.startForeground(Service, int, Notification, int)` and will crash with **`NoSuchMethodError`**. Add an explicit dependency (see [Android: Optional Gradle dependencies](#android-optional-gradle-dependencies) and [Troubleshooting](TROUBLESHOOTING.md)), then rebuild.
 
 ---
 
