@@ -19,7 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - **`OnExternalPayment`** (`Action<string>`): fired when checkout continues outside the app (GPay, Klarna, crypto, etc.).
 - **`backgroundColor`** on **`StashNativeCardConfig`** and **`StashNativeModalConfig`** (optional hex string; null/empty keeps native default theme).
-- **Android keep-alive**: `SetKeepAliveEnabled`, `SetKeepAliveConfig` / **`StashNativeKeepAliveConfig`** — short foreground service during external browser flows ([stash-native README](https://github.com/stashgg/stash-native/blob/main/README.md)). Host apps must merge **`androidx.core:core` 1.12+** (many Unity/EDM trees ship 1.2.x and crash with `NoSuchMethodError` on `ServiceCompat.startForeground`); see repository README troubleshooting.
+- **Android keep-alive**: `SetKeepAliveEnabled`, `SetKeepAliveConfig` / **`StashNativeKeepAliveConfig`** — short foreground service during external browser flows ([stash-native README](https://github.com/stashgg/stash-native/blob/main/README.md)).
 
 ## [2.0.0] - 2025-03-16
 
