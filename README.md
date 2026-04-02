@@ -11,13 +11,15 @@ Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native
 - Unity 2021.3+ (LTS recommended)
 - iOS 13.0+ / Android API 21+
 
-### Android: Gradle dependencies (Optional)
+### Android: Optional Gradle dependencies
+
+Use your package manager or custom project gradle file to add following dependencies:
 
 | Dependency | Why add it |
 |------------|------------|
-| **`androidx.browser:browser`** | **`OpenBrowser()`** uses Custom Tabs when this is on the classpath; otherwise Android may open the plain system browser. |
+| **`androidx.browser:browser`** (1.7.0 and up) | **`OpenBrowser()`** and some external browser flows uses Chrome Custom Tabs when this is on the classpath; otherwise Android may open the plain system browser. |
 
-**Steps (custom main Gradle template):**
+**Steps (Custom Gradle Template):**
 
 1. **Edit → Project Settings → Player → Android → Publishing Settings**
 2. Enable **Custom Main Gradle Template** (Unity creates or uses `Assets/Plugins/Android/mainTemplate.gradle`).
@@ -26,10 +28,6 @@ Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native
 ```gradle
     implementation 'androidx.browser:browser:1.7.0'
 ```
-
-4. Save and rebuild the APK/AAB.
-
-**If you use External Dependency Manager (EDM):** Add the same Maven coordinates in your `*Dependencies.xml` (or EDM UI), then **Assets → External Dependency Manager → Android Resolver → Force Resolve** so cached AARs under `Assets/Plugins/Android` match.
 
 ## Installation (UPM)
 
