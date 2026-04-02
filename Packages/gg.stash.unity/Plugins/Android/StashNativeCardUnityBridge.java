@@ -53,8 +53,8 @@ public class StashNativeCardUnityBridge implements com.stash.stashnative.StashNa
     }
 
     @Override
-    public void onPaymentSuccess() {
-        sendMessage("OnAndroidPaymentSuccess", "");
+    public void onPaymentSuccess(String order) {
+        sendMessage("OnAndroidPaymentSuccess", order != null ? order : "");
     }
 
     @Override
@@ -82,9 +82,39 @@ public class StashNativeCardUnityBridge implements com.stash.stashnative.StashNa
         sendMessage("OnAndroidNetworkError", "");
     }
 
+    @Override
+    public void onExternalPayment(String url) {
+        sendMessage("OnAndroidExternalPayment", url != null ? url : "");
+    }
+
     public void setActivity(Activity activity) {
         if (stashNativeCard != null && activity != null) {
             stashNativeCard.setActivity(activity);
+        }
+    }
+
+    public void setKeepAliveEnabled(boolean enabled) {
+        if (stashNativeCard == null) return;
+        ensureInit();
+        try {
+            stashNativeCard.setKeepAliveEnabled(enabled);
+        } catch (Throwable t) {
+            Log.e(TAG, "setKeepAliveEnabled failed: " + t.getMessage());
+        }
+    }
+
+    public void setKeepAliveConfig(String notificationTitle, String notificationText, int notificationIconResId) {
+        if (stashNativeCard == null) return;
+        ensureInit();
+        try {
+            com.stash.stashnative.StashNativeCard.KeepAliveConfig cfg =
+                    new com.stash.stashnative.StashNativeCard.KeepAliveConfig();
+            cfg.notificationTitle = notificationTitle;
+            cfg.notificationText = notificationText;
+            cfg.notificationIconResId = notificationIconResId;
+            stashNativeCard.setKeepAliveConfig(cfg);
+        } catch (Throwable t) {
+            Log.e(TAG, "setKeepAliveConfig failed: " + t.getMessage());
         }
     }
 
@@ -101,7 +131,8 @@ public class StashNativeCardUnityBridge implements com.stash.stashnative.StashNa
     public void openCardWithConfig(String url, boolean forcePortrait,
             float cardHeightRatioPortrait, float cardWidthRatioLandscape, float cardHeightRatioLandscape,
             float tabletWidthRatioPortrait, float tabletHeightRatioPortrait,
-            float tabletWidthRatioLandscape, float tabletHeightRatioLandscape) {
+            float tabletWidthRatioLandscape, float tabletHeightRatioLandscape,
+            String backgroundColor) {
         if (stashNativeCard == null || url == null) return;
         ensureInit();
         try {
@@ -114,6 +145,7 @@ public class StashNativeCardUnityBridge implements com.stash.stashnative.StashNa
             config.tabletHeightRatioPortrait = tabletHeightRatioPortrait;
             config.tabletWidthRatioLandscape = tabletWidthRatioLandscape;
             config.tabletHeightRatioLandscape = tabletHeightRatioLandscape;
+            config.backgroundColor = backgroundColor;
             stashNativeCard.openCard(url, config);
         } catch (Throwable t) {
             Log.e(TAG, "openCardWithConfig failed: " + t.getMessage());
@@ -130,16 +162,16 @@ public class StashNativeCardUnityBridge implements com.stash.stashnative.StashNa
         }
     }
 
-    public void openModalWithConfig(String url, boolean showDragBar, boolean allowDismiss,
+    public void openModalWithConfig(String url, boolean allowDismiss,
             float phoneWidthRatioPortrait, float phoneHeightRatioPortrait,
             float phoneWidthRatioLandscape, float phoneHeightRatioLandscape,
             float tabletWidthRatioPortrait, float tabletHeightRatioPortrait,
-            float tabletWidthRatioLandscape, float tabletHeightRatioLandscape) {
+            float tabletWidthRatioLandscape, float tabletHeightRatioLandscape,
+            String backgroundColor) {
         if (stashNativeCard == null || url == null) return;
         ensureInit();
         try {
             com.stash.stashnative.StashNativeCard.ModalConfig config = new com.stash.stashnative.StashNativeCard.ModalConfig();
-            config.showDragBar = showDragBar;
             config.allowDismiss = allowDismiss;
             config.phoneWidthRatioPortrait = phoneWidthRatioPortrait;
             config.phoneHeightRatioPortrait = phoneHeightRatioPortrait;
@@ -149,6 +181,7 @@ public class StashNativeCardUnityBridge implements com.stash.stashnative.StashNa
             config.tabletHeightRatioPortrait = tabletHeightRatioPortrait;
             config.tabletWidthRatioLandscape = tabletWidthRatioLandscape;
             config.tabletHeightRatioLandscape = tabletHeightRatioLandscape;
+            config.backgroundColor = backgroundColor;
             stashNativeCard.openModal(url, config);
         } catch (Throwable t) {
             Log.e(TAG, "openModalWithConfig failed: " + t.getMessage());

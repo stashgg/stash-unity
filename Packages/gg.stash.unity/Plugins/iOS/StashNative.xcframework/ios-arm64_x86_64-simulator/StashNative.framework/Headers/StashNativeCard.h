@@ -59,10 +59,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) CGFloat tabletWidthRatioLandscape;
 /** Tablet height ratio for landscape (0.1-1.0). Default 0.8. */
 @property (nonatomic, assign) CGFloat tabletHeightRatioLandscape;
-/** Whether to show drag bar at top of modal. Default YES. */
-@property (nonatomic, assign) BOOL showDragBar;
 /** Whether tap outside and drag gestures can dismiss the modal. Default YES. */
 @property (nonatomic, assign) BOOL allowDismiss;
+/** Optional HTML hex (#RGB, #RRGGBB, #AARRGGBB) for sheet background. Omit for default Stash theme. */
+@property (nonatomic, copy, nullable) NSString *backgroundColor;
 
 /**
  * Creates a default modal configuration.
@@ -80,7 +80,6 @@ NS_ASSUME_NONNULL_BEGIN
                        tabletHeightPortrait:(CGFloat)tabletHeightPortrait
                        tabletWidthLandscape:(CGFloat)tabletWidthLandscape
                       tabletHeightLandscape:(CGFloat)tabletHeightLandscape
-                               showDragBar:(BOOL)showDragBar
                               allowDismiss:(BOOL)allowDismiss;
 
 @end
@@ -109,6 +108,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) CGFloat tabletWidthRatioLandscape;
 /** Tablet height ratio in landscape (0.1-1.0). Default 0.6. */
 @property (nonatomic, assign) CGFloat tabletHeightRatioLandscape;
+/** Optional HTML hex (#RGB, #RRGGBB, #AARRGGBB) for sheet background. Omit for default Stash theme. */
+@property (nonatomic, copy, nullable) NSString *backgroundColor;
 
 /**
  * Creates a default card configuration.
@@ -126,6 +127,15 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  * Called when a payment completes successfully.
+ *
+ * @param order Optional string from \c window.stash_sdk.onPaymentSuccess(order) (plain or JSON
+ *     string). \c nil when the page omits the argument or passes an empty string.
+ */
+- (void)stashNativeCardDidCompletePaymentWithOrder:(nullable NSString *)order
+    NS_SWIFT_NAME(stashNativeCardDidCompletePayment(withOrder:));
+
+/**
+ * Called when a payment completes successfully (legacy; prefer \c stashNativeCardDidCompletePaymentWithOrder: when you need order data).
  */
 - (void)stashNativeCardDidCompletePayment;
 
@@ -135,7 +145,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)stashNativeCardDidFailPayment;
 
 /**
- * Called when the checkout dialog is dismissed by the user.
+ * Called when the checkout dialog is dismissed by the user, or when the embedded page calls window.close().
  */
 - (void)stashNativeCardDidDismiss;
 
@@ -157,6 +167,15 @@ NS_ASSUME_NONNULL_BEGIN
  * The dialog is automatically dismissed before this callback is invoked.
  */
 - (void)stashNativeCardDidEncounterNetworkError;
+
+/**
+ * Called when the checkout page calls \c window.stash_sdk.openExternalBrowser(url). The SDK closes the
+ * checkout without invoking \c stashNativeCardDidDismiss, then opens the URL in
+ * \c SFSafariViewController (same behavior as \c -openBrowserWithURL:). The \c url string includes
+ * the theme query parameter when applicable.
+ */
+- (void)stashNativeCardDidRequestExternalPaymentWithURL:(NSString *)url
+    NS_SWIFT_NAME(stashNativeCardDidRequestExternalPayment(with:));
 
 @end
 

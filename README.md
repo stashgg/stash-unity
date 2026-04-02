@@ -4,12 +4,12 @@
   <img src="https://github.com/stashgg/stash-native/raw/main/.github/assets/stash_unity.png" width="128" height="128" alt="Stash Unity Logo"/>
 </p>
 
-Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native), enabling native-feeling Stash Pay IAP checkout and webshop presentation directly inside your Unity game (Android/iOS).
+Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native) (embedded **Stash Native 2.1.1**), enabling native-feeling Stash Pay IAP checkout and webshop presentation directly inside your Unity game (Android/iOS).
 
 ## Requirements
 
 - Unity 2021.3+ (LTS recommended)
-- iOS 12.0+ / Android API 21+
+- iOS 13.0+ / Android API 21+
 
 ## Installation (UPM)
 
@@ -51,7 +51,7 @@ When installed via UPM, the package lives under `Packages/gg.stash.unity/` with 
 
 | Path | Description |
 |------|-------------|
-| **Runtime/** | **`StashNative.cs`** – Singleton API: `OpenCard`, `OpenModal`, `OpenBrowser`, `CloseBrowser`, and events. |
+| **Runtime/** | **`StashNative.cs`** – Singleton API: `OpenCard`, `OpenModal`, `OpenBrowser`, `CloseBrowser`, Android keep-alive helpers, and events. |
 | **Editor/** | **(Optional)** Editor window for testing card/modal flows in the Unity Editor (Windows and macOS). |
 | **Plugins/Android/** | StashNative AAR and Unity bridge for Android. |
 | **Plugins/iOS/** | Unity bridge and StashNative.xcframework for iOS. |
@@ -93,7 +93,7 @@ public class MyStore : MonoBehaviour
     }
 
     void OnDialogDismissed() => VerifyPurchaseStatus();
-    void OnPaymentSuccess() => VerifyPurchaseStatus();
+    void OnPaymentSuccess(string order) => VerifyPurchaseStatus();
     void OnPaymentFailure() => ShowErrorMessage("Payment could not be processed");
 }
 ```
@@ -113,7 +113,7 @@ using Stash.Native;
 StashNative.Instance.OpenModal(
     STASH_URL_TO_OPEN,
     dismissCallback: () => RefreshShopState(),
-    successCallback: OnPurchaseComplete,
+    successCallback: order => OnPurchaseComplete(order),
     failureCallback: OnPurchaseFailed
 );
 // All callbacks and config are optional
@@ -133,6 +133,25 @@ StashNative.Instance.OpenBrowser(STASH_URL_TO_OPEN);
 // Later, on iOS only:
 StashNative.Instance.CloseBrowser();
 ```
+
+### Android keep-alive (optional)
+
+When the user leaves your app for Chrome Custom Tabs or the system browser, low-memory devices may kill the process. The native SDK can run a short foreground service with a low-priority notification. This is **off by default**. See the [stash-native README](https://github.com/stashgg/stash-native/blob/main/README.md) for manifest and notification permission notes.
+
+```csharp
+#if UNITY_ANDROID && !UNITY_EDITOR
+StashNative.Instance.SetKeepAliveEnabled(true);
+StashNative.Instance.SetKeepAliveConfig(new StashNativeKeepAliveConfig
+{
+    notificationTitle = "Payment in progress",
+    notificationText = "Tap to return to the app",
+    notificationIconResId = 0  // 0 = library default icon; or your Android drawable resource id
+});
+#endif
+StashNative.Instance.OpenBrowser(checkoutUrl);
+```
+
+**Gradle / AndroidX:** Keep-alive needs a current **`androidx.core:core`** in the final APK. Many Unity projects (especially with External Dependency Manager) still merge **`core-1.2.x`**, which does **not** include `ServiceCompat.startForeground(Service, int, Notification, int)` and will crash with **`NoSuchMethodError`**. Add an explicit dependency, for example **`implementation 'androidx.core:core:1.13.1'`** in `mainTemplate.gradle` (see troubleshooting below), then rebuild.
 
 ---
 
@@ -154,10 +173,12 @@ All public API lives on the **`StashNative`** singleton. Access it via **`StashN
 
 | Signature | Description |
 |-----------|-------------|
-| **`void OpenCard(string url, Action dismissCallback, Action successCallback, Action failureCallback, StashNativeCardConfig config)`** | Opens the URL in the native card (drawer). All callbacks and config are optional. |
-| **`void OpenModal(string url, Action dismissCallback, Action successCallback, Action failureCallback, StashNativeModalConfig config)`** | Opens the URL in a centered modal. All callbacks and config are optional. |
-| **`void OpenBrowser(string url)`** | Opens the URL in the platform browser (Chrome Custom Tabs on Android, SFSafariViewController on iOS). |
-| **`void CloseBrowser()`** | **iOS Only:** Dismisses the Safari view programatically. |
+| **`void OpenCard(string url, Action dismissCallback, Action<string> successCallback, Action failureCallback, StashNativeCardConfig? config)`** | Opens the URL in the native card (drawer). `successCallback` receives an optional order payload (may be empty). All callbacks and config are optional. |
+| **`void OpenModal(string url, Action dismissCallback, Action<string> successCallback, Action failureCallback, StashNativeModalConfig? config)`** | Opens the URL in a centered modal. Same success signature as `OpenCard`. |
+| **`void OpenBrowser(string url)`** | Opens the URL in the platform browser (Chrome Custom Tabs when `androidx.browser` is on the classpath, otherwise the system browser on Android; `SFSafariViewController` on iOS). |
+| **`void CloseBrowser()`** | **iOS only:** dismisses the Safari view programmatically. No-op on Android. |
+| **`void SetKeepAliveEnabled(bool enabled)`** | **Android only:** opt in to the SDK keep-alive foreground service during external browser flows. |
+| **`void SetKeepAliveConfig(StashNativeKeepAliveConfig config)`** | **Android only:** notification title, text, and optional icon resource id (`0` = library default). |
 | **`void Dismiss()`** | Dismisses the current card or modal. |
 | **`bool IsCurrentlyPresented`** | True if a card or modal is currently visible. |
 | **`bool IsPurchaseProcessing`** | True when a purchase is in progress and the dialog cannot be dismissed manually. |
@@ -171,8 +192,9 @@ Subscribe on `StashNative.Instance`.
 | Event | When it fires |
 |-------|----------------|
 | **`OnDialogDismissed`** | Card or modal was dismissed by the user. |
-| **`OnPaymentSuccess`** | Payment completed successfully in the in-app UI. |
+| **`OnPaymentSuccess`** | Payment completed successfully in the in-app UI. Argument: optional order string from checkout (may be empty). |
 | **`OnPaymentFailure`** | Payment failed in the in-app UI. |
+| **`OnExternalPayment`** | Checkout opened an external URL (e.g. GPay, Klarna, crypto). Finalize via deeplink; same flow as described in [stash-native callbacks](https://github.com/stashgg/stash-native/blob/main/README.md). |
 | **`OnOptinResponse`** | Opt-in / channel selection response (e.g. `"stash_pay"`, `"native_iap"`). |
 | **`OnPageLoaded`** | Page finished loading (argument: load time in ms). |
 | **`OnNetworkError`** | Page load failed (no connection, HTTP error, timeout). |
@@ -198,6 +220,7 @@ Optional per-call config for **`OpenCard`**. **`StashNativeCardConfig.Default`**
 | **`tabletHeightRatioPortrait`** | `0.5f` | Tablet height portrait. |
 | **`tabletWidthRatioLandscape`** | `0.3f` | Tablet width landscape. |
 | **`tabletHeightRatioLandscape`** | `0.6f` | Tablet height landscape. |
+| **`backgroundColor`** | `null` | Optional shell color (`#RGB`, `#RRGGBB`, `#AARRGGBB`). Omit for the default Stash light/dark theme. |
 
 #### `StashNativeModalConfig` (struct)
 
@@ -205,9 +228,19 @@ Optional per-call config for **`OpenModal`**. **`StashNativeModalConfig.Default`
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| **`showDragBar`** | `true` | Show drag bar. |
-| **`allowDismiss`** | `true` | User can dismiss. |
+| **`allowDismiss`** | `true` | User can dismiss (tap outside / gestures per native SDK). |
 | **`phoneWidthRatioPortrait`** … **`tabletHeightRatioLandscape`** | (see struct) | Size ratios 0.1–1.0. |
+| **`backgroundColor`** | `null` | Optional shell color; omit for default Stash theme. |
+
+#### `StashNativeKeepAliveConfig` (struct)
+
+Used with **`SetKeepAliveConfig`** on **Android** only.
+
+| Field | Description |
+|-------|-------------|
+| **`notificationTitle`** | Notification title. |
+| **`notificationText`** | Notification body. |
+| **`notificationIconResId`** | Android drawable resource id, or **`0`** for the library default icon. |
 
 
 ## Unity Editor Simulator
@@ -257,6 +290,23 @@ The Unity bridge expects the StashNative AAR to expose `StashNative` and related
 
 Ensure internet permission in your AndroidManifest.xml.
 
+### [Android] Crash when enabling keep-alive: `NoSuchMethodError` on `ServiceCompat.startForeground`
+
+The Stash Native foreground service uses **`ServiceCompat.startForeground(Service, int, Notification, int)`** (foreground service type). That overload exists only in **newer AndroidX Core** artifacts. Unity builds often end up with **`androidx.core:core:1.2.0`** (or similar) from old transitive dependencies, so the class loads but the method is missing and the app crashes on the main thread.
+
+**Fix:** Force a modern Core into the app (pick **1.12.0** or newer, e.g. **1.13.1**):
+
+1. Enable **Custom Main Gradle Template** (same as in the Custom Tabs section below) so you have `Assets/Plugins/Android/mainTemplate.gradle`.
+2. Inside the `dependencies { }` block, **before** the `**DEPS**` line, add:
+
+```gradle
+    implementation 'androidx.core:core:1.13.1'
+```
+
+3. If you use **External Dependency Manager (EDM)**, add `androidx.core:core:1.13.1` to your Android dependencies (or a `*Dependencies.xml` file) and run **Assets → External Dependency Manager → Android Resolver → Force Resolve** so the old `androidx.core.core-1.2.0.aar` in `Assets/Plugins/Android` is replaced.
+
+Rebuild the APK and confirm the merged libraries no longer ship an ancient `core` only.
+
 ### [Android] System browser used instead of in-app Chrome Custom Tabs
 
 When using browser mode, some Unity projects launch Chrome Custom Tabs while others fall back to a system browser window. (This may be due to differences in Android dependencies between Unity versions.) While both flows are valid, Chrome Custom Tabs generally provide a superior experience. If you notice your app is not using Chrome Custom Tabs, you can resolve this by including the [AndroidX Browser library (`androidx.browser:browser`)](https://developer.android.com/jetpack/androidx/releases/browser), which supports [Android Custom Tabs](https://developer.android.com/develop/ui/views/layout/webapps/overview-of-android-custom-tabs).
@@ -270,12 +320,14 @@ When using browser mode, some Unity projects launch Chrome Custom Tabs while oth
 
 2. **Add the dependency** to `Assets/Plugins/Android/mainTemplate.gradle`:
    - Open the file and find the `dependencies` block
-   - Add: `implementation 'androidx.browser:browser:1.9.0'`
+   - Add: `implementation 'androidx.browser:browser:1.7.0'` (or newer, e.g. `1.9.0`)
 
-Example:
+Example (Custom Tabs + recommended Core for keep-alive):
+
 ```gradle
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation 'androidx.core:core:1.13.1'
     implementation 'androidx.browser:browser:1.9.0'
 **DEPS**}
 ```

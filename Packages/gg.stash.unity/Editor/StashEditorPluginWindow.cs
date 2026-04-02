@@ -244,7 +244,7 @@ namespace Stash.Editor
         {
             Debug.Log("[StashNative Editor] Payment Success callback received");
             if (StashNative.Instance != null)
-                StashNative.Instance.OnEditorPaymentSuccess();
+                StashNative.Instance.OnEditorPaymentSuccess("");
             CloseEditorWindow();
         }
 

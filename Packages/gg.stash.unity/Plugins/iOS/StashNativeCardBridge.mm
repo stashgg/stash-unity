@@ -30,8 +30,8 @@ static void SendToUnity(const char* method, const char* msg) {
 
 @implementation StashNativeUnityDelegate
 
-- (void)stashNativeCardDidCompletePayment {
-    SendToUnity("OnIOSPaymentSuccess", "");
+- (void)stashNativeCardDidCompletePaymentWithOrder:(NSString *)order {
+    SendToUnity("OnIOSPaymentSuccess", order ? [order UTF8String] : "");
 }
 
 - (void)stashNativeCardDidFailPayment {
@@ -54,6 +54,10 @@ static void SendToUnity(const char* method, const char* msg) {
     SendToUnity("OnIOSNetworkError", "");
 }
 
+- (void)stashNativeCardDidRequestExternalPaymentWithURL:(NSString *)url {
+    SendToUnity("OnIOSExternalPayment", url ? [url UTF8String] : "");
+}
+
 @end
 
 static StashNativeUnityDelegate* s_delegate;
@@ -64,6 +68,11 @@ static void EnsureDelegate(void) {
     s_delegate = [[StashNativeUnityDelegate alloc] init];
     [StashNativeCard sharedInstance].delegate = s_delegate;
     s_delegateSet = YES;
+}
+
+static NSString* NSStringFromNullableUTF8(const char* utf8) {
+    if (utf8 == NULL || utf8[0] == '\0') return nil;
+    return [NSString stringWithUTF8String:utf8];
 }
 
 #endif
@@ -83,7 +92,8 @@ void _StashNativeCardBridgeOpenCardWithConfig(const char* url,
     bool forcePortrait,
     float cardHeightRatioPortrait, float cardWidthRatioLandscape, float cardHeightRatioLandscape,
     float tabletWidthRatioPortrait, float tabletHeightRatioPortrait,
-    float tabletWidthRatioLandscape, float tabletHeightRatioLandscape) {
+    float tabletWidthRatioLandscape, float tabletHeightRatioLandscape,
+    const char* backgroundColorHex) {
 #if STASHNATIVE_AVAILABLE
     if (!url) return;
     EnsureDelegate();
@@ -97,6 +107,7 @@ void _StashNativeCardBridgeOpenCardWithConfig(const char* url,
     config.tabletHeightRatioPortrait = tabletHeightRatioPortrait;
     config.tabletWidthRatioLandscape = tabletWidthRatioLandscape;
     config.tabletHeightRatioLandscape = tabletHeightRatioLandscape;
+    config.backgroundColor = NSStringFromNullableUTF8(backgroundColorHex);
     [[StashNativeCard sharedInstance] openCardWithURL:nsUrl config:config];
 #endif
 }
@@ -111,15 +122,15 @@ void _StashNativeCardBridgeOpenModal(const char* url) {
 }
 
 void _StashNativeCardBridgeOpenModalWithConfig(const char* url,
-    bool showDragBar, bool allowDismiss,
+    bool allowDismiss,
     float phoneWPortrait, float phoneHPortrait, float phoneWLandscape, float phoneHLandscape,
-    float tabletWPortrait, float tabletHPortrait, float tabletWLandscape, float tabletHLandscape) {
+    float tabletWPortrait, float tabletHPortrait, float tabletWLandscape, float tabletHLandscape,
+    const char* backgroundColorHex) {
 #if STASHNATIVE_AVAILABLE
     if (!url) return;
     EnsureDelegate();
     NSString* nsUrl = [NSString stringWithUTF8String:url];
     StashNativeModalConfig* config = [[StashNativeModalConfig alloc] init];
-    config.showDragBar = showDragBar;
     config.allowDismiss = allowDismiss;
     config.phoneWidthRatioPortrait = phoneWPortrait;
     config.phoneHeightRatioPortrait = phoneHPortrait;
@@ -129,6 +140,7 @@ void _StashNativeCardBridgeOpenModalWithConfig(const char* url,
     config.tabletHeightRatioPortrait = tabletHPortrait;
     config.tabletWidthRatioLandscape = tabletWLandscape;
     config.tabletHeightRatioLandscape = tabletHLandscape;
+    config.backgroundColor = NSStringFromNullableUTF8(backgroundColorHex);
     [[StashNativeCard sharedInstance] openModalWithURL:nsUrl config:config];
 #endif
 }
