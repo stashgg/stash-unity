@@ -4,6 +4,23 @@ All notable changes to this package will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+
+## [2.1.3] - 2026-04-09
+
+### Fixed
+
+- Unity warning “A meta data file (.meta) exists but its folder 'Packages/gg.stash.unity/Samples~' can't be found”: `package.json` declared a sample at `Samples~/StashSample`, but that folder was not in the repository (only `Samples~.meta` was). Added the missing `Samples~/StashSample` assets so the folder exists in version control and Package Manager sample import works.
+
+### Changed
+
+- Removed root `Samples~.meta`. Unity does not import assets under paths containing `~`, so that meta made **Samples~** show up in the Project window as an empty folder even though the sample files exist on disk. **Window > Package Manager > Samples > Import** is still how you add the sample to `Assets/`; the files are not meant to appear under the embedded package tree.
+
+## [2.1.2] - 2026-04-09
+
+### Changed
+
+- Improved iOS forced rotation.
+
 ## [2.1.1] - 2026-04-02
 
 ### Changed

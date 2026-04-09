@@ -309,6 +309,34 @@ NS_ASSUME_NONNULL_BEGIN
  */
 - (void)dismissSafariViewControllerWithResult:(BOOL)success;
 
+/**
+ * When YES, the SDK will NOT automatically swizzle application:supportedInterfaceOrientationsForWindow:
+ * on the AppDelegate when forcePortrait is used. Set this to YES before the first openCard call only
+ * if you manage orientation unlocking yourself via +supportedInterfaceOrientationsForWindow:.
+ *
+ * Default: NO (auto-swizzle is enabled).
+ */
+@property (nonatomic, assign) BOOL disableAutoOrientationUnlock;
+
+/**
+ * Returns UIInterfaceOrientationMaskAll when the SDK's portrait card or browser window is the
+ * active window, 0 otherwise.
+ *
+ * Call this from application:supportedInterfaceOrientationsForWindow: in your AppDelegate only
+ * when disableAutoOrientationUnlock is YES and you want manual control.
+ *
+ * Example:
+ * @code
+ * - (UIInterfaceOrientationMask)application:(UIApplication *)app
+ *     supportedInterfaceOrientationsForWindow:(UIWindow *)window {
+ *     UIInterfaceOrientationMask stash = [StashNativeCard supportedInterfaceOrientationsForWindow:window];
+ *     if (stash) return stash;
+ *     return UIInterfaceOrientationMaskLandscape; // your default
+ * }
+ * @endcode
+ */
++ (UIInterfaceOrientationMask)supportedInterfaceOrientationsForWindow:(nullable UIWindow *)window;
+
 @end
 
 NS_ASSUME_NONNULL_END

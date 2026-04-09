@@ -14,7 +14,7 @@ public class StashSample : MonoBehaviour
     private void Awake()
     {
         StashNative.Instance.OnExternalPayment += url =>
-            SetStatus("External payment (finish in browser / other app): " + url);
+            SetStatus("External payment" + url);
     }
 
     [SerializeField] private Text statusText;

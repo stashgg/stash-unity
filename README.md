@@ -56,6 +56,8 @@ After adding the package, you can import the sample scene and scripts:
 3. Expand **Samples** and click **Import** next to **Stash Integration Sample**
 4. Input your test API key in `StashLinkGenerator.cs` (in the imported sample)
 
+Do not expect to browse the sample under **Packages** in the Project window: folders named **`Samples~`** are intentionally ignored by Unity’s importer (only **Import** copies them into your **Assets** folder).
+
 ## Sample / Demo
 
 - **iOS:** [Open in Appetize.io](https://appetize.io/app/b_eyszozcrmyt2zifoh5bjyiifha)
@@ -73,7 +75,7 @@ When installed via UPM, the package lives under `Packages/gg.stash.unity/` with 
 | **Editor/** | **(Optional)** Editor window for testing card/modal flows in the Unity Editor (Windows and macOS). |
 | **Plugins/Android/** | StashNative AAR and Unity bridge for Android. |
 | **Plugins/iOS/** | Unity bridge and StashNative.xcframework for iOS. |
-| **Samples~/StashSample/** | Optional sample scene and scripts; import via Package Manager (see Installation). |
+| **Samples~/StashSample/** | Optional sample (on disk only). Unity **does not list** files under `Samples~` in the Project window (the `~` path is excluded from import). Use **Package Manager → Samples → Import** to copy them into `Assets/`. |
 
 
 ##  Usage
