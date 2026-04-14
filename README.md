@@ -31,11 +31,12 @@ Add to your project's `Packages/manifest.json` under `dependencies`:
 
 ### Android: Optional Gradle dependencies
 
-Use your package manager or custom project gradle file to add following dependencies:
+Use your package manager or custom project Gradle file to add the following dependencies.
 
 | Dependency | Why add it |
 |------------|------------|
-| **`androidx.browser:browser`** (1.7.0 and up) | **`OpenBrowser()`** and some external browser flows uses Chrome Custom Tabs when this is on the classpath; otherwise Android may open the plain system browser. |
+| **`androidx.browser:browser`** (1.7.0 and up) | **`OpenBrowser()`** and some external browser flows use Chrome Custom Tabs when this is on the classpath; otherwise Android may open the plain system browser. |
+| **`androidx.core:core`** (1.12.0 and up) — **recommended** | Aligns Jetpack with current Stash Native behavior (broadcast receiver registration, foreground service helpers, and other `androidx.core` APIs). Unity projects that still resolve **very old** `androidx.core` (e.g. 1.2.x from legacy EDM trees) can hit **`NoSuchMethodError`** or subtle incompatibilities with other plugins. Pinning **`androidx.core:core`** to **1.12.0+** is not required by this package but is **recommended** for the most reliable Android experience. |
 
 **Steps (Custom Gradle Template):**
 
@@ -45,6 +46,17 @@ Use your package manager or custom project gradle file to add following dependen
 
 ```gradle
     implementation 'androidx.browser:browser:1.7.0'
+    implementation 'androidx.core:core:1.12.0'
+```
+
+If other plugins pull an older `androidx.core`, you can add a resolution strategy so the newer version wins (example only—adjust to match your Gradle setup):
+
+```gradle
+configurations.all {
+    resolutionStrategy {
+        force 'androidx.core:core:1.12.0'
+    }
+}
 ```
 
 ### Import sample (optional)
@@ -118,10 +130,51 @@ public class MyStore : MonoBehaviour
 }
 ```
 
-**Note for landscape-locked games:** If your Unity game is locked to landscape orientation (`defaultScreenOrientation: 4`), set `config.forcePortrait = true` to ensure checkout displays in portrait mode. Portrait orientation must be enabled in Unity Player Settings (iOS: `allowedAutorotateToPortrait: 1`) for this to work.
+### Force portrait card in landscape games
 
-All callbacks and config are optional; you can pass only the ones you need or use the global events instead. See the API reference below for more details about configuration options.
+Use **`StashNativeCardConfig.forcePortrait = true`** when your game is locked to landscape but you want the Stash card in portrait. For best experience, we recommend following adjustments:
 
+**Lock Unity screen orientation while the potrait card is presented.** We recommend temporarily locking rotation in the Unity player for the duration of the card, then restoring every autorotation flag and the previous **`Screen.orientation`** in your dismiss, success, and failure paths. That way the game does not keep autorotating behind the potrait card, which can sometime cause keyboard focus or layout glitches.
+
+```csharp
+// To lock the orientation while the card is open, save current orientation settings, apply lock, and restore after:
+// Example:
+var savedOrientation = Screen.orientation;
+// ...save all autorotate states as needed...
+
+// Lock orientation to rotation used at the time card will be presented.
+Screen.orientation = ScreenOrientation.LandscapeLeft;
+
+// Restore all previous orientation/autorotate settings inside each callback:
+StashNative.Instance.OpenCard(
+    checkoutUrl,
+    dismissCallback: () => { /* Restore orientation here */ },
+    successCallback: _ => { /* Restore orientation here */ },
+    failureCallback: () => { /* Restore orientation here */ },
+    config: config);
+```
+
+**Android: backdrop for landscape-only builds.** With **`forcePortrait`**, checkout runs in a portrait activity while Unity may still be landscape-only; the Unity surface can look black or distorted during the transition (This is Android OS behaviour). You can, optionally capture the current frame and pass it to the SDK **before** **`OpenCard`** so it is shown as a full-screen backdrop behind the dim overlay (JPEG bytes). The SDK consumes the buffer; you do not need to free it on the native side.
+
+```csharp
+#if UNITY_ANDROID && !UNITY_EDITOR
+yield return new WaitForEndOfFrame();
+var snap = new Texture2D(Screen.width, Screen.height, TextureFormat.RGB24, false);
+snap.ReadPixels(new Rect(0, 0, Screen.width, Screen.height), 0, 0);
+snap.Apply();
+byte[] imageBytes = snap.EncodeToPNG(); // or ImageConversion.EncodeToJPG(snap, 75)
+Destroy(snap);
+
+using (var stashCard = new AndroidJavaClass("com.stash.stashnative.StashNativeCard"))
+{
+    stashCard.CallStatic("setBackdropBytes", (object)imageBytes);
+}
+#endif
+
+StashNative.Instance.OpenCard(/* … */);
+```
+
+After the flow ends, call **`setBackdropBytes(null)`** on Android if you use a backdrop, so a stale image is not reused. If Unity logs JNI warnings about **`byte[]`**, convert to **`sbyte[]`** when calling **`setBackdropBytes`** (see **`Assets/StashSample.cs`** in this repo).
 
 ### OpenModal()
 

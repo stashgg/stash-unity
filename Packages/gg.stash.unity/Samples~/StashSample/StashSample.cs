@@ -38,8 +38,10 @@ public class StashSample : MonoBehaviour
         // config.tabletHeightRatioPortrait = 0.45f;
         // config.tabletWidthRatioLandscape = 0.25f;
         // config.tabletHeightRatioLandscape = 0.5f;
-        // If your game is locked to landscape, uncomment this to force portrait for checkout:
         // config.forcePortrait = true;
+
+        // Important Note for forcePortrait:
+        // Please read the README for more details: https://github.com/stashgg/stash-unity/blob/main/README.md#forceportrait
 
         StashNative.Instance.OpenCard(TEST_URL,
             () => SetStatus("Dismissed"),

@@ -1,3 +1,5 @@
+using System;
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using Stash.Native;
@@ -20,6 +22,28 @@ public class StashSample : MonoBehaviour
     [SerializeField] private Text statusText;
     [SerializeField] private StashLinkGenerator linkGenerator;
 
+#if UNITY_ANDROID && !UNITY_EDITOR
+    private bool _androidBackdropSet;
+
+    private static sbyte[] UnsignedBytesToSignedBytes(byte[] bytes)
+    {
+        var signed = new sbyte[bytes.Length];
+        Buffer.BlockCopy(bytes, 0, signed, 0, bytes.Length);
+        return signed;
+    }
+
+    private void ClearAndroidCardBackdropIfSet()
+    {
+        if (!_androidBackdropSet)
+            return;
+        _androidBackdropSet = false;
+        using (var cls = new AndroidJavaClass("com.stash.stashnative.StashNativeCard"))
+        {
+            cls.CallStatic("setBackdropBytes", (object)null);
+        }
+    }
+#endif
+
     private void SetStatus(string message)
     {
         if (statusText != null) statusText.text = message;
@@ -29,6 +53,26 @@ public class StashSample : MonoBehaviour
     /// <summary>Open card with custom StashNativeCardConfig. Ideal for Stash Pay payment links and pre-authenticated webshop links.</summary>
     public void OpenCard()
     {
+        StartCoroutine(OpenCardRoutine());
+    }
+
+    private IEnumerator OpenCardRoutine()
+    {
+#if UNITY_ANDROID && !UNITY_EDITOR
+        yield return new WaitForEndOfFrame();
+        var tex = new Texture2D(Screen.width, Screen.height, TextureFormat.RGB24, false);
+        tex.ReadPixels(new Rect(0, 0, Screen.width, Screen.height), 0, 0);
+        tex.Apply();
+        byte[] jpg = ImageConversion.EncodeToJPG(tex, 75); // quality = 75 (adjust as needed)
+        Destroy(tex);
+        using (var cls = new AndroidJavaClass("com.stash.stashnative.StashNativeCard"))
+        {
+            // Pass sbyte[] so Unity does not use obsolete Byte[] JNI conversion (logcat warnings).
+            cls.CallStatic("setBackdropBytes", (object)UnsignedBytesToSignedBytes(jpg));
+        }
+        _androidBackdropSet = true;
+#endif
+
         var config = StashNativeCardConfig.Default;
         // Configure sizing and orientation as desired, or use the default values:
         // config.cardHeightRatioPortrait = 0.85f;
@@ -39,14 +83,33 @@ public class StashSample : MonoBehaviour
         // config.tabletWidthRatioLandscape = 0.25f;
         // config.tabletHeightRatioLandscape = 0.5f;
         // If your game is locked to landscape, uncomment this to force portrait for checkout:
-        // config.forcePortrait = true;
+        config.forcePortrait = true;
+
+        // If your game support multiple orientations, we recommend to store the current orientation and
+        // restore it after the checkout is dismissed. Otherwise, the game can rotate behind the card.
+        var orientation = Screen.orientation;
+
+        void RestoreOrientation()
+        {
+            //Screen.orientation = orientation;
+        }
+
+        void OnCardFlowEnded(string message)
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            ClearAndroidCardBackdropIfSet();
+#endif
+            //RestoreOrientation();
+            SetStatus(message);
+        }
 
         StashNative.Instance.OpenCard(TEST_URL,
-            () => SetStatus("Dismissed"),
-            _ => SetStatus("Success"),
-            () => SetStatus("Failure"),
+            () => OnCardFlowEnded("Dismissed"),
+            _ => OnCardFlowEnded("Success"),
+            () => OnCardFlowEnded("Failure"),
             config);
 
+        yield break;
     }
 
     /// <summary>Open modal with custom StashNativeModalConfig. Ideal for channel selection urls or as an alternative Stash Pay checkout style.</summary>

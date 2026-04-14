@@ -239,8 +239,8 @@ namespace Stash.Native
         /// <summary>Android only. Enables the short foreground keep-alive service during external browser flows.</summary>
         /// <remarks>
         /// The native SDK calls <c>ServiceCompat.startForeground(Service, id, Notification, foregroundServiceType)</c>.
-        /// If the merged APK uses an old <c>androidx.core:core</c> (Unity/EDM often pulls 1.2.x), you will get <c>NoSuchMethodError</c>.
-        /// Pin <c>androidx.core:core</c> to 1.12.0 or newer (see repo README troubleshooting).
+        /// Recommended: resolve <c>androidx.core:core</c> to 1.12.0 or newer (see README, Android Gradle) so Jetpack stays aligned with other SDKs;
+        /// very old <c>androidx.core</c> can still cause runtime issues on some devices.
         /// </remarks>
         public void SetKeepAliveEnabled(bool enabled)
         {
