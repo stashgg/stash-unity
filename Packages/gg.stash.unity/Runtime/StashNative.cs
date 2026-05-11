@@ -137,6 +137,8 @@ namespace Stash.Native
         public event Action OnNetworkError;
         /// <summary>Fired when checkout continues outside the app (e.g. GPay, Klarna, crypto); finalize via deeplink.</summary>
         public event Action<string> OnExternalPayment;
+        /// <summary>Fired when the external browser (Chrome Custom Tabs / SFSafariViewController) is closed after <see cref="OpenBrowser"/> or an external payment redirect.</summary>
+        public event Action OnBrowserClosed;
         public event Action<string, Exception> OnNativeException;
 
         private Action _currentDismissCallback;
@@ -199,6 +201,8 @@ namespace Stash.Native
                 OnPageLoaded?.Invoke(loadTime);
         }
 
+        public void OnAndroidBrowserClosed(string message) => OnBrowserClosed?.Invoke();
+
 #elif UNITY_IOS && !UNITY_EDITOR
         [DllImport("__Internal")] private static extern bool _StashNativeCardBridgeIsSDKAvailable();
         [DllImport("__Internal")] private static extern void _StashNativeCardBridgeOpenCard(string url);
@@ -225,6 +229,7 @@ namespace Stash.Native
         public void OnIOSOptinResponse(string optinType) => OnOptinResponse?.Invoke(optinType ?? "");
         public void OnIOSNetworkError() => OnNetworkError?.Invoke();
         public void OnIOSExternalPayment(string url) => OnExternalPayment?.Invoke(url ?? "");
+        public void OnIOSBrowserClosed() => OnBrowserClosed?.Invoke();
         public void OnIOSPageLoaded(string loadTimeMsStr)
         {
             if (double.TryParse(loadTimeMsStr, out double loadTime))

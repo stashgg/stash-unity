@@ -4,7 +4,7 @@
   <img src="https://github.com/stashgg/stash-native/raw/main/.github/assets/stash_unity.png" width="128" height="128" alt="Stash Unity Logo"/>
 </p>
 
-Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native) (embedded **Stash Native 2.1.1**), enabling native-feeling Stash Pay IAP checkout and webshop presentation directly inside your Unity game (Android/iOS).
+Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native) (embedded **Stash Native 2.1.4**), enabling native-feeling Stash Pay IAP checkout and webshop presentation directly inside your Unity game (Android/iOS).
 
 ## Requirements
 
@@ -199,12 +199,23 @@ All callbacks and config are optional; you can pass only the ones you need or us
 
 Opens the URL in the platform browser (Chrome Custom Tabs on Android, SFSafariViewController on iOS). Use when you need an alternative lightweight, system-native browser view.
 
-On iOS, `CloseBrowser()` dismisses the Safari view when your app regains focus; on Android it is a no-op as Chrome Custom tabs cant be dismissed by the app.
+On iOS, `CloseBrowser()` dismisses the Safari view when your app regains focus; on Android it is a no-op as Chrome Custom Tabs can't be dismissed by the app.
+
+Subscribe to **`OnBrowserClosed`** to be notified when the browser is dismissed (user taps Done on iOS, or returns to the app from Custom Tabs on Android):
 
 ```csharp
+StashNative.Instance.OnBrowserClosed += () => Debug.Log("Browser closed");
+
 StashNative.Instance.OpenBrowser(STASH_URL_TO_OPEN);
 // Later, on iOS only:
 StashNative.Instance.CloseBrowser();
+```
+
+**Android — reliable `OnBrowserClosed` with Chrome Custom Tabs (optional):** By default the SDK uses lifecycle-based detection. For more reliable delivery when Custom Tabs use `startActivityForResult`, extend `StashNativeUnityActivity` instead of `UnityPlayerActivity` in your project's `AndroidManifest.xml`:
+
+```xml
+<!-- Assets/Plugins/Android/AndroidManifest.xml -->
+<activity android:name="com.stash.popup.StashNativeUnityActivity" ...>
 ```
 
 ### Android keep-alive (optional)
@@ -266,6 +277,7 @@ Subscribe on `StashNative.Instance`.
 | **`OnPaymentSuccess`** | Payment completed successfully in the in-app UI. Argument: optional order string from checkout (may be empty). |
 | **`OnPaymentFailure`** | Payment failed in the in-app UI. |
 | **`OnExternalPayment`** | Checkout opened an external URL (e.g. GPay, Klarna, crypto). Finalize via deeplink; same flow as described in [stash-native callbacks](https://github.com/stashgg/stash-native/blob/main/README.md). |
+| **`OnBrowserClosed`** | The external browser (Chrome Custom Tabs / SFSafariViewController) was closed after `OpenBrowser` or an external payment redirect. |
 | **`OnOptinResponse`** | Opt-in / channel selection response (e.g. `"stash_pay"`, `"native_iap"`). |
 | **`OnPageLoaded`** | Page finished loading (argument: load time in ms). |
 | **`OnNetworkError`** | Page load failed (no connection, HTTP error, timeout). |

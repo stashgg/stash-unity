@@ -183,6 +183,12 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)stashNativeCardDidRequestExternalPaymentWithURL:(NSString *)url
     NS_SWIFT_NAME(stashNativeCardDidRequestExternalPayment(with:));
 
+/**
+ * Called when \c SFSafariViewController is dismissed after \c -openBrowserWithURL: or external
+ * payment (same browser path), either by the user (Done) or programmatically via \c -closeBrowser.
+ */
+- (void)stashNativeCardDidCloseBrowser;
+
 @end
 
 /**
@@ -230,7 +236,7 @@ NS_ASSUME_NONNULL_BEGIN
 + (instancetype)sharedInstance;
 
 /**
- * Returns the SDK version string (e.g. "2.1.3").
+ * Returns the SDK version string (e.g. "2.1.4").
  */
 + (NSString *)sdkVersion;
 
@@ -300,7 +306,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  * Opens a URL in SFSafariViewController (platform browser).
- * No callbacks or configuration - simple browser presentation.
+ * Optional \c stashNativeCardDidCloseBrowser when the Safari view is dismissed.
  *
  * @param url The URL to open in the browser
  */

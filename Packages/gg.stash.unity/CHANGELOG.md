@@ -5,6 +5,14 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [2.1.4] - 2026-05-12
+
+### Added
+
+- **Embedded Stash Native SDK [2.1.4](https://github.com/stashgg/stash-native/releases/tag/2.1.4)** (`StashNative-2.1.4.aar`, `StashNative.xcframework`).
+- **`OnBrowserClosed`** (`Action`): fires when the external browser (Chrome Custom Tabs on Android / `SFSafariViewController` on iOS) is closed after `OpenBrowser` or an external payment redirect.
+- **Android**: `StashNativeUnityActivity` — optional drop-in replacement for `UnityPlayerActivity` that forwards `onActivityResult` to the SDK, giving more reliable `OnBrowserClosed` delivery for Chrome Custom Tabs. Opt in by setting `android:name="com.stash.popup.StashNativeUnityActivity"` in your project's `AndroidManifest.xml`. The `ACTION_VIEW` fallback still uses lifecycle-based detection and works without it.
+
 ## [2.1.3] - 2026-04-09
 
 ### Fixed

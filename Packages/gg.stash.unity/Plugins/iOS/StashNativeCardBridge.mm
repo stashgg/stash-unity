@@ -58,6 +58,10 @@ static void SendToUnity(const char* method, const char* msg) {
     SendToUnity("OnIOSExternalPayment", url ? [url UTF8String] : "");
 }
 
+- (void)stashNativeCardDidCloseBrowser {
+    SendToUnity("OnIOSBrowserClosed", "");
+}
+
 @end
 
 static StashNativeUnityDelegate* s_delegate;
