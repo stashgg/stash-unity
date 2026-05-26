@@ -4,7 +4,7 @@
   <img src="https://github.com/stashgg/stash-native/raw/main/.github/assets/stash_unity.png" width="128" height="128" alt="Stash Unity Logo"/>
 </p>
 
-Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native) (embedded **Stash Native 2.1.4**), enabling native-feeling Stash Pay IAP checkout and webshop presentation directly inside your Unity game (Android/iOS).
+Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native) (embedded **Stash Native 2.2.0**), enabling native-feeling Stash Pay IAP checkout and webshop presentation directly inside your Unity game (Android/iOS).
 
 ## Requirements
 
@@ -209,14 +209,16 @@ StashNative.Instance.CloseBrowser();
 
 ### OnBrowserClosed Callback
 
-Fires when the external browser closes (Chrome Custom Tabs on Android, `SFSafariViewController` on iOS). 
+Fires when the external browser closes (Chrome Custom Tabs on Android, `SFSafariViewController` on iOS):
 
 - after a direct `OpenBrowser()` call, and
-- after an external payment redirect from `OpenCard()` / `OpenModal()`
+- after an external payment redirect from `OpenCard()` / `OpenModal()`.
 
 ```csharp
 StashNative.Instance.OnBrowserClosed += () => Debug.Log("Browser closed");
 ```
+
+Works out of the box on both platforms — no `AndroidManifest.xml` edits or activity subclassing required. The Android SDK owns the Custom Tabs result lifecycle internally via an invisible proxy activity that's auto-merged into your app from the bundled AAR.
 
 ### Android keep-alive (optional)
 

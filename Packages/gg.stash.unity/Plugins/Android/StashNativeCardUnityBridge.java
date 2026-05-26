@@ -92,16 +92,6 @@ public class StashNativeCardUnityBridge implements com.stash.stashnative.StashNa
         sendMessage("OnAndroidBrowserClosed", "");
     }
 
-    public boolean onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
-        if (stashNativeCard == null) return false;
-        try {
-            return stashNativeCard.onActivityResult(requestCode, resultCode, data);
-        } catch (Throwable t) {
-            Log.e(TAG, "onActivityResult failed: " + t.getMessage());
-            return false;
-        }
-    }
-
     public void setActivity(Activity activity) {
         if (stashNativeCard != null && activity != null) {
             stashNativeCard.setActivity(activity);

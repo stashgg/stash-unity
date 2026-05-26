@@ -18,7 +18,7 @@ public class StashSample : MonoBehaviour
         StashNative.Instance.OnExternalPayment += url =>
             SetStatus("External payment" + url);
 
-        StashNative.Instance.OnBrowserClosed += () =>
+        StashNative.Instance.OnBrowserClosed += () => 
             SetStatus("Browser closed");    
     }
 
@@ -50,7 +50,7 @@ public class StashSample : MonoBehaviour
     private void SetStatus(string message)
     {
         if (statusText != null) statusText.text = message;
-        Debug.Log(message);
+        Debug.Log("[Stash Callback] " + message);
     }
 
     /// <summary>Open card with custom StashNativeCardConfig. Ideal for Stash Pay payment links and pre-authenticated webshop links.</summary>

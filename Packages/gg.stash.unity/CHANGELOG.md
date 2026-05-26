@@ -5,6 +5,22 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [2.2.0] - 2026-05-26
+
+### Changed
+
+- **Embedded Stash Native SDK [2.2.0](https://github.com/stashgg/stash-native/releases/tag/2.2.0)** (`StashNative-2.2.0.aar`, `StashNative.xcframework`).
+- **Android**: `OnBrowserClosed` now fires out of the box with the default `UnityPlayerActivity` — no `AndroidManifest.xml` edits required. The SDK now owns the Chrome Custom Tabs `startActivityForResult` lifecycle internally via an invisible proxy activity (`StashNativeBrowserProxyActivity`, declared in the AAR manifest and auto-merged into your app). The `ACTION_VIEW` fallback (when `androidx.browser` is not on the classpath) continues to use lifecycle-based detection.
+
+### Removed
+
+- **Android (breaking)**: `StashNativeUnityActivity` — the optional `UnityPlayerActivity` subclass introduced in 2.1.4 is no longer needed and has been removed. If you previously opted in by setting `android:name="com.stash.popup.StashNativeUnityActivity"` in your project's `AndroidManifest.xml`, revert that to `com.unity3d.player.UnityPlayerActivity` (or your own activity).
+- **Android (breaking)**: `StashNativeCardUnityBridge.onActivityResult(...)` — the upstream `StashNativeCard.onActivityResult` and `REQUEST_CODE_CUSTOM_TAB` symbols no longer exist in stash-native 2.2.0; the bridge no longer exposes a forwarder. If your project forwards `onActivityResult` to the bridge from a custom activity, remove that call.
+
+### iOS
+
+- xcframework bumped to 2.2.0; no API changes.
+
 ## [2.1.4] - 2026-05-12
 
 ### Added
