@@ -201,22 +201,24 @@ Opens the URL in the platform browser (Chrome Custom Tabs on Android, SFSafariVi
 
 On iOS, `CloseBrowser()` dismisses the Safari view when your app regains focus; on Android it is a no-op as Chrome Custom Tabs can't be dismissed by the app.
 
-Subscribe to **`OnBrowserClosed`** to be notified when the browser is dismissed (user taps Done on iOS, or returns to the app from Custom Tabs on Android):
-
 ```csharp
-StashNative.Instance.OnBrowserClosed += () => Debug.Log("Browser closed");
-
 StashNative.Instance.OpenBrowser(STASH_URL_TO_OPEN);
 // Later, on iOS only:
 StashNative.Instance.CloseBrowser();
 ```
 
-**Android — reliable `OnBrowserClosed` with Chrome Custom Tabs (optional):** By default the SDK uses lifecycle-based detection. For more reliable delivery when Custom Tabs use `startActivityForResult`, extend `StashNativeUnityActivity` instead of `UnityPlayerActivity` in your project's `AndroidManifest.xml`:
+### OnBrowserClosed Callback
 
-```xml
-<!-- Assets/Plugins/Android/AndroidManifest.xml -->
-<activity android:name="com.stash.popup.StashNativeUnityActivity" ...>
+Fires when the external browser closes (Chrome Custom Tabs on Android, `SFSafariViewController` on iOS). 
+
+- after a direct `OpenBrowser()` call, and
+- after an external payment redirect from `OpenCard()` / `OpenModal()`
+
+```csharp
+StashNative.Instance.OnBrowserClosed += () => Debug.Log("Browser closed");
 ```
+
+> **Android note:** `OnBrowserClosed` requires `com.stash.popup.StashNativeUnityActivity` as the launcher; the package auto-patches your manifest at build time. If you don't subscribe to `OnBrowserClosed` (and don't use external payments from card/modal), add `STASH_DISABLE_ACTIVITY_PATCH` to your Scripting Define Symbols to skip the patch.
 
 ### Android keep-alive (optional)
 

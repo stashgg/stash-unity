@@ -5,6 +5,12 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [2.1.5] - 2026-05-26
+
+### Fixed
+
+- **Android**: `OnBrowserClosed` now fires reliably in Unity when Chrome Custom Tabs close. An Editor build hook auto-installs `StashNativeUnityActivity` as the launcher activity in the generated `AndroidManifest.xml`, so no manual manifest edit is needed. Users with a custom launcher activity should extend `com.stash.popup.StashNativeUnityActivity` instead of `UnityPlayerActivity`; a build-time warning is logged in that case. Define `STASH_DISABLE_ACTIVITY_PATCH` to opt out of the auto-patch.
+
 ## [2.1.4] - 2026-05-12
 
 ### Added

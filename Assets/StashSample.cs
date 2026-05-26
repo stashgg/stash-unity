@@ -17,6 +17,9 @@ public class StashSample : MonoBehaviour
     {
         StashNative.Instance.OnExternalPayment += url =>
             SetStatus("External payment" + url);
+
+        StashNative.Instance.OnBrowserClosed += () =>
+            SetStatus("Browser closed");    
     }
 
     [SerializeField] private Text statusText;
