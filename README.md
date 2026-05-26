@@ -218,8 +218,6 @@ Fires when the external browser closes (Chrome Custom Tabs on Android, `SFSafari
 StashNative.Instance.OnBrowserClosed += () => Debug.Log("Browser closed");
 ```
 
-> **Android note:** `OnBrowserClosed` requires `com.stash.popup.StashNativeUnityActivity` as the launcher; the package auto-patches your manifest at build time. If you don't subscribe to `OnBrowserClosed` (and don't use external payments from card/modal), add `STASH_DISABLE_ACTIVITY_PATCH` to your Scripting Define Symbols to skip the patch.
-
 ### Android keep-alive (optional)
 
 Android may kill or suspend your game during external payments in Chrome Custom Tabs or the browser, especially on low-memory devices. To prevent this, you can enable Stash's optional keep-alive foreground service (off by default). This service will automaticaly spawn when browser opens and unload when user returns to the game. See the [stash-native README](https://github.com/stashgg/stash-native/blob/main/README.md) for manifest and permission details. Enable it like this:
