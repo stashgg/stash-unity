@@ -87,6 +87,7 @@ public class StashSample : MonoBehaviour
         // config.tabletHeightRatioLandscape = 0.5f;
         // If your game is locked to landscape, uncomment this to force portrait for checkout:
         config.forcePortrait = true;
+        config.autoClose = false; // Keep the card open after the payment callback (default true).
 
         // If your game support multiple orientations, we recommend to store the current orientation and
         // restore it after the checkout is dismissed. Otherwise, the game can rotate behind the card.

@@ -137,7 +137,7 @@ public class StashNativeCardUnityBridge implements com.stash.stashnative.StashNa
             float cardHeightRatioPortrait, float cardWidthRatioLandscape, float cardHeightRatioLandscape,
             float tabletWidthRatioPortrait, float tabletHeightRatioPortrait,
             float tabletWidthRatioLandscape, float tabletHeightRatioLandscape,
-            String backgroundColor) {
+            boolean autoClose, String backgroundColor) {
         if (stashNativeCard == null || url == null) return;
         ensureInit();
         try {
@@ -150,6 +150,7 @@ public class StashNativeCardUnityBridge implements com.stash.stashnative.StashNa
             config.tabletHeightRatioPortrait = tabletHeightRatioPortrait;
             config.tabletWidthRatioLandscape = tabletWidthRatioLandscape;
             config.tabletHeightRatioLandscape = tabletHeightRatioLandscape;
+            config.autoClose = autoClose;
             config.backgroundColor = backgroundColor;
             stashNativeCard.openCard(url, config);
         } catch (Throwable t) {
@@ -172,7 +173,7 @@ public class StashNativeCardUnityBridge implements com.stash.stashnative.StashNa
             float phoneWidthRatioLandscape, float phoneHeightRatioLandscape,
             float tabletWidthRatioPortrait, float tabletHeightRatioPortrait,
             float tabletWidthRatioLandscape, float tabletHeightRatioLandscape,
-            String backgroundColor) {
+            boolean autoClose, String backgroundColor) {
         if (stashNativeCard == null || url == null) return;
         ensureInit();
         try {
@@ -186,6 +187,7 @@ public class StashNativeCardUnityBridge implements com.stash.stashnative.StashNa
             config.tabletHeightRatioPortrait = tabletHeightRatioPortrait;
             config.tabletWidthRatioLandscape = tabletWidthRatioLandscape;
             config.tabletHeightRatioLandscape = tabletHeightRatioLandscape;
+            config.autoClose = autoClose;
             config.backgroundColor = backgroundColor;
             stashNativeCard.openModal(url, config);
         } catch (Throwable t) {

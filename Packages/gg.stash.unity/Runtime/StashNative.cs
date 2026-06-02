@@ -25,6 +25,8 @@ namespace Stash.Native
         public float tabletHeightRatioPortrait;
         public float tabletWidthRatioLandscape;
         public float tabletHeightRatioLandscape;
+        /// <summary>When false, the modal stays open after the payment success/failure callback (callbacks still fire) until closed by the page, user, or host. Default true.</summary>
+        public bool autoClose;
         /// <summary>Optional shell color (#RGB, #RRGGBB, #AARRGGBB). Null or empty uses the default Stash theme.</summary>
         public string backgroundColor;
 
@@ -39,6 +41,7 @@ namespace Stash.Native
             tabletHeightRatioPortrait = 0.3f,
             tabletWidthRatioLandscape = 0.3f,
             tabletHeightRatioLandscape = 0.4f,
+            autoClose = true,
             backgroundColor = null
         };
     }
@@ -53,6 +56,8 @@ namespace Stash.Native
         public float tabletHeightRatioPortrait;
         public float tabletWidthRatioLandscape;
         public float tabletHeightRatioLandscape;
+        /// <summary>When false, the card stays open after the payment success/failure callback (callbacks still fire) until closed by the page, user, or host. Default true.</summary>
+        public bool autoClose;
         /// <summary>Optional shell color (#RGB, #RRGGBB, #AARRGGBB). Null or empty uses the default Stash theme.</summary>
         public string backgroundColor;
 
@@ -66,6 +71,7 @@ namespace Stash.Native
             tabletHeightRatioPortrait = 0.5f,
             tabletWidthRatioLandscape = 0.3f,
             tabletHeightRatioLandscape = 0.6f,
+            autoClose = true,
             backgroundColor = null
         };
     }
@@ -141,6 +147,8 @@ namespace Stash.Native
         public event Action OnBrowserClosed;
         public event Action<string, Exception> OnNativeException;
 
+        // Per-call callbacks for the current presentation. Kept alive until the dialog is dismissed so that
+        // success/failure can fire more than once while a config has autoClose = false; cleared on dismiss.
         private Action _currentDismissCallback;
         private Action<string> _currentSuccessCallback;
         private Action _currentFailureCallback;
@@ -186,11 +194,10 @@ namespace Stash.Native
             var o = order ?? "";
             _currentSuccessCallback?.Invoke(o);
             OnPaymentSuccess?.Invoke(o);
-            _currentSuccessCallback = null;
         }
 
-        public void OnAndroidPaymentFailure(string message) { _currentFailureCallback?.Invoke(); OnPaymentFailure?.Invoke(); _currentFailureCallback = null; }
-        public void OnAndroidDialogDismissed(string message) { _currentDismissCallback?.Invoke(); OnDialogDismissed?.Invoke(); _currentDismissCallback = null; }
+        public void OnAndroidPaymentFailure(string message) { _currentFailureCallback?.Invoke(); OnPaymentFailure?.Invoke(); }
+        public void OnAndroidDialogDismissed(string message) { _currentDismissCallback?.Invoke(); OnDialogDismissed?.Invoke(); _currentDismissCallback = null; _currentSuccessCallback = null; _currentFailureCallback = null; }
         public void OnAndroidOptinResponse(string optinType) => OnOptinResponse?.Invoke(optinType ?? "");
         public void OnAndroidNetworkError(string message) => OnNetworkError?.Invoke();
         public void OnAndroidExternalPayment(string url) => OnExternalPayment?.Invoke(url ?? "");
@@ -206,9 +213,9 @@ namespace Stash.Native
 #elif UNITY_IOS && !UNITY_EDITOR
         [DllImport("__Internal")] private static extern bool _StashNativeCardBridgeIsSDKAvailable();
         [DllImport("__Internal")] private static extern void _StashNativeCardBridgeOpenCard(string url);
-        [DllImport("__Internal")] private static extern void _StashNativeCardBridgeOpenCardWithConfig(string url, bool forcePortrait, float cardHeightRatioPortrait, float cardWidthRatioLandscape, float cardHeightRatioLandscape, float tabletWidthRatioPortrait, float tabletHeightRatioPortrait, float tabletWidthRatioLandscape, float tabletHeightRatioLandscape, string backgroundColorHex);
+        [DllImport("__Internal")] private static extern void _StashNativeCardBridgeOpenCardWithConfig(string url, bool forcePortrait, float cardHeightRatioPortrait, float cardWidthRatioLandscape, float cardHeightRatioLandscape, float tabletWidthRatioPortrait, float tabletHeightRatioPortrait, float tabletWidthRatioLandscape, float tabletHeightRatioLandscape, bool autoClose, string backgroundColorHex);
         [DllImport("__Internal")] private static extern void _StashNativeCardBridgeOpenModal(string url);
-        [DllImport("__Internal")] private static extern void _StashNativeCardBridgeOpenModalWithConfig(string url, bool allowDismiss, float phoneWPortrait, float phoneHPortrait, float phoneWLandscape, float phoneHLandscape, float tabletWPortrait, float tabletHPortrait, float tabletWLandscape, float tabletHLandscape, string backgroundColorHex);
+        [DllImport("__Internal")] private static extern void _StashNativeCardBridgeOpenModalWithConfig(string url, bool allowDismiss, float phoneWPortrait, float phoneHPortrait, float phoneWLandscape, float phoneHLandscape, float tabletWPortrait, float tabletHPortrait, float tabletWLandscape, float tabletHLandscape, bool autoClose, string backgroundColorHex);
         [DllImport("__Internal")] private static extern void _StashNativeCardBridgeOpenBrowser(string url);
         [DllImport("__Internal")] private static extern void _StashNativeCardBridgeCloseBrowser();
         [DllImport("__Internal")] private static extern void _StashNativeCardBridgeDismiss();
@@ -221,11 +228,10 @@ namespace Stash.Native
             var o = order ?? "";
             _currentSuccessCallback?.Invoke(o);
             OnPaymentSuccess?.Invoke(o);
-            _currentSuccessCallback = null;
         }
 
-        public void OnIOSPaymentFailure() { _currentFailureCallback?.Invoke(); OnPaymentFailure?.Invoke(); _currentFailureCallback = null; }
-        public void OnIOSDialogDismissed() { _currentDismissCallback?.Invoke(); OnDialogDismissed?.Invoke(); _currentDismissCallback = null; }
+        public void OnIOSPaymentFailure() { _currentFailureCallback?.Invoke(); OnPaymentFailure?.Invoke(); }
+        public void OnIOSDialogDismissed() { _currentDismissCallback?.Invoke(); OnDialogDismissed?.Invoke(); _currentDismissCallback = null; _currentSuccessCallback = null; _currentFailureCallback = null; }
         public void OnIOSOptinResponse(string optinType) => OnOptinResponse?.Invoke(optinType ?? "");
         public void OnIOSNetworkError() => OnNetworkError?.Invoke();
         public void OnIOSExternalPayment(string url) => OnExternalPayment?.Invoke(url ?? "");
@@ -416,7 +422,7 @@ namespace Stash.Native
                             androidPluginInstance.Call("openModalWithConfig", url, c.allowDismiss,
                                 c.phoneWidthRatioPortrait, c.phoneHeightRatioPortrait, c.phoneWidthRatioLandscape, c.phoneHeightRatioLandscape,
                                 c.tabletWidthRatioPortrait, c.tabletHeightRatioPortrait, c.tabletWidthRatioLandscape, c.tabletHeightRatioLandscape,
-                                EffectiveBackgroundColor(c.backgroundColor));
+                                c.autoClose, EffectiveBackgroundColor(c.backgroundColor));
                         }
                         else
                             androidPluginInstance.Call("openModal", url);
@@ -430,7 +436,7 @@ namespace Stash.Native
                                 Mathf.Clamp(c.cardHeightRatioPortrait, 0.1f, 1f), Mathf.Clamp(c.cardWidthRatioLandscape, 0.1f, 1f), Mathf.Clamp(c.cardHeightRatioLandscape, 0.1f, 1f),
                                 Mathf.Clamp(c.tabletWidthRatioPortrait, 0.1f, 1f), Mathf.Clamp(c.tabletHeightRatioPortrait, 0.1f, 1f),
                                 Mathf.Clamp(c.tabletWidthRatioLandscape, 0.1f, 1f), Mathf.Clamp(c.tabletHeightRatioLandscape, 0.1f, 1f),
-                                EffectiveBackgroundColor(c.backgroundColor));
+                                c.autoClose, EffectiveBackgroundColor(c.backgroundColor));
                         }
                         else
                             androidPluginInstance.Call("openCard", url);
@@ -461,7 +467,7 @@ namespace Stash.Native
                         _StashNativeCardBridgeOpenModalWithConfig(url, c.allowDismiss,
                             c.phoneWidthRatioPortrait, c.phoneHeightRatioPortrait, c.phoneWidthRatioLandscape, c.phoneHeightRatioLandscape,
                             c.tabletWidthRatioPortrait, c.tabletHeightRatioPortrait, c.tabletWidthRatioLandscape, c.tabletHeightRatioLandscape,
-                            EffectiveBackgroundColor(c.backgroundColor));
+                            c.autoClose, EffectiveBackgroundColor(c.backgroundColor));
                     }
                     else
                         _StashNativeCardBridgeOpenModal(url);
@@ -475,7 +481,7 @@ namespace Stash.Native
                             Mathf.Clamp(c.cardHeightRatioPortrait, 0.1f, 1f), Mathf.Clamp(c.cardWidthRatioLandscape, 0.1f, 1f), Mathf.Clamp(c.cardHeightRatioLandscape, 0.1f, 1f),
                             Mathf.Clamp(c.tabletWidthRatioPortrait, 0.1f, 1f), Mathf.Clamp(c.tabletHeightRatioPortrait, 0.1f, 1f),
                             Mathf.Clamp(c.tabletWidthRatioLandscape, 0.1f, 1f), Mathf.Clamp(c.tabletHeightRatioLandscape, 0.1f, 1f),
-                            EffectiveBackgroundColor(c.backgroundColor));
+                            c.autoClose, EffectiveBackgroundColor(c.backgroundColor));
                     }
                     else
                         _StashNativeCardBridgeOpenCard(url);
@@ -506,12 +512,11 @@ namespace Stash.Native
             var o = order ?? "";
             _currentSuccessCallback?.Invoke(o);
             OnPaymentSuccess?.Invoke(o);
-            _currentSuccessCallback = null;
         }
 
-        public void OnEditorPaymentFailure() { _currentFailureCallback?.Invoke(); OnPaymentFailure?.Invoke(); _currentFailureCallback = null; }
+        public void OnEditorPaymentFailure() { _currentFailureCallback?.Invoke(); OnPaymentFailure?.Invoke(); }
         public void OnEditorOptinResponse(string optinType) => OnOptinResponse?.Invoke(optinType ?? "");
-        public void OnEditorDismissCatalog() { _currentDismissCallback?.Invoke(); OnDialogDismissed?.Invoke(); _currentDismissCallback = null; }
+        public void OnEditorDismissCatalog() { _currentDismissCallback?.Invoke(); OnDialogDismissed?.Invoke(); _currentDismissCallback = null; _currentSuccessCallback = null; _currentFailureCallback = null; }
 
         private void OpenEditorTestWindow(string url, bool isModal)
         {

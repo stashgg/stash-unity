@@ -4,7 +4,7 @@
   <img src="https://github.com/stashgg/stash-native/raw/main/.github/assets/stash_unity.png" width="128" height="128" alt="Stash Unity Logo"/>
 </p>
 
-Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native) (embedded **Stash Native 2.2.0**), enabling native-feeling Stash Pay IAP checkout and webshop presentation directly inside your Unity game (Android/iOS).
+Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native) (embedded **Stash Native 2.2.1**), enabling native-feeling Stash Pay IAP checkout and webshop presentation directly inside your Unity game (Android/iOS).
 
 ## Requirements
 
@@ -305,6 +305,7 @@ Optional per-call config for **`OpenCard`**. **`StashNativeCardConfig.Default`**
 | **`tabletHeightRatioPortrait`** | `0.5f` | Tablet height portrait. |
 | **`tabletWidthRatioLandscape`** | `0.3f` | Tablet width landscape. |
 | **`tabletHeightRatioLandscape`** | `0.6f` | Tablet height landscape. |
+| **`autoClose`** | `true` | When `false`, the card stays open after the payment success/failure callback (callbacks still fire) until closed by the page, user, or host. |
 | **`backgroundColor`** | `null` | Optional shell color (`#RGB`, `#RRGGBB`, `#AARRGGBB`). Omit for the default Stash light/dark theme. |
 
 #### `StashNativeModalConfig` (struct)
@@ -315,6 +316,7 @@ Optional per-call config for **`OpenModal`**. **`StashNativeModalConfig.Default`
 |-------|---------|-------------|
 | **`allowDismiss`** | `true` | User can dismiss (tap outside / gestures per native SDK). |
 | **`phoneWidthRatioPortrait`** … **`tabletHeightRatioLandscape`** | (see struct) | Size ratios 0.1–1.0. |
+| **`autoClose`** | `true` | When `false`, the modal stays open after the payment success/failure callback (callbacks still fire) until closed by the page, user, or host. |
 | **`backgroundColor`** | `null` | Optional shell color; omit for default Stash theme. |
 
 #### `StashNativeKeepAliveConfig` (struct)

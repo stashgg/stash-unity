@@ -5,6 +5,17 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [2.2.1] - 2026-06-02
+
+### Added
+
+- **Embedded Stash Native SDK [2.2.1](https://github.com/stashgg/stash-native/releases/tag/2.2.1)** (`StashNative-2.2.1.aar`, `StashNative.xcframework`).
+- **`autoClose`** on **`StashNativeCardConfig`** and **`StashNativeModalConfig`** (`bool`, default `true`). When `false`, the card/modal stays open after the payment success/failure callback (callbacks still fire immediately) until closed by the page, user, or host.
+
+### Fixed
+
+- **Android**: card no longer shifts off-screen when the soft keyboard opens; it now resizes to keep the focused input visible above the keyboard (upstream SDK fix; no wrapper API change).
+
 ## [2.2.0] - 2026-05-26
 
 ### Changed

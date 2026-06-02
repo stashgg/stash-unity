@@ -39,6 +39,7 @@ public class StashSample : MonoBehaviour
         // config.tabletWidthRatioLandscape = 0.25f;
         // config.tabletHeightRatioLandscape = 0.5f;
         // config.forcePortrait = true;
+        // config.autoClose = false; // Keep the card open after the payment callback (default true).
 
         // Important Note for forcePortrait:
         // Please read the README for more details: https://github.com/stashgg/stash-unity/blob/main/README.md#forceportrait
@@ -57,6 +58,7 @@ public class StashSample : MonoBehaviour
         var config = StashNativeModalConfig.Default;
         // Configure sizing, dismiss behaviour, or optional shell color as desired:
         // config.allowDismiss = true;
+        // config.autoClose = false; // Keep the modal open after the payment callback (default true).
         // config.backgroundColor = "#1a1a1a";
         // config.phoneWidthRatioPortrait = 0.9f;
         // config.phoneHeightRatioPortrait = 0.6f;

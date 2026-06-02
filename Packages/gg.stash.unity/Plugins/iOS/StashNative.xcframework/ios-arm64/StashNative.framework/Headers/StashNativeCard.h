@@ -61,6 +61,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) CGFloat tabletHeightRatioLandscape;
 /** Whether tap outside and drag gestures can dismiss the modal. Default YES. */
 @property (nonatomic, assign) BOOL allowDismiss;
+/** When NO, dialog stays open after onPaymentSuccess/onPaymentFailure (callbacks still fire). Default YES. */
+@property (nonatomic, assign) BOOL autoClose;
 /** Optional HTML hex (#RGB, #RRGGBB, #AARRGGBB) for sheet background. Omit for default Stash theme. */
 @property (nonatomic, copy, nullable) NSString *backgroundColor;
 
@@ -114,6 +116,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) CGFloat tabletWidthRatioLandscape;
 /** Tablet height ratio in landscape (0.1-1.0). Default 0.6. */
 @property (nonatomic, assign) CGFloat tabletHeightRatioLandscape;
+/** When NO, dialog stays open after onPaymentSuccess/onPaymentFailure (callbacks still fire). Default YES. */
+@property (nonatomic, assign) BOOL autoClose;
 /** Optional HTML hex (#RGB, #RRGGBB, #AARRGGBB) for sheet background. Omit for default Stash theme. */
 @property (nonatomic, copy, nullable) NSString *backgroundColor;
 

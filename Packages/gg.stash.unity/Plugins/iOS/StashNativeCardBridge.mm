@@ -97,6 +97,7 @@ void _StashNativeCardBridgeOpenCardWithConfig(const char* url,
     float cardHeightRatioPortrait, float cardWidthRatioLandscape, float cardHeightRatioLandscape,
     float tabletWidthRatioPortrait, float tabletHeightRatioPortrait,
     float tabletWidthRatioLandscape, float tabletHeightRatioLandscape,
+    bool autoClose,
     const char* backgroundColorHex) {
 #if STASHNATIVE_AVAILABLE
     if (!url) return;
@@ -111,6 +112,7 @@ void _StashNativeCardBridgeOpenCardWithConfig(const char* url,
     config.tabletHeightRatioPortrait = tabletHeightRatioPortrait;
     config.tabletWidthRatioLandscape = tabletWidthRatioLandscape;
     config.tabletHeightRatioLandscape = tabletHeightRatioLandscape;
+    config.autoClose = autoClose;
     config.backgroundColor = NSStringFromNullableUTF8(backgroundColorHex);
     [[StashNativeCard sharedInstance] openCardWithURL:nsUrl config:config];
 #endif
@@ -129,6 +131,7 @@ void _StashNativeCardBridgeOpenModalWithConfig(const char* url,
     bool allowDismiss,
     float phoneWPortrait, float phoneHPortrait, float phoneWLandscape, float phoneHLandscape,
     float tabletWPortrait, float tabletHPortrait, float tabletWLandscape, float tabletHLandscape,
+    bool autoClose,
     const char* backgroundColorHex) {
 #if STASHNATIVE_AVAILABLE
     if (!url) return;
@@ -144,6 +147,7 @@ void _StashNativeCardBridgeOpenModalWithConfig(const char* url,
     config.tabletHeightRatioPortrait = tabletHPortrait;
     config.tabletWidthRatioLandscape = tabletWLandscape;
     config.tabletHeightRatioLandscape = tabletHLandscape;
+    config.autoClose = autoClose;
     config.backgroundColor = NSStringFromNullableUTF8(backgroundColorHex);
     [[StashNativeCard sharedInstance] openModalWithURL:nsUrl config:config];
 #endif
