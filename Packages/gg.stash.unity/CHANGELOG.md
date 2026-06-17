@@ -5,6 +5,19 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [2.2.3] - 2026-06-17
+
+### Changed
+
+- **Embedded Stash Native SDK [2.2.3](https://github.com/stashgg/stash-native/releases/tag/2.2.3)** (`StashNative-2.2.3.aar`, `StashNative.xcframework`). No wrapper API changes.
+
+### Fixed
+
+- **iOS**: `CloseBrowser` and deeplink dismissal now fully reset presentation state. A `SFSafariViewController` dismissed programmatically previously left the SDK's internal "presented" guard set, so the next `OpenCard`/`OpenModal` silently did nothing (no UI, no callback); the guard now also self-heals if left stale with no presentation on screen (upstream SDK fix; no wrapper API change).
+- **Android**: pre-API-30 devices no longer push the card off-screen when the soft keyboard opens; a keyboard detector keeps the focused input visible above the keyboard (upstream SDK fix; no wrapper API change).
+- **Android**: `OnDialogDismissed` now fires when `autoClose` is `false`.
+- **Android**: `OpenCard` and `OpenModal` now emit `OnPageLoaded`; previously only the legacy popup WebView path reported page load.
+
 ## [2.2.1] - 2026-06-02
 
 ### Added
