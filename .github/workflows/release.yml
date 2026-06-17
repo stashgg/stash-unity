@@ -2,15 +2,11 @@ name: Create Release
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Release version (semantic versioning, e.g., 1.0.0)'
-        required: true
-        type: string
-      changelog:
-        description: 'Changelog for this release (Markdown supported)'
-        required: true
-        type: string
+  push:
+    branches:
+      - main
+    paths:
+      - 'Packages/gg.stash.unity/CHANGELOG.md'
 
 jobs:
   create-release:
@@ -24,112 +20,102 @@ jobs:
           fetch-depth: 0  # Fetch all history for tags
 
       - name: Fetch all tags
+        run: git fetch --tags --force
+
+      - name: Parse latest CHANGELOG entry
+        id: parse
         run: |
-          git fetch --tags --force
-
-      - name: Validate version format
-        id: validate-version
-        run: |
-          VERSION="${{ inputs.version }}"
-          # Remove 'v' prefix if present
-          VERSION=$(echo "$VERSION" | sed 's/^v//')
-
-          # Validate semantic versioning format (major.minor.patch)
-          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$'; then
-            echo "Error: Invalid version format. Expected semantic versioning (e.g., 1.0.0)"
-            exit 1
-          fi
-
-          # Check if tag already exists (locally or remotely)
-          if git rev-parse "v$VERSION" >/dev/null 2>&1 || git ls-remote --tags origin "v$VERSION" | grep -q "v$VERSION"; then
-            echo "Error: Tag v$VERSION already exists"
-            exit 1
-          fi
-
-          echo "Version $VERSION is valid"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-
-      - name: Update package.json version
-        run: |
-          VERSION="${{ steps.validate-version.outputs.version }}"
-          # Update version in UPM package manifest so it matches the release tag
-          if [ -f Packages/gg.stash.unity/package.json ]; then
-            sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" Packages/gg.stash.unity/package.json
-            rm -f Packages/gg.stash.unity/package.json.bak
-            cat Packages/gg.stash.unity/package.json | grep '"version"'
-          fi
-
-      - name: Append changelog
-        env:
-          CHANGELOG_INPUT: ${{ inputs.changelog }}
-        run: |
-          VERSION="${{ steps.validate-version.outputs.version }}"
-          DATE=$(date +%Y-%m-%d)
           CHANGELOG_FILE="Packages/gg.stash.unity/CHANGELOG.md"
-          # Header: everything before the first "## ["
-          HEADER=$(awk '/^## \[/ {exit} {print}' "$CHANGELOG_FILE")
-          # Rest: from first "## [" to end
-          REST=$(awk '/^## \[/ {p=1} p' "$CHANGELOG_FILE")
+          if [ ! -f "$CHANGELOG_FILE" ]; then
+            echo "Error: $CHANGELOG_FILE not found"
+            exit 1
+          fi
+
+          # First version header (e.g. "## [2.2.3] - 2026-06-17")
+          HEADER=$(grep -m1 '^## \[' "$CHANGELOG_FILE" || true)
+          if [ -z "$HEADER" ]; then
+            echo "Error: No '## [version] - date' entry found in $CHANGELOG_FILE"
+            exit 1
+          fi
+
+          VERSION=$(echo "$HEADER" | sed -E 's/^## \[([^]]+)\].*/\1/')
+          DATE=$(echo "$HEADER" | sed -E 's/^## \[[^]]+\][[:space:]]*-[[:space:]]*(.*)$/\1/')
+
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$'; then
+            echo "Error: Invalid version '$VERSION' in CHANGELOG. Expected semantic versioning (e.g., 1.0.0)."
+            exit 1
+          fi
+
+          # Body: everything between the first and second '## [' headers
+          BODY=$(awk '
+            /^## \[/ { count++; next }
+            count == 1 { print }
+            count == 2 { exit }
+          ' "$CHANGELOG_FILE")
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "date=$DATE" >> "$GITHUB_OUTPUT"
           {
-            printf '%s\n' "$HEADER"
-            echo "## [$VERSION] - $DATE"
-            echo ""
-            printf '%s\n' "$CHANGELOG_INPUT"
-            echo ""
-            printf '%s\n' "$REST"
-          } > "${CHANGELOG_FILE}.new"
-          mv "${CHANGELOG_FILE}.new" "$CHANGELOG_FILE"
+            echo "body<<RELEASE_BODY"
+            printf '%s\n' "$BODY"
+            echo "RELEASE_BODY"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Parsed version: $VERSION (date: $DATE)"
+
+      - name: Check tag does not already exist
+        id: check-tag
+        run: |
+          VERSION="${{ steps.parse.outputs.version }}"
+          if git rev-parse "v$VERSION" >/dev/null 2>&1 || git ls-remote --tags origin "v$VERSION" | grep -q "refs/tags/v$VERSION"; then
+            echo "Tag v$VERSION already exists — skipping release."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify package.json version matches
+        if: steps.check-tag.outputs.skip != 'true'
+        run: |
+          VERSION="${{ steps.parse.outputs.version }}"
+          PACKAGE_JSON="Packages/gg.stash.unity/package.json"
+          if [ ! -f "$PACKAGE_JSON" ]; then
+            echo "Error: $PACKAGE_JSON not found"
+            exit 1
+          fi
+          PKG_VERSION=$(grep -E '"version"[[:space:]]*:' "$PACKAGE_JSON" | head -1 | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
+          if [ "$PKG_VERSION" != "$VERSION" ]; then
+            echo "Error: package.json version ($PKG_VERSION) does not match CHANGELOG version ($VERSION)."
+            echo "Update Packages/gg.stash.unity/package.json before releasing."
+            exit 1
+          fi
+          echo "package.json version matches CHANGELOG: $VERSION"
 
       - name: Configure Git
+        if: steps.check-tag.outputs.skip != 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Create release branch, commit, push, and tag
+      - name: Create release branch and tag
+        if: steps.check-tag.outputs.skip != 'true'
         run: |
-          VERSION="${{ steps.validate-version.outputs.version }}"
+          VERSION="${{ steps.parse.outputs.version }}"
           RELEASE_BRANCH="release/v$VERSION"
           git checkout -b "$RELEASE_BRANCH"
-          git add Packages/gg.stash.unity/package.json Packages/gg.stash.unity/CHANGELOG.md
-          if git diff --staged --quiet 2>/dev/null; then
-            echo "No changes (version already $VERSION)"
-          else
-            git commit -m "chore: release v$VERSION - update package version and changelog"
-          fi
           git push -u origin "$RELEASE_BRANCH"
           git tag -a "v$VERSION" -m "Release v$VERSION"
           git push origin "v$VERSION"
-          echo "Created branch $RELEASE_BRANCH and tag v$VERSION. Merge $RELEASE_BRANCH into main via a pull request to update the default branch."
-
-      - name: Format release body
-        id: format-body
-        run: |
-          VERSION="${{ steps.validate-version.outputs.version }}"
-          DATE=$(date +%Y-%m-%d)
-          CHANGELOG="${{ inputs.changelog }}"
-
-          # Format changelog: prefix each non-empty line with "- "
-          # Remove any existing bullet formatting and normalize
-          FORMATTED_CHANGELOG=$(printf '%s\n' "$CHANGELOG" | awk 'NF {gsub(/^[[:space:]]*-?[[:space:]]*/, ""); print "- " $0} !NF {print ""}')
-
-          # Create the formatted body using multiline output
-          {
-            echo "body<<RELEASE_BODY"
-            echo "## [$VERSION] - $DATE"
-            echo ""
-            printf '%s\n' "$FORMATTED_CHANGELOG"
-            echo "RELEASE_BODY"
-          } >> $GITHUB_OUTPUT
+          echo "Created branch $RELEASE_BRANCH and tag v$VERSION."
 
       - name: Create GitHub Release
+        if: steps.check-tag.outputs.skip != 'true'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ steps.validate-version.outputs.version }}
-          name: Stash Unity v${{ steps.validate-version.outputs.version }}
-          body: ${{ steps.format-body.outputs.body }}
+          tag_name: v${{ steps.parse.outputs.version }}
+          name: Stash Unity v${{ steps.parse.outputs.version }}
+          body: ${{ steps.parse.outputs.body }}
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
