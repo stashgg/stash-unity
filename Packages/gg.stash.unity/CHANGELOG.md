@@ -5,6 +5,16 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [2.2.4] - 2026-06-24
+
+### Changed
+
+- **Embedded Stash Native SDK [2.2.4](https://github.com/stashgg/stash-native/releases/tag/2.2.4)** (`StashNative-2.2.4.aar`, `StashNative.xcframework`). No wrapper API changes.
+
+### Added
+
+- **Web SDK**: the checkout page can now call `window.stash_sdk.onProcessingCompleted()` to reverse `onPurchaseProcessing()` — re-enabling card dismissal (swipe, backdrop / overlay tap, back button, and `window.close()`) and fading the drag handle back in — when a purchase that called `onPurchaseProcessing()` finishes or is cancelled without auto-closing the card. After it runs, `IsPurchaseProcessing` reads `false` again. Handled inside the embedded SDK; no Unity wrapper API change (no-op when no processing state is active).
+
 ## [2.2.3] - 2026-06-17
 
 ### Changed

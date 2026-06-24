@@ -4,7 +4,7 @@
   <img src="https://github.com/stashgg/stash-native/raw/main/.github/assets/stash_unity.png" width="128" height="128" alt="Stash Unity Logo"/>
 </p>
 
-Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native) (embedded **Stash Native 2.2.3**), enabling native-feeling Stash Pay IAP checkout and webshop presentation directly inside your Unity game (Android/iOS).
+Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native) (embedded **Stash Native 2.2.4**), enabling native-feeling Stash Pay IAP checkout and webshop presentation directly inside your Unity game (Android/iOS).
 
 ## Requirements
 
