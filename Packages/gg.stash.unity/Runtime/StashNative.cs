@@ -153,6 +153,27 @@ namespace Stash.Native
         private Action<string> _currentSuccessCallback;
         private Action _currentFailureCallback;
 
+        private StashExternalPaymentResolver _externalPaymentResolver;
+
+        private void EnsureExternalPaymentResolver()
+        {
+            if (_externalPaymentResolver == null)
+                _externalPaymentResolver = new StashExternalPaymentResolver(this);
+        }
+
+        internal void DispatchPaymentSuccess(string orderPayload)
+        {
+            var o = orderPayload ?? "";
+            _currentSuccessCallback?.Invoke(o);
+            OnPaymentSuccess?.Invoke(o);
+        }
+
+        internal void DispatchPaymentFailure()
+        {
+            _currentFailureCallback?.Invoke();
+            OnPaymentFailure?.Invoke();
+        }
+
         #endregion
 
         #region Native Plugin
@@ -191,16 +212,32 @@ namespace Stash.Native
 
         public void OnAndroidPaymentSuccess(string order)
         {
+            EnsureExternalPaymentResolver();
+            _externalPaymentResolver.NotePaymentHandledFromNative(order);
             var o = order ?? "";
             _currentSuccessCallback?.Invoke(o);
             OnPaymentSuccess?.Invoke(o);
         }
 
         public void OnAndroidPaymentFailure(string message) { _currentFailureCallback?.Invoke(); OnPaymentFailure?.Invoke(); }
-        public void OnAndroidDialogDismissed(string message) { _currentDismissCallback?.Invoke(); OnDialogDismissed?.Invoke(); _currentDismissCallback = null; _currentSuccessCallback = null; _currentFailureCallback = null; }
+        public void OnAndroidDialogDismissed(string message)
+        {
+            EnsureExternalPaymentResolver();
+            _externalPaymentResolver.ResetSession();
+            _currentDismissCallback?.Invoke();
+            OnDialogDismissed?.Invoke();
+            _currentDismissCallback = null;
+            _currentSuccessCallback = null;
+            _currentFailureCallback = null;
+        }
         public void OnAndroidOptinResponse(string optinType) => OnOptinResponse?.Invoke(optinType ?? "");
         public void OnAndroidNetworkError(string message) => OnNetworkError?.Invoke();
-        public void OnAndroidExternalPayment(string url) => OnExternalPayment?.Invoke(url ?? "");
+        public void OnAndroidExternalPayment(string url)
+        {
+            EnsureExternalPaymentResolver();
+            _externalPaymentResolver.OnExternalPayment(url ?? "");
+            OnExternalPayment?.Invoke(url ?? "");
+        }
 
         public void OnAndroidPageLoaded(string loadTimeMs)
         {
@@ -208,7 +245,12 @@ namespace Stash.Native
                 OnPageLoaded?.Invoke(loadTime);
         }
 
-        public void OnAndroidBrowserClosed(string message) => OnBrowserClosed?.Invoke();
+        public void OnAndroidBrowserClosed(string message)
+        {
+            EnsureExternalPaymentResolver();
+            _externalPaymentResolver.OnBrowserClosed();
+            OnBrowserClosed?.Invoke();
+        }
 
 #elif UNITY_IOS && !UNITY_EDITOR
         [DllImport("__Internal")] private static extern bool _StashNativeCardBridgeIsSDKAvailable();
@@ -225,17 +267,38 @@ namespace Stash.Native
 
         public void OnIOSPaymentSuccess(string order)
         {
+            EnsureExternalPaymentResolver();
+            _externalPaymentResolver.NotePaymentHandledFromNative(order);
             var o = order ?? "";
             _currentSuccessCallback?.Invoke(o);
             OnPaymentSuccess?.Invoke(o);
         }
 
         public void OnIOSPaymentFailure() { _currentFailureCallback?.Invoke(); OnPaymentFailure?.Invoke(); }
-        public void OnIOSDialogDismissed() { _currentDismissCallback?.Invoke(); OnDialogDismissed?.Invoke(); _currentDismissCallback = null; _currentSuccessCallback = null; _currentFailureCallback = null; }
+        public void OnIOSDialogDismissed()
+        {
+            EnsureExternalPaymentResolver();
+            _externalPaymentResolver.ResetSession();
+            _currentDismissCallback?.Invoke();
+            OnDialogDismissed?.Invoke();
+            _currentDismissCallback = null;
+            _currentSuccessCallback = null;
+            _currentFailureCallback = null;
+        }
         public void OnIOSOptinResponse(string optinType) => OnOptinResponse?.Invoke(optinType ?? "");
         public void OnIOSNetworkError() => OnNetworkError?.Invoke();
-        public void OnIOSExternalPayment(string url) => OnExternalPayment?.Invoke(url ?? "");
-        public void OnIOSBrowserClosed() => OnBrowserClosed?.Invoke();
+        public void OnIOSExternalPayment(string url)
+        {
+            EnsureExternalPaymentResolver();
+            _externalPaymentResolver.OnExternalPayment(url ?? "");
+            OnExternalPayment?.Invoke(url ?? "");
+        }
+        public void OnIOSBrowserClosed()
+        {
+            EnsureExternalPaymentResolver();
+            _externalPaymentResolver.OnBrowserClosed();
+            OnBrowserClosed?.Invoke();
+        }
         public void OnIOSPageLoaded(string loadTimeMsStr)
         {
             if (double.TryParse(loadTimeMsStr, out double loadTime))
@@ -408,6 +471,9 @@ namespace Stash.Native
             _currentSuccessCallback = successCallback;
             _currentFailureCallback = failureCallback;
 
+            EnsureExternalPaymentResolver();
+            _externalPaymentResolver.BeginCheckoutSession(url);
+
 #if UNITY_ANDROID && !UNITY_EDITOR
             InitializeAndroidPlugin();
             if (androidPluginInstance != null)
@@ -516,7 +582,16 @@ namespace Stash.Native
 
         public void OnEditorPaymentFailure() { _currentFailureCallback?.Invoke(); OnPaymentFailure?.Invoke(); }
         public void OnEditorOptinResponse(string optinType) => OnOptinResponse?.Invoke(optinType ?? "");
-        public void OnEditorDismissCatalog() { _currentDismissCallback?.Invoke(); OnDialogDismissed?.Invoke(); _currentDismissCallback = null; _currentSuccessCallback = null; _currentFailureCallback = null; }
+        public void OnEditorDismissCatalog()
+        {
+            EnsureExternalPaymentResolver();
+            _externalPaymentResolver.ResetSession();
+            _currentDismissCallback?.Invoke();
+            OnDialogDismissed?.Invoke();
+            _currentDismissCallback = null;
+            _currentSuccessCallback = null;
+            _currentFailureCallback = null;
+        }
 
         private void OpenEditorTestWindow(string url, bool isModal)
         {
