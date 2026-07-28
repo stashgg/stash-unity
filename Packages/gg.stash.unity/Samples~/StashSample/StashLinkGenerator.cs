@@ -1,12 +1,15 @@
 using System;
+using System.Collections;
+using System.Security.Cryptography;
+using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
-using System.Collections;
-using System.Text;
+using UnityEngine.Serialization;
 
 /// <summary>
-/// Fetches URLs from the Stash API using the provided API key (set in the Inspector).
+/// Fetches URLs from the Stash API using versioned HMAC auth (set App ID + ingress secret in the Inspector).
 /// Intended for sample usage only. For production, always generate Stash URLs securely on your backend.
+/// See https://docs.stash.gg/guides/get-started/stash-api-keys/overview
 /// </summary>
 public class StashLinkGenerator : MonoBehaviour
 {
@@ -15,7 +18,11 @@ public class StashLinkGenerator : MonoBehaviour
     private const string QUICK_PAY_ENDPOINT = "https://test-api.stash.gg/sdk/server/checkout_links/generate_quick_pay_url";
     private const string AUTHENTICATED_URL_ENDPOINT = "https://test-api.stash.gg/sdk/server/generate_url";
 
-    [SerializeField] private string apiKey = "YOUR_STASH_API_KEY";
+    [Tooltip("App ID from Studio → Project Settings → App details")]
+    [SerializeField] private string appId = "YOUR_APP_ID";
+
+    [FormerlySerializedAs("apiKey")]
+    [SerializeField] private string ingressApiKey = "YOUR_INGRESS_API_KEY";
 
     /// <summary>Request a quick pay checkout URL. See https://docs.stash.gg/api/server-quickpay/GenerateQuickPayUrl for reference.</summary>
     public void RequestCheckoutUrl(Action<string> onUrl, Action<string> onError)
@@ -62,7 +69,8 @@ public class StashLinkGenerator : MonoBehaviour
             www.uploadHandler = new UploadHandlerRaw(body);
             www.downloadHandler = new DownloadHandlerBuffer();
             www.SetRequestHeader("Content-Type", "application/json");
-            www.SetRequestHeader("X-Stash-Api-Key", apiKey);
+            if (!TrySetHmacAuthHeader(www, body, onError))
+                yield break;
             yield return www.SendWebRequest();
 
             if (www.result == UnityWebRequest.Result.Success)
@@ -72,7 +80,7 @@ public class StashLinkGenerator : MonoBehaviour
             }
             else
             {
-                onError?.Invoke(www.error);
+                onError?.Invoke(FormatRequestError(www));
             }
         }
     }
@@ -98,7 +106,8 @@ public class StashLinkGenerator : MonoBehaviour
             www.uploadHandler = new UploadHandlerRaw(body);
             www.downloadHandler = new DownloadHandlerBuffer();
             www.SetRequestHeader("Content-Type", "application/json");
-            www.SetRequestHeader("X-Stash-Api-Key", apiKey);
+            if (!TrySetHmacAuthHeader(www, body, onError))
+                yield break;
             yield return www.SendWebRequest();
 
             if (www.result == UnityWebRequest.Result.Success)
@@ -108,9 +117,61 @@ public class StashLinkGenerator : MonoBehaviour
             }
             else
             {
-                onError?.Invoke(www.error);
+                onError?.Invoke(FormatRequestError(www));
             }
         }
+    }
+
+    /// <summary>
+    /// Builds <c>x-stash-hmac-signature: v1;{appId};{unixMs};{base64Hmac}</c> over
+    /// <c>{unixMs}.{body}</c> using the base64-decoded ingress secret.
+    /// </summary>
+    private bool TrySetHmacAuthHeader(UnityWebRequest www, byte[] body, Action<string> onError)
+    {
+        if (string.IsNullOrWhiteSpace(appId) || appId == "YOUR_APP_ID")
+        {
+            onError?.Invoke("Set App ID (Studio → Project Settings → App details) on StashLinkGenerator.");
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(ingressApiKey) ||
+            ingressApiKey == "YOUR_INGRESS_API_KEY" ||
+            ingressApiKey == "YOUR_STASH_API_KEY" ||
+            ingressApiKey == "YOUR_TEST_API_KEY" ||
+            ingressApiKey == "YOUR_INGRESS_SECRET")
+        {
+            onError?.Invoke("Set ingress API key (Studio → Project Settings → API Secrets) on StashLinkGenerator.");
+            return false;
+        }
+
+        byte[] key;
+        try
+        {
+            key = Convert.FromBase64String(ingressApiKey);
+        }
+        catch (FormatException)
+        {
+            onError?.Invoke("Ingress secret must be the base64 value.");
+            return false;
+        }
+
+        string unixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString();
+        string signedMsg = unixMs + "." + Encoding.UTF8.GetString(body);
+        using (var hmac = new HMACSHA256(key))
+        {
+            string sig = Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(signedMsg)));
+            www.SetRequestHeader("x-stash-hmac-signature", $"v1;{appId};{unixMs};{sig}");
+        }
+
+        return true;
+    }
+
+    private static string FormatRequestError(UnityWebRequest www)
+    {
+        string body = www.downloadHandler != null ? www.downloadHandler.text : null;
+        if (string.IsNullOrEmpty(body))
+            return $"{www.responseCode} {www.error}";
+        return $"{www.responseCode} {www.error}: {body}";
     }
 
     #endregion

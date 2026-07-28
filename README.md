@@ -66,7 +66,7 @@ After adding the package, you can import the sample scene and scripts:
 1. Open **Window > Package Manager**
 2. Select **Stash for Unity** in the list
 3. Expand **Samples** and click **Import** next to **Stash Integration Sample**
-4. Input your test API key in `StashLinkGenerator.cs` (in the imported sample)
+4. On `StashLinkGenerator`, set your **App ID** and **ingress API Key**. The sample signs requests with `x-stash-hmac-signature` (legacy `X-Stash-Api-Key` is no longer used).
 
 Do not expect to browse the sample under **Packages** in the Project window: folders named **`Samples~`** are intentionally ignored by Unity’s importer (only **Import** copies them into your **Assets** folder).
 

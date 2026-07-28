@@ -181,7 +181,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 49a2d524b29e3488f8a891c528a831e5, type: 3}
   m_Name:
   m_EditorClassIdentifier:
-  apiKey: YOUR_TEST_API_KEY
+  appId: YOUR_APP_ID
+  ingressApiKey: YOUR_INGRESS_API_KEY
 --- !u!1 &596032748
 GameObject:
   m_ObjectHideFlags: 0
