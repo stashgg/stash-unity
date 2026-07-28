@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 
 - **Embedded Stash Native SDK [2.3.0](https://github.com/stashgg/stash-native/releases/tag/2.3.0)** (`StashNative-2.3.0.aar`, `StashNative.xcframework`). No wrapper API changes.
+- **`StashNativeCardConfig.Default`**: landscape phone ratios updated to match native 2.3.0 (`cardWidthRatioLandscape` `0.9` → `0.7`, `cardHeightRatioLandscape` `0.6` → `0.9`).
 - **Sample**: `StashLinkGenerator` now authenticates with versioned HMAC (`x-stash-hmac-signature`) using **App ID** + **ingress API key** instead of the deprecated `X-Stash-Api-Key` header. Set both fields on the sample component (Studio → Project Settings). Failures also surface the API response body.
 
 ### Added

@@ -299,8 +299,8 @@ Optional per-call config for **`OpenCard`**. **`StashNativeCardConfig.Default`**
 |-------|---------|-------------|
 | **`forcePortrait`** | `false` | Portrait-locked on phone when true. **Required for landscape-locked games:** Set to `true` if your Unity game is locked to landscape orientation to ensure checkout displays in portrait. Portrait orientation must be enabled in Unity Player Settings (iOS: `allowedAutorotateToPortrait: 1`). |
 | **`cardHeightRatioPortrait`** | `0.68f` | Card height ratio portrait (0.1–1.0). |
-| **`cardWidthRatioLandscape`** | `0.9f` | Card width ratio landscape. |
-| **`cardHeightRatioLandscape`** | `0.6f` | Card height ratio landscape. |
+| **`cardWidthRatioLandscape`** | `0.7f` | Card width ratio landscape. |
+| **`cardHeightRatioLandscape`** | `0.9f` | Card height ratio landscape. |
 | **`tabletWidthRatioPortrait`** | `0.4f` | Tablet width portrait. |
 | **`tabletHeightRatioPortrait`** | `0.5f` | Tablet height portrait. |
 | **`tabletWidthRatioLandscape`** | `0.3f` | Tablet width landscape. |
