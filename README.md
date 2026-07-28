@@ -4,7 +4,7 @@
   <img src="https://github.com/stashgg/stash-native/raw/main/.github/assets/stash_unity.png" width="128" height="128" alt="Stash Unity Logo"/>
 </p>
 
-Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native) (embedded **Stash Native 2.2.4**), enabling native-feeling Stash Pay IAP checkout and webshop presentation directly inside your Unity game (Android/iOS).
+Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native) (embedded **Stash Native 2.3.0**), enabling native-feeling Stash Pay IAP checkout and webshop presentation directly inside your Unity game (Android/iOS).
 
 ## Requirements
 
@@ -66,7 +66,7 @@ After adding the package, you can import the sample scene and scripts:
 1. Open **Window > Package Manager**
 2. Select **Stash for Unity** in the list
 3. Expand **Samples** and click **Import** next to **Stash Integration Sample**
-4. Input your test API key in `StashLinkGenerator.cs` (in the imported sample)
+4. On `StashLinkGenerator`, set your **App ID** and **ingress API Key**. The sample signs requests with `x-stash-hmac-signature` (legacy `X-Stash-Api-Key` is no longer used).
 
 Do not expect to browse the sample under **Packages** in the Project window: folders named **`Samples~`** are intentionally ignored by Unity’s importer (only **Import** copies them into your **Assets** folder).
 
@@ -299,8 +299,8 @@ Optional per-call config for **`OpenCard`**. **`StashNativeCardConfig.Default`**
 |-------|---------|-------------|
 | **`forcePortrait`** | `false` | Portrait-locked on phone when true. **Required for landscape-locked games:** Set to `true` if your Unity game is locked to landscape orientation to ensure checkout displays in portrait. Portrait orientation must be enabled in Unity Player Settings (iOS: `allowedAutorotateToPortrait: 1`). |
 | **`cardHeightRatioPortrait`** | `0.68f` | Card height ratio portrait (0.1–1.0). |
-| **`cardWidthRatioLandscape`** | `0.9f` | Card width ratio landscape. |
-| **`cardHeightRatioLandscape`** | `0.6f` | Card height ratio landscape. |
+| **`cardWidthRatioLandscape`** | `0.7f` | Card width ratio landscape. |
+| **`cardHeightRatioLandscape`** | `0.9f` | Card height ratio landscape. |
 | **`tabletWidthRatioPortrait`** | `0.4f` | Tablet width portrait. |
 | **`tabletHeightRatioPortrait`** | `0.5f` | Tablet height portrait. |
 | **`tabletWidthRatioLandscape`** | `0.3f` | Tablet width landscape. |

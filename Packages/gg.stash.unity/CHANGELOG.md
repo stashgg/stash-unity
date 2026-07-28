@@ -5,6 +5,24 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [2.3.0] - 2026-07-28
+
+### Changed
+
+- **Embedded Stash Native SDK [2.3.0](https://github.com/stashgg/stash-native/releases/tag/2.3.0)** (`StashNative-2.3.0.aar`, `StashNative.xcframework`). No wrapper API changes.
+- **`StashNativeCardConfig.Default`**: landscape phone ratios updated to match native 2.3.0 (`cardWidthRatioLandscape` `0.9` → `0.7`, `cardHeightRatioLandscape` `0.6` → `0.9`).
+- **Sample**: `StashLinkGenerator` now authenticates with versioned HMAC (`x-stash-hmac-signature`) using **App ID** + **ingress API key** instead of the deprecated `X-Stash-Api-Key` header. Set both fields on the sample component (Studio → Project Settings). Failures also surface the API response body.
+
+### Added
+
+- **Web SDK**: `window.stash_sdk.openLink(url)` opens a URL in the external browser with no callbacks and no dismissal (terms and misc links). Handled inside the embedded SDK; no Unity wrapper API change.
+- **Deeplink handling** in checkout WebViews: main-frame navigations to custom schemes no longer dismiss the card (iOS) or show an error page (Android). URLs containing `stash-pay/success`, `stash-pay/failure`, or `stash-pay/cancel` run the standard payment success / failure / close flows; every other deeplink is handed to the OS and the checkout stays presented. Handled inside the embedded SDK; no Unity wrapper API change.
+
+### Fixed
+
+- Stability pass across both platforms (callback integrity, reentrancy, network grace, Android entry animation / keep-alive / low-RAM / cookies, iOS theme query / sizing / `window.open`). Upstream SDK fixes; no Unity wrapper API change.
+
+
 ## [2.2.4] - 2026-06-24
 
 ### Changed

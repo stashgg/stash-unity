@@ -65,8 +65,8 @@ namespace Stash.Native
         {
             forcePortrait = false,
             cardHeightRatioPortrait = 0.68f,
-            cardWidthRatioLandscape = 0.9f,
-            cardHeightRatioLandscape = 0.6f,
+            cardWidthRatioLandscape = 0.7f,
+            cardHeightRatioLandscape = 0.9f,
             tabletWidthRatioPortrait = 0.4f,
             tabletHeightRatioPortrait = 0.5f,
             tabletWidthRatioLandscape = 0.3f,
