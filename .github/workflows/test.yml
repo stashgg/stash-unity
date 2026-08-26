@@ -11,6 +11,11 @@ on:
     branches: [main, 'desktop/**']
   workflow_dispatch:
 
+# unity-test-runner publishes a check run with the results (githubToken / checkName below).
+permissions:
+  contents: read
+  checks: write
+
 jobs:
   editmode:
     name: EditMode tests
