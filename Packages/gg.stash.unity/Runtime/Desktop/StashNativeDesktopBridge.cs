@@ -1,4 +1,3 @@
-#if UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX || UNITY_EDITOR_WIN || UNITY_EDITOR_OSX
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -94,7 +93,8 @@ namespace Stash.Native.Desktop
     /// <summary>
     /// Binding to the stash-native desktop hosts (StashNativeDesktop.dll on Windows, StashNativeDesktop.bundle on
     /// macOS, one C ABI). Native events are enqueued from the callback and drained on the game loop by
-    /// <see cref="Drain"/>; nothing here touches Unity APIs from the native callback.
+    /// <see cref="Drain"/>; nothing here touches Unity APIs from the native callback. On every other platform the
+    /// native binding is a no-op and IsSupported is false, so the DTOs and event mapping compile (and test) everywhere.
     /// </summary>
     internal static class StashNativeDesktopBridge
     {
@@ -442,4 +442,3 @@ namespace Stash.Native.Desktop
 #endif
     }
 }
-#endif

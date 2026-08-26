@@ -2,9 +2,7 @@ using System;
 using UnityEngine;
 using System.Runtime.InteropServices;
 using System.Collections;
-#if UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX || UNITY_EDITOR_WIN || UNITY_EDITOR_OSX
 using Stash.Native.Desktop;
-#endif
 
 namespace Stash.Native
 {
@@ -260,9 +258,9 @@ namespace Stash.Native
         }
 #endif
 
-#if UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX || UNITY_EDITOR_WIN || UNITY_EDITOR_OSX
         // Windows / macOS: the stash-native desktop hosts (WebView2 / WKWebView card over the game window).
-        // Events arrive through StashNativeDesktopBridge.Drain on the game loop (see Update).
+        // Events arrive through StashNativeDesktopBridge.Drain on the game loop (see Update). Compiled on every
+        // platform (the bridge is a no-op elsewhere) so the mapping is unit-tested wherever the tests run.
         private FullScreenMode? _fullScreenModeToRestore;
 
         /// <summary>Test seam: the per-call callbacks OpenCard / OpenModal would install.</summary>
@@ -280,13 +278,13 @@ namespace Stash.Native
             switch (type)
             {
                 case StashNativeDesktopBridge.EventPaymentSuccess:
-                    {
-                        var o = payload ?? "";
-                        _currentSuccessCallback?.Invoke(o);
-                        OnPaymentSuccess?.Invoke(o);
-                        RestoreFullScreenModeIfNeeded();
-                        break;
-                    }
+                {
+                    var o = payload ?? "";
+                    _currentSuccessCallback?.Invoke(o);
+                    OnPaymentSuccess?.Invoke(o);
+                    RestoreFullScreenModeIfNeeded();
+                    break;
+                }
                 case StashNativeDesktopBridge.EventPaymentFailure:
                     _currentFailureCallback?.Invoke();
                     OnPaymentFailure?.Invoke();
@@ -356,7 +354,6 @@ namespace Stash.Native
             StashNativeDesktopBridge.SetHostWindow(GetActiveWindow());
 #endif
         }
-#endif
 
         #endregion
 
