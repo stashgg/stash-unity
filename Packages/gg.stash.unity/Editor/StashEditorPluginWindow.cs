@@ -3,22 +3,21 @@ using System;
 using UnityEngine;
 using UnityEditor;
 using Stash.Native;
-#if UNITY_EDITOR_OSX
-using Stash.Editor.macOS;
-#elif UNITY_EDITOR_WIN
-using Stash.Editor.Windows;
-#endif
+using Stash.Native.Desktop;
 
 namespace Stash.Editor
 {
     /// <summary>
-    /// Editor window for testing StashNative card and modal in Unity Editor (macOS and Windows).
+    /// Editor simulator for StashNative card and modal flows (macOS and Windows). Presents the checkout through the
+    /// stash-native desktop host in window mode, sized to a device preset, and routes its events into StashNative
+    /// so per-call callbacks and global events fire as on a device. Simulate buttons fire the callbacks directly.
     /// </summary>
     public class StashEditorPluginWindow : EditorWindow
     {
         private string currentUrl = "";
         private bool isPopupMode = false;
-        private WebViewLauncher webViewLauncher;
+        private StashNativeCardConfig? currentCardConfig;
+        private StashNativeModalConfig? currentModalConfig;
 
         // Device size presets (width x height in points)
         private enum DeviceSize
@@ -29,21 +28,22 @@ namespace Stash.Editor
             iPhone14Pro,        // 393 x 852
             iPad,               // 810 x 1080
             iPadPro,            // 1024 x 1366
+            Desktop,            // 480 x 720, the desktop card
             Custom
         }
 
         private DeviceSize currentDeviceSize = DeviceSize.iPhone14;
         private Vector2 customSize = new Vector2(390, 844);
 
-        // Device size definitions
         private static readonly Vector2[] DeviceSizes = new Vector2[]
         {
             new Vector2(375, 667),   // iPhone SE
             new Vector2(390, 844),   // iPhone 14
             new Vector2(430, 932),   // iPhone 14 Pro Max
             new Vector2(393, 852),   // iPhone 14 Pro
-            new Vector2(810, 1080),   // iPad
+            new Vector2(810, 1080),  // iPad
             new Vector2(1024, 1366), // iPad Pro
+            new Vector2(480, 720),   // Desktop card
         };
 
         private static readonly string[] DeviceSizeNames = new string[]
@@ -54,64 +54,62 @@ namespace Stash.Editor
             "iPhone 14 Pro (393x852)",
             "iPad (810x1080)",
             "iPad Pro (1024x1366)",
+            "Desktop card (480x720)",
             "Custom"
         };
 
         private static StashEditorPluginWindow instance;
+        private bool subscribed;
 
         [MenuItem("Window/Stash/Stash Native - Test Window")]
         public static void ShowWindow()
         {
             instance = GetWindow<StashEditorPluginWindow>("Stash Native - Test Window");
-            instance.minSize = new Vector2(320, 300);
-            instance.maxSize = new Vector2(320, 300);
+            instance.minSize = new Vector2(320, 320);
+            instance.maxSize = new Vector2(320, 320);
         }
 
+        /// <summary>Called by StashNative.OpenModal in play mode (reflection contract, keep the signature).</summary>
         public static void OpenModal(string url, StashNativeModalConfig? config = null)
         {
             if (instance == null) ShowWindow();
             instance.currentUrl = url;
             instance.isPopupMode = true;
-            instance.LoadUrl(url);
-            instance.ApplyDeviceSize();
+            instance.currentModalConfig = config;
+            instance.currentCardConfig = null;
+            instance.Present();
         }
 
-        public static void OpenCard(string url)
+        /// <summary>Called by StashNative.OpenCard in play mode (reflection contract, keep the signature).</summary>
+        public static void OpenCard(string url, StashNativeCardConfig? config = null)
         {
             if (instance == null) ShowWindow();
             instance.currentUrl = url;
             instance.isPopupMode = false;
-            instance.LoadUrl(url);
-            instance.ApplyDeviceSize();
+            instance.currentCardConfig = config;
+            instance.currentModalConfig = null;
+            instance.Present();
         }
 
         private void OnGUI()
         {
             EditorGUILayout.Space(5);
-
-            // Info callout
             EditorGUILayout.HelpBox("You can test Stash Pay purchases in the preview window. Callbacks will be triggered as if you were running on a device. You can also simulate callback events using the buttons below.", MessageType.Info);
             EditorGUILayout.Space(5);
 
-            // Mode indicator
             EditorGUILayout.LabelField($"Mode: {(isPopupMode ? "Modal" : "Card")}", EditorStyles.boldLabel);
-
-            // URL display
             EditorGUILayout.LabelField("URL:", EditorStyles.boldLabel);
             EditorGUILayout.SelectableLabel(currentUrl, EditorStyles.textField, GUILayout.Height(18));
-
             EditorGUILayout.Space(5);
 
-            // Device size selector
             EditorGUILayout.LabelField("Preview Size:", EditorStyles.boldLabel);
             int newDeviceSize = EditorGUILayout.Popup((int)currentDeviceSize, DeviceSizeNames);
             if (newDeviceSize != (int)currentDeviceSize)
             {
                 currentDeviceSize = (DeviceSize)newDeviceSize;
-                ApplyDeviceSize();
+                Present();
             }
 
-            // Custom size input
             if (currentDeviceSize == DeviceSize.Custom)
             {
                 EditorGUILayout.BeginHorizontal();
@@ -121,189 +119,130 @@ namespace Stash.Editor
                 customSize.y = EditorGUILayout.FloatField(customSize.y);
                 if (GUILayout.Button("Apply", GUILayout.Width(50)))
                 {
-                    ApplyDeviceSize();
+                    Present();
                 }
                 EditorGUILayout.EndHorizontal();
             }
 
             EditorGUILayout.Space(5);
-
-            // Action buttons
             if (GUILayout.Button("Reload", GUILayout.Height(25)))
             {
-                if (!string.IsNullOrEmpty(currentUrl))
-                {
-                    LoadUrl(currentUrl);
-                }
+                Present();
             }
 
             EditorGUILayout.Space(5);
-
-            // Simulate callback buttons for testing
             EditorGUILayout.LabelField("Simulate Callbacks:", EditorStyles.boldLabel);
             EditorGUILayout.BeginHorizontal();
-
             if (GUILayout.Button("Payment Success", GUILayout.Height(22)))
             {
-                OnWebViewPaymentSuccess();
+                SimulateSuccess();
             }
-
             if (GUILayout.Button("Payment Failure", GUILayout.Height(22)))
             {
-                OnWebViewPaymentFailure();
+                SimulateFailure();
             }
-
             EditorGUILayout.EndHorizontal();
-
             EditorGUILayout.BeginHorizontal();
-
             if (GUILayout.Button("Dismiss Dialog", GUILayout.Height(22)))
             {
-                OnWebViewDismissDialog();
+                SimulateDismiss();
             }
-
             EditorGUILayout.EndHorizontal();
         }
 
-        private void ApplyDeviceSize()
+        private Vector2 PresetSize()
         {
-            // Window size is fixed to fit content
-            this.minSize = new Vector2(320, 300);
-            this.maxSize = new Vector2(320, 300);
+            return currentDeviceSize == DeviceSize.Custom ? customSize : DeviceSizes[(int)currentDeviceSize];
         }
 
-        private void LoadUrl(string url)
-        {
-            if (string.IsNullOrEmpty(url))
-                return;
-
-            Repaint();
-
-            // Create native webview window immediately
-            CreateWebViewWindow();
-
-            Repaint();
-        }
-
-        private void CreateWebViewWindow()
+        /// <summary>Opens (or re-opens) the checkout in the desktop host's window presentation at the preset size.</summary>
+        private void Present()
         {
             if (string.IsNullOrEmpty(currentUrl)) return;
-
-            DisposeWebView();
-
-            Vector2 deviceSize = currentDeviceSize == DeviceSize.Custom ? customSize : DeviceSizes[(int)currentDeviceSize];
-            Rect editorWindowRect = this.position;
-            Rect webviewRect = new Rect(
-                editorWindowRect.x + editorWindowRect.width + 10,
-                editorWindowRect.y + 100,
-                deviceSize.x,
-                deviceSize.y
-            );
-
-            webViewLauncher = new WebViewLauncher();
-
-            // Subscribe to callbacks
-            webViewLauncher.OnPaymentSuccess += OnWebViewPaymentSuccess;
-            webViewLauncher.OnPaymentFailure += OnWebViewPaymentFailure;
-            webViewLauncher.OnOptinResponse += OnWebViewOptinResponse;
-
-            // Set up polling for notifications (macOS uses NSNotificationCenter, Windows uses message queue)
-            StartNotificationPolling();
-
-            if (webViewLauncher.CreateWindow(webviewRect, currentUrl))
+            Repaint();
+            Subscribe();
+            try
             {
-                Debug.Log("WebViewLauncher: Created webview window successfully");
+                if (StashNativeDesktopBridge.IsCurrentlyPresented)
+                    StashNativeDesktopBridge.ResetPresentationState();
+                Vector2 size = PresetSize();
+                string json = isPopupMode
+                    ? JsonUtility.ToJson(StashDesktopModalConfigDto.From(currentModalConfig ?? StashNativeModalConfig.Default, StashNativeDesktopBridge.PresentationWindow, size, false))
+                    : JsonUtility.ToJson(StashDesktopCardConfigDto.From(currentCardConfig ?? StashNativeCardConfig.Default, StashNativeDesktopBridge.PresentationWindow, size, false));
+                if (isPopupMode)
+                    StashNativeDesktopBridge.OpenModal(currentUrl, json);
+                else
+                    StashNativeDesktopBridge.OpenCard(currentUrl, json);
             }
-            else
+            catch (Exception e)
             {
-                Debug.LogWarning("WebViewLauncher: Failed to create window, falling back to browser");
+                Debug.LogWarning("StashNative Editor: desktop host unavailable, falling back to the system browser: " + e.Message);
                 Application.OpenURL(currentUrl);
-                webViewLauncher.Dispose();
-                webViewLauncher = null;
             }
         }
 
-        private void StartNotificationPolling()
+        // The play-mode StashNative instance drains the native events and raises its events; the panel only
+        // follows the presentation state.
+        private void Subscribe()
         {
-            // Poll for notifications using EditorApplication.update
-            UnityEditor.EditorApplication.update += PollForNotifications;
+            if (subscribed || StashNative.Instance == null) return;
+            subscribed = true;
+            StashNative.Instance.OnDialogDismissed += OnPresentationEnded;
+            StashNative.Instance.OnPaymentSuccess += _ => OnPresentationEnded();
+            StashNative.Instance.OnPaymentFailure += OnPresentationEnded;
+            StashNative.Instance.OnNetworkError += OnPresentationEnded;
+            StashNative.Instance.OnExternalPayment += _ => OnPresentationEnded();
         }
 
-        private void StopNotificationPolling()
+        private void OnPresentationEnded()
         {
-            UnityEditor.EditorApplication.update -= PollForNotifications;
+            EditorApplication.delayCall += () =>
+            {
+                if (this != null && !StashNativeDesktopBridge.IsCurrentlyPresented)
+                    Close();
+            };
         }
 
-        private void PollForNotifications()
+        private void SimulateSuccess()
         {
-            // Polling is handled by the WebViewLauncher class
-            // macOS uses NSNotificationCenter, Windows uses message queue
-        }
-
-        private void OnWebViewPaymentSuccess()
-        {
-            Debug.Log("[StashNative Editor] Payment Success callback received");
+            Debug.Log("[StashNative Editor] Payment Success callback simulated");
+            StashNativeDesktopBridge.ResetPresentationState();
             if (StashNative.Instance != null)
                 StashNative.Instance.OnEditorPaymentSuccess("");
-            CloseEditorWindow();
+            Close();
         }
 
-        private void OnWebViewPaymentFailure()
+        private void SimulateFailure()
         {
-            Debug.Log("[StashNative Editor] Payment Failure callback received");
+            Debug.Log("[StashNative Editor] Payment Failure callback simulated");
+            StashNativeDesktopBridge.ResetPresentationState();
             if (StashNative.Instance != null)
                 StashNative.Instance.OnEditorPaymentFailure();
-            CloseEditorWindow();
+            Close();
         }
 
-        private void OnWebViewOptinResponse(string optinType)
+        private void SimulateDismiss()
         {
-            Debug.Log("[StashNative Editor] Optin Response callback received: " + optinType);
-            if (StashNative.Instance != null)
-                StashNative.Instance.OnEditorOptinResponse(optinType);
-            CloseEditorWindow();
-        }
-
-        private void OnWebViewDismissDialog()
-        {
-            Debug.Log("[StashNative Editor] Dismiss Dialog callback received");
-            if (StashNative.Instance != null)
-                StashNative.Instance.OnEditorDismissCatalog();
-            CloseEditorWindow();
-        }
-
-        private void CloseEditorWindow()
-        {
-            DisposeWebView();
-            this.Close();
-        }
-
-        private void DisposeWebView()
-        {
-            if (webViewLauncher != null)
+            Debug.Log("[StashNative Editor] Dismiss Dialog callback simulated");
+            if (StashNativeDesktopBridge.IsCurrentlyPresented)
             {
-                // Unsubscribe from callbacks
-                webViewLauncher.OnPaymentSuccess -= OnWebViewPaymentSuccess;
-                webViewLauncher.OnPaymentFailure -= OnWebViewPaymentFailure;
-                webViewLauncher.OnOptinResponse -= OnWebViewOptinResponse;
-
-                webViewLauncher.Dispose();
-                webViewLauncher = null;
+                // The host emits dialogDismissed; StashNative routes it like a device dismissal.
+                StashNativeDesktopBridge.Dismiss();
             }
+            else if (StashNative.Instance != null)
+            {
+                StashNative.Instance.OnEditorDismissCatalog();
+            }
+            Close();
         }
 
         private void OnDestroy()
         {
-            if (StashNative.Instance != null)
-                StashNative.Instance.OnEditorDismissCatalog();
-            DisposeWebView();
-        }
-
-        private void OnDisable()
-        {
-            DisposeWebView();
+            // Closing the panel closes the checkout; a live presentation reports dialogDismissed through the host.
+            if (StashNativeDesktopBridge.IsCurrentlyPresented)
+                StashNativeDesktopBridge.Dismiss();
+            if (instance == this) instance = null;
         }
     }
 }
 #endif // UNITY_EDITOR_OSX || UNITY_EDITOR_WIN
-

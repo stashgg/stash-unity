@@ -112,7 +112,7 @@ namespace Stash.Native
 
         private void Update()
         {
-#if (UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX) && !UNITY_EDITOR
+#if UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX || UNITY_EDITOR_WIN || UNITY_EDITOR_OSX
             StashNativeDesktopBridge.Drain(HandleDesktopEvent);
 #endif
         }
@@ -656,8 +656,34 @@ namespace Stash.Native
                 RestoreFullScreenModeIfNeeded();
                 Application.OpenURL(url);
             }
+#elif UNITY_EDITOR_WIN || UNITY_EDITOR_OSX
+            if (IsStandaloneBuildTarget())
+            {
+                // Play mode targeting a desktop player: the desktop host itself, in a standalone window with the
+                // desktop sizing, so what is tested is what ships.
+                try
+                {
+                    string json = isModal
+                        ? JsonUtility.ToJson(StashDesktopModalConfigDto.From(modalConfig ?? StashNativeModalConfig.Default, StashNativeDesktopBridge.PresentationWindow, Vector2.zero, false))
+                        : JsonUtility.ToJson(StashDesktopCardConfigDto.From(cardConfig ?? StashNativeCardConfig.Default, StashNativeDesktopBridge.PresentationWindow, Vector2.zero, false));
+                    if (isModal)
+                        StashNativeDesktopBridge.OpenModal(url, json);
+                    else
+                        StashNativeDesktopBridge.OpenCard(url, json);
+                }
+                catch (Exception e)
+                {
+                    HandleNativeException(isModal ? "OpenModal" : "OpenCard", e);
+                    Application.OpenURL(url);
+                }
+            }
+            else
+            {
+                // Mobile targets: the phone-preset simulator window.
+                OpenEditorTestWindow(url, isModal, cardConfig, modalConfig);
+            }
 #elif UNITY_EDITOR
-            OpenEditorTestWindow(url, isModal);
+            OpenEditorTestWindow(url, isModal, cardConfig, modalConfig);
 #else
             Application.OpenURL(url);
 #endif
@@ -682,7 +708,15 @@ namespace Stash.Native
         public void OnEditorOptinResponse(string optinType) => OnOptinResponse?.Invoke(optinType ?? "");
         public void OnEditorDismissCatalog() { _currentDismissCallback?.Invoke(); OnDialogDismissed?.Invoke(); _currentDismissCallback = null; _currentSuccessCallback = null; _currentFailureCallback = null; }
 
-        private void OpenEditorTestWindow(string url, bool isModal)
+        private static bool IsStandaloneBuildTarget()
+        {
+            var target = UnityEditor.EditorUserBuildSettings.activeBuildTarget;
+            return target == UnityEditor.BuildTarget.StandaloneWindows64
+                || target == UnityEditor.BuildTarget.StandaloneWindows
+                || target == UnityEditor.BuildTarget.StandaloneOSX;
+        }
+
+        private void OpenEditorTestWindow(string url, bool isModal, StashNativeCardConfig? cardConfig, StashNativeModalConfig? modalConfig)
         {
             try
             {
@@ -691,12 +725,12 @@ namespace Stash.Native
                 if (isModal)
                 {
                     var openModal = editorWindowType.GetMethod("OpenModal", new[] { typeof(string), typeof(StashNativeModalConfig?) });
-                    if (openModal != null) openModal.Invoke(null, new object[] { url, null });
+                    if (openModal != null) openModal.Invoke(null, new object[] { url, modalConfig });
                 }
                 else
                 {
-                    var openCard = editorWindowType.GetMethod("OpenCard", new[] { typeof(string) });
-                    if (openCard != null) openCard.Invoke(null, new object[] { url });
+                    var openCard = editorWindowType.GetMethod("OpenCard", new[] { typeof(string), typeof(StashNativeCardConfig?) });
+                    if (openCard != null) openCard.Invoke(null, new object[] { url, cardConfig });
                 }
             }
             catch (Exception e)
