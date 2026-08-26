@@ -2,6 +2,9 @@ using System;
 using UnityEngine;
 using System.Runtime.InteropServices;
 using System.Collections;
+#if UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX || UNITY_EDITOR_WIN || UNITY_EDITOR_OSX
+using Stash.Native.Desktop;
+#endif
 
 namespace Stash.Native
 {
@@ -107,6 +110,20 @@ namespace Stash.Native
             {
                 Destroy(gameObject);
             }
+        }
+
+        private void Update()
+        {
+#if (UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX) && !UNITY_EDITOR
+            StashNativeDesktopBridge.Drain(HandleDesktopEvent);
+#endif
+        }
+
+        private void OnApplicationQuit()
+        {
+#if (UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX) && !UNITY_EDITOR
+            StashNativeDesktopBridge.Shutdown();
+#endif
         }
 
         private void OnApplicationPause(bool pauseStatus)
@@ -243,6 +260,104 @@ namespace Stash.Native
         }
 #endif
 
+#if UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX || UNITY_EDITOR_WIN || UNITY_EDITOR_OSX
+        // Windows / macOS: the stash-native desktop hosts (WebView2 / WKWebView card over the game window).
+        // Events arrive through StashNativeDesktopBridge.Drain on the game loop (see Update).
+        private FullScreenMode? _fullScreenModeToRestore;
+
+        /// <summary>Test seam: the per-call callbacks OpenCard / OpenModal would install.</summary>
+        internal void SetCurrentCallbacks(Action dismissCallback, Action<string> successCallback, Action failureCallback)
+        {
+            _currentDismissCallback = dismissCallback;
+            _currentSuccessCallback = successCallback;
+            _currentFailureCallback = failureCallback;
+        }
+
+        internal bool HasCurrentCallbacks => _currentDismissCallback != null || _currentSuccessCallback != null || _currentFailureCallback != null;
+
+        internal void HandleDesktopEvent(string type, string payload)
+        {
+            switch (type)
+            {
+                case StashNativeDesktopBridge.EventPaymentSuccess:
+                    {
+                        var o = payload ?? "";
+                        _currentSuccessCallback?.Invoke(o);
+                        OnPaymentSuccess?.Invoke(o);
+                        RestoreFullScreenModeIfNeeded();
+                        break;
+                    }
+                case StashNativeDesktopBridge.EventPaymentFailure:
+                    _currentFailureCallback?.Invoke();
+                    OnPaymentFailure?.Invoke();
+                    RestoreFullScreenModeIfNeeded();
+                    break;
+                case StashNativeDesktopBridge.EventDialogDismissed:
+                    _currentDismissCallback?.Invoke();
+                    OnDialogDismissed?.Invoke();
+                    _currentDismissCallback = null;
+                    _currentSuccessCallback = null;
+                    _currentFailureCallback = null;
+                    RestoreFullScreenModeIfNeeded();
+                    break;
+                case StashNativeDesktopBridge.EventOptInResponse:
+                    OnOptinResponse?.Invoke(payload ?? "");
+                    break;
+                case StashNativeDesktopBridge.EventPageLoaded:
+                    if (double.TryParse(payload, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double loadTime))
+                        OnPageLoaded?.Invoke(loadTime);
+                    break;
+                case StashNativeDesktopBridge.EventNetworkError:
+                    OnNetworkError?.Invoke();
+                    RestoreFullScreenModeIfNeeded();
+                    break;
+                case StashNativeDesktopBridge.EventExternalPayment:
+                    OnExternalPayment?.Invoke(payload ?? "");
+                    RestoreFullScreenModeIfNeeded();
+                    break;
+                case StashNativeDesktopBridge.EventPurchaseProcessing:
+                case StashNativeDesktopBridge.EventProcessingCompleted:
+                    break;
+                default:
+                    // navigation, navigationBlocked, webProcessCrashed, error: diagnostics only.
+                    Debug.Log("StashNative: desktop " + type + (string.IsNullOrEmpty(payload) ? "" : " " + payload));
+                    break;
+            }
+        }
+
+        // Exclusive fullscreen contends with child-window compositing; borderless for the flow, restored afterwards.
+        private void SwitchFromExclusiveFullScreenIfNeeded()
+        {
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+            if (Screen.fullScreenMode == FullScreenMode.ExclusiveFullScreen)
+            {
+                _fullScreenModeToRestore = Screen.fullScreenMode;
+                Screen.fullScreenMode = FullScreenMode.FullScreenWindow;
+            }
+#endif
+        }
+
+        private void RestoreFullScreenModeIfNeeded()
+        {
+            if (_fullScreenModeToRestore.HasValue && !StashNativeDesktopBridge.IsCurrentlyPresented)
+            {
+                Screen.fullScreenMode = _fullScreenModeToRestore.Value;
+                _fullScreenModeToRestore = null;
+            }
+        }
+
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+        [DllImport("user32.dll")] private static extern IntPtr GetActiveWindow();
+#endif
+
+        private void ApplyDesktopHostWindow()
+        {
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+            StashNativeDesktopBridge.SetHostWindow(GetActiveWindow());
+#endif
+        }
+#endif
+
         #endregion
 
         #region Public Methods
@@ -278,6 +393,24 @@ namespace Stash.Native
                     config.notificationIconResId);
             }
             catch (Exception e) { HandleNativeException("SetKeepAliveConfig", e); }
+#endif
+        }
+
+        /// <summary>Windows / macOS players: creates the browser processes ahead of the first checkout so it opens instantly. No-op elsewhere.</summary>
+        public void Prewarm()
+        {
+#if (UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX) && !UNITY_EDITOR
+            try { ApplyDesktopHostWindow(); StashNativeDesktopBridge.Prewarm(); }
+            catch (Exception e) { HandleNativeException("Prewarm", e); }
+#endif
+        }
+
+        /// <summary>Makes the checkout webviews inspectable (Safari Web Inspector, Edge DevTools). Debug builds only. Windows / macOS players.</summary>
+        public void SetInspectableWebViewsEnabled(bool enabled)
+        {
+#if (UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX) && !UNITY_EDITOR
+            try { StashNativeDesktopBridge.SetInspectableWebViewsEnabled(enabled); }
+            catch (Exception e) { HandleNativeException("SetInspectableWebViewsEnabled", e); }
 #endif
         }
 
@@ -319,6 +452,9 @@ namespace Stash.Native
                     Application.OpenURL(url);
             }
             catch (Exception e) { HandleNativeException("OpenBrowser", e); }
+#elif (UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX) && !UNITY_EDITOR
+            try { StashNativeDesktopBridge.OpenBrowser(url); }
+            catch (Exception e) { HandleNativeException("OpenBrowser", e); Application.OpenURL(url); }
 #else
             Application.OpenURL(url);
 #endif
@@ -343,6 +479,9 @@ namespace Stash.Native
 #elif UNITY_IOS && !UNITY_EDITOR
             try { _StashNativeCardBridgeDismiss(); }
             catch (Exception e) { HandleNativeException("Dismiss", e); }
+#elif (UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX) && !UNITY_EDITOR
+            try { StashNativeDesktopBridge.Dismiss(); }
+            catch (Exception e) { HandleNativeException("Dismiss", e); }
 #endif
         }
 
@@ -353,6 +492,9 @@ namespace Stash.Native
             catch (Exception e) { HandleNativeException("ResetPresentationState", e); }
 #elif UNITY_IOS && !UNITY_EDITOR
             try { _StashNativeCardBridgeResetPresentationState(); }
+            catch (Exception e) { HandleNativeException("ResetPresentationState", e); }
+#elif (UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX) && !UNITY_EDITOR
+            try { StashNativeDesktopBridge.ResetPresentationState(); }
             catch (Exception e) { HandleNativeException("ResetPresentationState", e); }
 #endif
         }
@@ -367,6 +509,8 @@ namespace Stash.Native
 #elif UNITY_IOS && !UNITY_EDITOR
                 try { return _StashNativeCardBridgeIsCurrentlyPresented(); }
                 catch (Exception e) { HandleNativeException("IsCurrentlyPresented", e); return false; }
+#elif (UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX) && !UNITY_EDITOR
+                return StashNativeDesktopBridge.IsCurrentlyPresented;
 #else
                 return false;
 #endif
@@ -383,6 +527,8 @@ namespace Stash.Native
 #elif UNITY_IOS && !UNITY_EDITOR
                 try { return _StashNativeCardBridgeIsPurchaseProcessing(); }
                 catch (Exception e) { HandleNativeException("IsPurchaseProcessing", e); return false; }
+#elif (UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX) && !UNITY_EDITOR
+                return StashNativeDesktopBridge.IsPurchaseProcessing;
 #else
                 return false;
 #endif
@@ -490,6 +636,27 @@ namespace Stash.Native
             catch (Exception e)
             {
                 HandleNativeException(isModal ? "OpenModal" : "OpenCard", e);
+                Application.OpenURL(url);
+            }
+#elif (UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX) && !UNITY_EDITOR
+            try
+            {
+                // Ratios are accepted and ignored by the desktop hosts (fixed card / modal size); the JSON uses the
+                // mobile field names so the structs serialize unchanged.
+                ApplyDesktopHostWindow();
+                SwitchFromExclusiveFullScreenIfNeeded();
+                string json = isModal
+                    ? JsonUtility.ToJson(StashDesktopModalConfigDto.From(modalConfig ?? StashNativeModalConfig.Default, StashNativeDesktopBridge.PresentationAttached, Vector2.zero, false))
+                    : JsonUtility.ToJson(StashDesktopCardConfigDto.From(cardConfig ?? StashNativeCardConfig.Default, StashNativeDesktopBridge.PresentationAttached, Vector2.zero, false));
+                if (isModal)
+                    StashNativeDesktopBridge.OpenModal(url, json);
+                else
+                    StashNativeDesktopBridge.OpenCard(url, json);
+            }
+            catch (Exception e)
+            {
+                HandleNativeException(isModal ? "OpenModal" : "OpenCard", e);
+                RestoreFullScreenModeIfNeeded();
                 Application.OpenURL(url);
             }
 #elif UNITY_EDITOR
