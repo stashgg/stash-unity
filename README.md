@@ -4,12 +4,13 @@
   <img src="https://github.com/stashgg/stash-native/raw/main/.github/assets/stash_unity.png" width="128" height="128" alt="Stash Unity Logo"/>
 </p>
 
-Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native) (embedded **Stash Native 2.3.0**), enabling native-feeling Stash Pay IAP checkout and webshop presentation directly inside your Unity game (Android/iOS).
+Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native) (embedded **Stash Native 2.4.0**), enabling native-feeling Stash Pay IAP checkout and webshop presentation directly inside your Unity game (Android, iOS, Windows, macOS).
 
 ## Requirements
 
 - Unity 2021.3+ (LTS recommended)
 - iOS 13.0+ / Android API 21+
+- Windows 10 1809+ or Windows 11 (x64) with the WebView2 Evergreen runtime (preinstalled on Windows 11 and updated Windows 10) / macOS 11+ (arm64 and x86_64)
 
 ## Installation (UPM)
 
@@ -84,9 +85,13 @@ When installed via UPM, the package lives under `Packages/gg.stash.unity/` with 
 | Path | Description |
 |------|-------------|
 | **Runtime/** | **`StashNative.cs`** – Singleton API: `OpenCard`, `OpenModal`, `OpenBrowser`, `CloseBrowser`, Android keep-alive helpers, and events. |
-| **Editor/** | **(Optional)** Editor window for testing card/modal flows in the Unity Editor (Windows and macOS). |
+| **Runtime/Desktop/** | `StashNativeDesktopBridge.cs`: binding to the desktop hosts' C ABI (Windows and macOS players and editors). |
+| **Editor/** | **(Optional)** Editor window for testing card/modal flows in the Unity Editor (Windows and macOS), presented through the desktop host. |
 | **Plugins/Android/** | StashNative AAR and Unity bridge for Android. |
 | **Plugins/iOS/** | Unity bridge and StashNative.xcframework for iOS. |
+| **Plugins/Windows/x86_64/** | `StashNativeDesktop.dll` (stash-native Windows host, WebView2). |
+| **Plugins/macOS/** | `StashNativeDesktop.bundle` (stash-native macOS host, WKWebView, universal). |
+| **Tests/Editor/** | EditMode tests for the desktop bridge. |
 | **Samples~/StashSample/** | Optional sample (on disk only). Unity **does not list** files under `Samples~` in the Project window (the `~` path is excluded from import). Use **Package Manager → Samples → Import** to copy them into `Assets/`. |
 
 
@@ -195,6 +200,21 @@ StashNative.Instance.OpenModal(
 All callbacks and config are optional; you can pass only the ones you need or use the global events instead. See the API reference below for more details about configuration options.
 
 
+### Desktop (Windows / macOS)
+
+Standalone Windows and macOS players use the same `OpenCard` / `OpenModal` / `OpenBrowser` calls, callbacks and config structs. The checkout is presented as a card over the game window (the game keeps rendering underneath) through the stash-native desktop hosts vendored in `Plugins/Windows/x86_64` and `Plugins/macOS`; nothing is bundled, Windows uses the WebView2 Evergreen runtime and macOS the system WebKit.
+
+- **Sizing**: the card is a fixed 480 x 720 pt surface and the modal 480 x 600 pt, centred and clamped to the game window; the ratio fields of the config structs are accepted and ignored, `forcePortrait` has no effect.
+- **`OpenBrowser`** opens the system browser; `OnBrowserClosed` never fires and `CloseBrowser` is a no-op on desktop.
+- **Prewarm**: call `StashNative.Instance.Prewarm()` once at startup (a no-op on mobile) so the first checkout opens instantly.
+- **Fullscreen**: on Windows the package switches an exclusive-fullscreen game to borderless for the checkout and restores it afterwards.
+- **Threading**: events are delivered from `StashNative`'s `Update`, on the game thread.
+- **Apple Pay is not available in the macOS card** (a WebKit limitation for embedded web views; the checkout hides the button). Cards, Google Pay and PayPal are. Everything, Apple Pay included, is available on Windows.
+- **Links**: generate checkout links without the `platform` field for desktop players (the sample's `StashLinkGenerator` does this); saved payment methods are keyed to the user id you pass.
+- **Shutdown**: the package releases the webview environment when the application quits and, in the editor, before assembly reloads and when leaving play mode.
+
+Requirements and troubleshooting: see [Requirements](#requirements) and [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+
 ### OpenBrowser()
 
 Opens the URL in the platform browser (Chrome Custom Tabs on Android, SFSafariViewController on iOS). Use when you need an alternative lightweight, system-native browser view.
@@ -259,8 +279,10 @@ All public API lives on the **`StashNative`** singleton. Access it via **`StashN
 |-----------|-------------|
 | **`void OpenCard(string url, Action dismissCallback, Action<string> successCallback, Action failureCallback, StashNativeCardConfig? config)`** | Opens the URL in the native card (drawer). `successCallback` receives an optional order payload (may be empty). All callbacks and config are optional. |
 | **`void OpenModal(string url, Action dismissCallback, Action<string> successCallback, Action failureCallback, StashNativeModalConfig? config)`** | Opens the URL in a centered modal. Same success signature as `OpenCard`. |
-| **`void OpenBrowser(string url)`** | Opens the URL in the platform browser (Chrome Custom Tabs when `androidx.browser` is on the classpath, otherwise the system browser on Android; `SFSafariViewController` on iOS). |
-| **`void CloseBrowser()`** | **iOS only:** dismisses the Safari view programmatically. No-op on Android. |
+| **`void OpenBrowser(string url)`** | Opens the URL in the platform browser (Chrome Custom Tabs when `androidx.browser` is on the classpath, otherwise the system browser on Android; `SFSafariViewController` on iOS; the system browser on Windows and macOS). |
+| **`void CloseBrowser()`** | **iOS only:** dismisses the Safari view programmatically. No-op on Android and desktop. |
+| **`void Prewarm()`** | **Desktop only:** creates the browser processes ahead of the first checkout so it opens instantly. No-op elsewhere. |
+| **`void SetInspectableWebViewsEnabled(bool enabled)`** | **Desktop only:** makes the checkout webviews inspectable (Safari Web Inspector / Edge DevTools). Debug builds only. |
 | **`void SetKeepAliveEnabled(bool enabled)`** | **Android only:** opt in to the SDK keep-alive foreground service during external browser flows. |
 | **`void SetKeepAliveConfig(StashNativeKeepAliveConfig config)`** | **Android only:** notification title, text, and optional icon resource id (`0` = library default). |
 | **`void Dismiss()`** | Dismisses the current card or modal. |
@@ -279,7 +301,7 @@ Subscribe on `StashNative.Instance`.
 | **`OnPaymentSuccess`** | Payment completed successfully in the in-app UI. Argument: optional order string from checkout (may be empty). |
 | **`OnPaymentFailure`** | Payment failed in the in-app UI. |
 | **`OnExternalPayment`** | Checkout opened an external URL (e.g. GPay, Klarna, crypto). Finalize via deeplink; same flow as described in [stash-native callbacks](https://github.com/stashgg/stash-native/blob/main/README.md). |
-| **`OnBrowserClosed`** | The external browser (Chrome Custom Tabs / SFSafariViewController) was closed after `OpenBrowser` or an external payment redirect. |
+| **`OnBrowserClosed`** | The external browser (Chrome Custom Tabs / SFSafariViewController) was closed after `OpenBrowser` or an external payment redirect. Not raised on desktop. |
 | **`OnOptinResponse`** | Opt-in / channel selection response (e.g. `"stash_pay"`, `"native_iap"`). |
 | **`OnPageLoaded`** | Page finished loading (argument: load time in ms). |
 | **`OnNetworkError`** | Page load failed (no connection, HTTP error, timeout). |
@@ -297,14 +319,14 @@ Optional per-call config for **`OpenCard`**. **`StashNativeCardConfig.Default`**
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| **`forcePortrait`** | `false` | Portrait-locked on phone when true. **Required for landscape-locked games:** Set to `true` if your Unity game is locked to landscape orientation to ensure checkout displays in portrait. Portrait orientation must be enabled in Unity Player Settings (iOS: `allowedAutorotateToPortrait: 1`). |
+| **`forcePortrait`** | `false` | Portrait-locked on phone when true. **Required for landscape-locked games:** Set to `true` if your Unity game is locked to landscape orientation to ensure checkout displays in portrait. Portrait orientation must be enabled in Unity Player Settings (iOS: `allowedAutorotateToPortrait: 1`). No effect on desktop. |
 | **`cardHeightRatioPortrait`** | `0.68f` | Card height ratio portrait (0.1–1.0). |
 | **`cardWidthRatioLandscape`** | `0.7f` | Card width ratio landscape. |
 | **`cardHeightRatioLandscape`** | `0.9f` | Card height ratio landscape. |
 | **`tabletWidthRatioPortrait`** | `0.4f` | Tablet width portrait. |
 | **`tabletHeightRatioPortrait`** | `0.5f` | Tablet height portrait. |
 | **`tabletWidthRatioLandscape`** | `0.3f` | Tablet width landscape. |
-| **`tabletHeightRatioLandscape`** | `0.6f` | Tablet height landscape. |
+| **`tabletHeightRatioLandscape`** | `0.6f` | Tablet height landscape. Desktop: all ratio fields are ignored (fixed 480 x 720 pt card). |
 | **`autoClose`** | `true` | When `false`, the card stays open after the payment success/failure callback (callbacks still fire) until closed by the page, user, or host. |
 | **`backgroundColor`** | `null` | Optional shell color (`#RGB`, `#RRGGBB`, `#AARRGGBB`). Omit for the default Stash light/dark theme. |
 
@@ -315,7 +337,7 @@ Optional per-call config for **`OpenModal`**. **`StashNativeModalConfig.Default`
 | Field | Default | Description |
 |-------|---------|-------------|
 | **`allowDismiss`** | `true` | User can dismiss (tap outside / gestures per native SDK). |
-| **`phoneWidthRatioPortrait`** … **`tabletHeightRatioLandscape`** | (see struct) | Size ratios 0.1–1.0. |
+| **`phoneWidthRatioPortrait`** … **`tabletHeightRatioLandscape`** | (see struct) | Size ratios 0.1–1.0. Desktop: ignored (fixed 480 x 600 pt modal). |
 | **`autoClose`** | `true` | When `false`, the modal stays open after the payment success/failure callback (callbacks still fire) until closed by the page, user, or host. |
 | **`backgroundColor`** | `null` | Optional shell color; omit for default Stash theme. |
 
@@ -341,7 +363,7 @@ Used with **`SetKeepAliveConfig`** on **Android** only.
 
 Package includes a Unity editor extension that allows you to test Stash URLs directly in the Unity Editor without building to a device.
 
-When you call `OpenCard()` or `OpenModal()` in the Editor, the extension intercepts and displays the flow in a preview window. You can interact with the UI and verify callback events. `OpenBrowser()` is not simulated; it opens the system browser.
+When you call `OpenCard()` or `OpenModal()` in play mode with a mobile build target, the extension displays the flow in a preview window sized to a phone or tablet preset (the same stash-native desktop host that ships in Windows and macOS players, in a standalone window). You can interact with the UI and verify callback events; the Simulate buttons fire the callbacks without a page. With a **Standalone** build target active, play mode opens the desktop host directly with the desktop sizing, so what you test is what ships. `OpenBrowser()` is not simulated; it opens the system browser.
 
 > **Note:** Currently **Windows** and **macOS** versions of Unity are supported for editor simulator. Linux versions of editor are not supported.
 

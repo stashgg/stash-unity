@@ -23,6 +23,30 @@ Or fix it in Xcode project:
 
 Ensure `StashNative.xcframework` is present in `Packages/gg.stash.unity/Plugins/iOS/` before building from Unity so the post-process can add it to the main target’s embed phase.
 
+### [Windows] Checkout does not open, "WebView2 Runtime is not installed" in the log
+
+The Windows host needs the WebView2 Evergreen runtime on the player's machine. It is preinstalled on Windows 11 and on updated Windows 10; on a machine without it, `OpenCard` / `OpenModal` report `OnNetworkError` (and an `error` line in the log). Ship the [Evergreen bootstrapper](https://developer.microsoft.com/microsoft-edge/webview2/) with your installer, or fall back to `OpenBrowser`.
+
+### [Windows] "StashNativeDesktop.dll not found" in the editor or player
+
+The DLL lives in `Packages/gg.stash.unity/Plugins/Windows/x86_64/` and must be enabled for Standalone Win64 and the Windows editor in its import settings (it is by default). In a player it is copied next to the executable under `<Game>_Data/Plugins/x86_64/`. If a custom build step strips plugins, add it back.
+
+### [Windows] Editor cannot rebuild or update the package: "StashNativeDesktop.dll is being used by another process"
+
+The editor holds the DLL once loaded. Close the Unity editor before replacing the file (for example when running `Tools/sync-desktop-binaries.sh`).
+
+### [macOS] "StashNativeDesktop.bundle not found" in a built player
+
+Unity copies native plugins to `<App>.app/Contents/PlugIns/`. The bundle's import settings must enable Standalone OSX (they do by default). If a post-build step re-signs or re-packages the app, keep `Contents/PlugIns/StashNativeDesktop.bundle` in place.
+
+### [macOS] Gatekeeper or notarization complaints about the bundle
+
+The bundle inside the package is unsigned; signing applies to the hosting app. When you sign and notarize your player, the bundle in `Contents/PlugIns` is signed as part of the app (`codesign --deep` or your own per-file signing) and passes notarization. Ad-hoc signed development builds run locally without extra steps.
+
+### [Desktop] The card stays dark / the page never loads in the editor
+
+The editor presents the checkout through the same host as the players in a standalone window. A `networkError` after about 15 seconds means the page could not be reached; `http://` URLs are refused (checkout must be `https://`). Use the Simulate buttons in the test window to exercise callbacks without a page.
+
 ### [Android] Bridge does not compile
 
 The Unity bridge expects the StashNative AAR to expose `StashNative` and related classes. If your AAR uses a different Java package than `com.stash.stashnative`, update the fully qualified class names in `StashNativeCardUnityBridge.java` to match the AAR.
