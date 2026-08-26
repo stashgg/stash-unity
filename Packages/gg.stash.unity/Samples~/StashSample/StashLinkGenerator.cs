@@ -32,38 +32,43 @@ public class StashLinkGenerator : MonoBehaviour
 
     private IEnumerator RequestCheckoutUrlCoroutine(Action<string> onUrl, Action<string> onError)
     {
-        // Determine purchase platform dynamically
-        string platformValue;
-#if UNITY_IOS
-            platformValue = "IOS";
-#elif UNITY_ANDROID
-            platformValue = "ANDROID";
-#else
-        platformValue = Application.platform.ToString().ToUpper();
-#endif
+        var item = new QuickPayItem
+        {
+            id = "test_item_id",
+            pricePerItem = "0.99",
+            quantity = 1,
+            imageUrl = "https://storage.googleapis.com/stash_assets/stash_logo_128.png",
+            name = "Test Item",
+            description = "A description of the test item"
+        };
 
-        var request = new QuickPayRequest
+        // The platform enum only knows IOS and ANDROID. Desktop players omit the field (UNDEFINED, the
+        // web channel with every wallet enabled); an unknown value would be dropped anyway.
+        string json;
+#if UNITY_IOS || UNITY_ANDROID
+#if UNITY_IOS
+        const string platformValue = "IOS";
+#else
+        const string platformValue = "ANDROID";
+#endif
+        json = JsonUtility.ToJson(new QuickPayRequest
         {
             regionCode = "USA",
             currency = "USD",
-            item = new QuickPayItem
-            {
-                id = "test_item_id",
-                pricePerItem = "0.99",
-                quantity = 1,
-                imageUrl = "https://storage.googleapis.com/stash_assets/stash_logo_128.png",
-                name = "Test Item",
-                description = "A description of the test item"
-            },
-            user = new QuickPayUser
-            {
-                id = "test_user_id",
-                validatedEmail = "test@domain.com",
-                platform = platformValue
-            }
-        };
+            item = item,
+            user = new QuickPayUser { id = "test_user_id", validatedEmail = "test@domain.com", platform = platformValue }
+        });
+#else
+        json = JsonUtility.ToJson(new QuickPayDesktopRequest
+        {
+            regionCode = "USA",
+            currency = "USD",
+            item = item,
+            user = new QuickPayDesktopUser { id = "test_user_id", validatedEmail = "test@domain.com" }
+        });
+#endif
 
-        byte[] body = Encoding.UTF8.GetBytes(JsonUtility.ToJson(request));
+        byte[] body = Encoding.UTF8.GetBytes(json);
         using (var www = new UnityWebRequest(QUICK_PAY_ENDPOINT, "POST"))
         {
             www.uploadHandler = new UploadHandlerRaw(body);
@@ -181,6 +186,8 @@ public class StashLinkGenerator : MonoBehaviour
     [Serializable] private class QuickPayRequest { public string regionCode; public string currency; public QuickPayItem item; public QuickPayUser user; }
     [Serializable] private class QuickPayItem { public string id; public string pricePerItem; public int quantity; public string imageUrl; public string name; public string description; }
     [Serializable] private class QuickPayUser { public string id; public string validatedEmail; public string regionCode; public string platform; }
+    [Serializable] private class QuickPayDesktopRequest { public string regionCode; public string currency; public QuickPayItem item; public QuickPayDesktopUser user; }
+    [Serializable] private class QuickPayDesktopUser { public string id; public string validatedEmail; public string regionCode; }
     [Serializable] private class QuickPayResponse { public string id; public string url; public string regionCode; }
     [Serializable] private class AuthenticatedUrlRequest { public AuthenticatedUrlUser user; public string target; }
     [Serializable] private class AuthenticatedUrlUser { public string id; }

@@ -5,6 +5,25 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [2.4.0] - 2026-08-26
+
+### Added
+
+- **Windows and macOS players.** `OpenCard`, `OpenModal` and `OpenBrowser` now work in Standalone Windows (x64, WebView2 Evergreen runtime) and macOS (11+, universal) players through the **Embedded Stash Native SDK [2.4.0](https://github.com/stashgg/stash-native/releases/tag/2.4.0)** desktop hosts (`Plugins/Windows/x86_64/StashNativeDesktop.dll`, `Plugins/macOS/StashNativeDesktop.bundle`). The checkout is a card over the game window; the same callbacks, per-call callbacks and config structs apply. Ratio fields are ignored on desktop (fixed 480 x 720 pt card, 480 x 600 pt modal). `OnBrowserClosed` is not raised on desktop.
+- **`StashNative.Prewarm()`** (desktop: creates the browser processes ahead of the first checkout) and **`StashNative.SetInspectableWebViewsEnabled(bool)`** (desktop: Safari Web Inspector / Edge DevTools on the checkout webview). No-ops elsewhere.
+- Exclusive fullscreen on Windows is switched to borderless for the checkout and restored afterwards.
+- EditMode tests (`Tests/Editor`) and a `test.yml` workflow; `main.yml` builds `StandaloneWindows64` and `StandaloneOSX`.
+
+### Changed
+
+- **Editor simulator** presents card and modal flows through the desktop host in a standalone window (device presets kept, card config no longer dropped, callbacks routed like on a device). Play mode with a Standalone build target opens the desktop host with the desktop sizing.
+- **Sample**: `StashLinkGenerator` omits `platform` for desktop players (the API enum only knows `IOS` / `ANDROID`); `StashSample` calls `Prewarm()` at startup.
+- Package now targets Android, iOS, Windows and macOS (`package.json` description and keywords).
+
+### Removed
+
+- The editor-only WebView natives `Editor/Windows` (WebView2 launcher DLL) and `Editor/macOS` (WKWebView launcher bundle) and their `Stash.Editor.Windows.WebViewLauncher` / `Stash.Editor.macOS.WebViewLauncher` types. The simulator uses the shipped desktop hosts instead.
+
 ## [2.3.0] - 2026-07-28
 
 ### Changed

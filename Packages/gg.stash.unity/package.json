@@ -1,17 +1,20 @@
 {
   "name": "gg.stash.unity",
   "displayName": "Stash for Unity",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "unity": "2021.3",
   "unityRelease": "0f1",
-  "description": "Native-feeling Stash Pay IAP checkout and webshop presentation directly inside your Unity game (Android/iOS).",
+  "description": "Native-feeling Stash Pay IAP checkout and webshop presentation directly inside your Unity game (Android, iOS, Windows, macOS).",
   "keywords": [
     "stash",
     "iap",
     "d2c",
     "checkout",
     "webshop",
-    "payments"
+    "payments",
+    "desktop",
+    "windows",
+    "macos"
   ],
   "author": {
     "name": "Stash",

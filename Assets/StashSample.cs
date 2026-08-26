@@ -15,6 +15,9 @@ public class StashSample : MonoBehaviour
 
     private void Awake()
     {
+        // Desktop players: start the browser processes now so the first checkout opens instantly (no-op on mobile).
+        StashNative.Instance.Prewarm();
+
         StashNative.Instance.OnExternalPayment += url =>
             SetStatus("External payment" + url);
 
