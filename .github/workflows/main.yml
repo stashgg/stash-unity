@@ -1,3 +1,8 @@
+# Desktop Build Notes:
+# - StandaloneWindows64 and StandaloneOSX build on ubuntu with the GameCI windows-mono / mac-mono images
+#   (Mono scripting backend; IL2CPP would need OS-native runners). Artifacts are uploaded, nothing is
+#   uploaded to a store or device farm. The real-webview proofs for desktop run in stash-native CI.
+#
 # iOS Build Notes:
 # - For cloud builds, keep Unity project signing set to manual with the specified provisioning profile.
 # - Provisioning Profile UUID: 5dec23b8-fdeb-4122-b059-dbc982dbc44f (App ID: com.stash.sdkdemo)
@@ -22,6 +27,8 @@ on:
           - Android
           - iOS
           - iOS-simulator
+          - StandaloneWindows64
+          - StandaloneOSX
       upload_to_testflight:
         description: 'Upload to TestFlight (iOS only)'
         required: false
@@ -86,9 +93,9 @@ jobs:
             Library-${{ matrix.platform }}-
             Library-
 
-      # Free up disk space for Android builds
-      - name: Free disk space (Android only)
-        if: matrix.platform == 'Android'
+      # Free up disk space for Android and desktop builds (the GameCI images are large)
+      - name: Free disk space (Android and desktop)
+        if: matrix.platform == 'Android' || startsWith(matrix.platform, 'Standalone')
         uses: jlumbroso/free-disk-space@v1.3.1
 
       # iOS: Clean up any existing certificate/keychain state to avoid conflicts
