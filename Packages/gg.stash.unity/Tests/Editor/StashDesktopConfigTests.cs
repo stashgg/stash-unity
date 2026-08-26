@@ -1,4 +1,3 @@
-#if UNITY_EDITOR_WIN || UNITY_EDITOR_OSX
 using NUnit.Framework;
 using Stash.Native.Desktop;
 using UnityEngine;
@@ -62,4 +61,3 @@ namespace Stash.Native.Tests
         }
     }
 }
-#endif

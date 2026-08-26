@@ -1,6 +1,6 @@
 # EditMode tests (Stash.Unity.Tests.Editor) on every push and PR. unity-test-runner supports Linux runners
-# only, so the desktop-specific tests (native host load) are compiled out there; the config and dispatch
-# tests run. The real-webview proofs are the stash-native sample smoke runs.
+# only: the config and event-dispatch tests run there, the native-host-load tests are compiled out (they run
+# on Windows and macOS editors). The real-webview proofs are the stash-native sample smoke runs.
 
 name: Tests
 
