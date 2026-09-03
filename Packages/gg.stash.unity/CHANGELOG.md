@@ -5,6 +5,30 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [2.3.1] - 2026-09-03
+
+### Changed
+
+- **Embedded Stash Native SDK [2.3.1](https://github.com/stashgg/stash-native/releases/tag/2.3.1)** (`StashNative-2.3.1.aar`, `StashNative.xcframework`).
+- **New-window navigations** in checkout WebViews (anchor `target="_blank"` or `window.open`, main frame or iframe) now open in the external browser instead of being dropped — http/https via the system browser, other schemes via the existing deeplink handling. The checkout stays presented. Handled inside the embedded SDK; no Unity wrapper API change.
+- **Deeplink interception** extended to sub-frames, not just the main frame. Android parses `intent://` URIs with `browser_fallback_url` / Play Store fallback; iOS offers user-tapped https links to a claiming app as universal links; both degrade gracefully when no app is installed. Handled inside the embedded SDK; no Unity wrapper API change.
+
+### Added
+
+- **`StashNative.SetInspectableWebViewsEnabled(bool)`** and **`IsInspectableWebViewsEnabled`**: opt-in flag that makes checkout WebViews inspectable (Safari Web Inspector on iOS 16.4+, `chrome://inspect` on Android) for QA/debug builds and automated UI tests. Off by default; do **not** enable in production. Call before opening any checkout. Wraps the new native `StashNativeCard.setInspectableWebViewsEnabled(...)` API.
+
+### Removed
+
+- **Android**: Google Pay WebView redirect handling (`checkGooglePayRedirect` / `openGooglePayInBrowser` and the `GOOGLE_PAY_*` constants). No public API change.
+
+### Fixed
+
+- **Android**: checkout WebView content is never darkened — force-dark / algorithmic darkening is now disabled unconditionally instead of keyed to the host theme, fixing near-invisible third-party (Adyen secured-field) input text in device dark mode. The checkout self-themes via the `theme=` URL parameter.
+- **Android/iOS**: expanded card height is clamped to the real content box, fixing the scroll bug and a keyboard-triggered expand that shrank the card below its collapsed height. Covers phone and tablet, including rotation and drag-release snap-back.
+- **Android**: phone sheet height ceilings subtract bottom insets and intersect with the root-layout content box, closing a race where `expand()` ran before the first insets dispatch; `expand()` is capped so the card can never grow past 100%.
+- **Android**: `clampRatio` guarded against NaN/Infinity (parity with iOS `stashClampRatio`); scheme / provider-detection string matching uses `Locale.ROOT` to avoid Turkish-locale mismatches.
+
+
 ## [2.3.0] - 2026-07-28
 
 ### Changed

@@ -4,7 +4,7 @@
   <img src="https://github.com/stashgg/stash-native/raw/main/.github/assets/stash_unity.png" width="128" height="128" alt="Stash Unity Logo"/>
 </p>
 
-Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native) (embedded **Stash Native 2.3.0**), enabling native-feeling Stash Pay IAP checkout and webshop presentation directly inside your Unity game (Android/iOS).
+Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native) (embedded **Stash Native 2.3.1**), enabling native-feeling Stash Pay IAP checkout and webshop presentation directly inside your Unity game (Android/iOS).
 
 ## Requirements
 
@@ -264,8 +264,10 @@ All public API lives on the **`StashNative`** singleton. Access it via **`StashN
 | **`void SetKeepAliveEnabled(bool enabled)`** | **Android only:** opt in to the SDK keep-alive foreground service during external browser flows. |
 | **`void SetKeepAliveConfig(StashNativeKeepAliveConfig config)`** | **Android only:** notification title, text, and optional icon resource id (`0` = library default). |
 | **`void Dismiss()`** | Dismisses the current card or modal. |
+| **`void SetInspectableWebViewsEnabled(bool enabled)`** | **Debug/QA only:** makes checkout WebViews inspectable (Safari Web Inspector on iOS 16.4+, `chrome://inspect` on Android). Off by default; do **not** enable in production. Call before opening any checkout. |
 | **`bool IsCurrentlyPresented`** | True if a card or modal is currently visible. |
 | **`bool IsPurchaseProcessing`** | True when a purchase is in progress and the dialog cannot be dismissed manually. |
+| **`bool IsInspectableWebViewsEnabled`** | True when checkout WebView inspection is enabled. Default false. |
 
 ---
 

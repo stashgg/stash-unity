@@ -222,6 +222,8 @@ namespace Stash.Native
         [DllImport("__Internal")] private static extern void _StashNativeCardBridgeResetPresentationState();
         [DllImport("__Internal")] private static extern bool _StashNativeCardBridgeIsCurrentlyPresented();
         [DllImport("__Internal")] private static extern bool _StashNativeCardBridgeIsPurchaseProcessing();
+        [DllImport("__Internal")] private static extern void _StashNativeCardBridgeSetInspectableWebViewsEnabled(bool enabled);
+        [DllImport("__Internal")] private static extern bool _StashNativeCardBridgeIsInspectableWebViewsEnabled();
 
         public void OnIOSPaymentSuccess(string order)
         {
@@ -279,6 +281,39 @@ namespace Stash.Native
             }
             catch (Exception e) { HandleNativeException("SetKeepAliveConfig", e); }
 #endif
+        }
+
+        /// <summary>Debug/QA only. Makes the SDK's checkout WebViews inspectable (Safari Web Inspector on iOS 16.4+, chrome://inspect on Android). Off by default. Do NOT enable in production builds; call before opening any checkout.</summary>
+        public void SetInspectableWebViewsEnabled(bool enabled)
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            try
+            {
+                InitializeAndroidPlugin();
+                androidPluginInstance?.Call("setInspectableWebViewsEnabled", enabled);
+            }
+            catch (Exception e) { HandleNativeException("SetInspectableWebViewsEnabled", e); }
+#elif UNITY_IOS && !UNITY_EDITOR
+            try { _StashNativeCardBridgeSetInspectableWebViewsEnabled(enabled); }
+            catch (Exception e) { HandleNativeException("SetInspectableWebViewsEnabled", e); }
+#endif
+        }
+
+        /// <summary>Whether checkout WebView inspection is enabled. Default false.</summary>
+        public bool IsInspectableWebViewsEnabled
+        {
+            get
+            {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                try { InitializeAndroidPlugin(); return androidPluginInstance != null && androidPluginInstance.Call<bool>("isInspectableWebViewsEnabled"); }
+                catch (Exception e) { HandleNativeException("IsInspectableWebViewsEnabled", e); return false; }
+#elif UNITY_IOS && !UNITY_EDITOR
+                try { return _StashNativeCardBridgeIsInspectableWebViewsEnabled(); }
+                catch (Exception e) { HandleNativeException("IsInspectableWebViewsEnabled", e); return false; }
+#else
+                return false;
+#endif
+            }
         }
 
         public void OpenCard(string url, Action dismissCallback = null, Action<string> successCallback = null, Action failureCallback = null)
