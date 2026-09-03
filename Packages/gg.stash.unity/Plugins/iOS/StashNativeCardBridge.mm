@@ -196,6 +196,22 @@ bool _StashNativeCardBridgeIsPurchaseProcessing(void) {
 #endif
 }
 
+void _StashNativeCardBridgeSetInspectableWebViewsEnabled(bool enabled) {
+#if STASHNATIVE_AVAILABLE
+    [StashNativeCard setInspectableWebViewsEnabled:enabled];
+#else
+    (void)enabled;
+#endif
+}
+
+bool _StashNativeCardBridgeIsInspectableWebViewsEnabled(void) {
+#if STASHNATIVE_AVAILABLE
+    return [StashNativeCard isInspectableWebViewsEnabled];
+#else
+    return false;
+#endif
+}
+
 bool _StashNativeCardBridgeIsSDKAvailable(void) {
 #if STASHNATIVE_AVAILABLE
     return true;

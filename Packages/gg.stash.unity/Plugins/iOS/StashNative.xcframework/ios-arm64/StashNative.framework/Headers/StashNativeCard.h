@@ -245,6 +245,22 @@ NS_ASSUME_NONNULL_BEGIN
 + (NSString *)sdkVersion;
 
 /**
+ * Enables remote inspection (Safari Web Inspector) of the SDK's checkout webviews. Off by default.
+ * When enabled, checkout WKWebViews are created with \c inspectable = YES on iOS 16.4+.
+ *
+ * Intended for debug/QA builds and automated UI testing only. Do NOT enable in production: it lets
+ * the webview contents be inspected via Safari. Set before opening any checkout.
+ *
+ * @param enabled YES to make the SDK's webviews inspectable
+ */
++ (void)setInspectableWebViewsEnabled:(BOOL)enabled;
+
+/**
+ * Whether webview inspection is enabled. Default NO.
+ */
++ (BOOL)isInspectableWebViewsEnabled;
+
+/**
  * Opens a URL in a sliding card UI.
  *
  * The card slides up from the bottom of the screen. On iPads, the card appears centered.

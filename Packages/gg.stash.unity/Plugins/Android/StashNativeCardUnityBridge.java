@@ -123,6 +123,22 @@ public class StashNativeCardUnityBridge implements com.stash.stashnative.StashNa
         }
     }
 
+    public void setInspectableWebViewsEnabled(boolean enabled) {
+        try {
+            com.stash.stashnative.StashNativeCard.setInspectableWebViewsEnabled(enabled);
+        } catch (Throwable t) {
+            Log.e(TAG, "setInspectableWebViewsEnabled failed: " + t.getMessage());
+        }
+    }
+
+    public boolean isInspectableWebViewsEnabled() {
+        try {
+            return com.stash.stashnative.StashNativeCard.isInspectableWebViewsEnabled();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     public void openCard(String url) {
         if (stashNativeCard == null || url == null) return;
         ensureInit();
