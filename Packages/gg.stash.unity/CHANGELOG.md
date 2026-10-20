@@ -5,6 +5,58 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [3.0.0-preview.1] - 2026-10-19
+
+Preview release tracking the **Stash Native 3.0.0 (Preview)** redesign. Breaking update from 2.x; the README has a [migration table](https://github.com/stashgg/stash-unity/blob/main/README.md#migrating-from-2x). Removed members carry `[Obsolete(error: true)]` so every call site is flagged at compile time.
+
+### Changed
+
+- **Embedded Stash Native SDK [3.0.0](https://github.com/stashgg/stash-native/releases/tag/3.0.0)** (`StashNative-3.0.0.aar`, `StashNative.xcframework`). Entry point is `StashNative` with one delegate/listener; the bridges were rewritten and renamed to `StashNativeUnityBridge.java` (package `com.stash.unity`) and `StashNativeBridge.mm`. Card and browser opens pass the Unity activity / view controller as the presenter and are marshaled to the native main thread.
+- **`StashNativeCardConfig`** now describes the responsive card in points: `preferredContentWidth` (400), `preferredContentHeight` (560), `maximumContentHeight` (720), `edgeMargin` (16), `allowDismiss`, `autoClose`, `orientationPreference`. Replaces the eight ratio fields, `forcePortrait` and `backgroundColor`.
+- **Dismiss events are split**: `OnCardDismissed` (was `OnDialogDismissed`), `OnScannerDismissed`, `OnBrowserDismissed` (was `OnBrowserClosed`). Payment auto-close, network error and external-payment handoff no longer emit a dismiss; per-call callbacks are cleared on each of those endings instead.
+- **iOS payment results arrive after the card has closed** (as on Android), so the next card can be opened from the success callback.
+- **Requirements**: iOS 15.0+. Android now **requires** `androidx.core:core` 1.12.0, `androidx.webkit:webkit` 1.11.0, `androidx.window:window` 1.4.0 and `androidx.window:window-java` 1.4.0; an EDM4U manifest (`Editor/StashNativeDependencies.xml`) and `mainTemplate.gradle` instructions are provided.
+- **Sample** rebuilt to match the stash-native sample apps: UI Toolkit (UXML + USS, no extra packages) with bottom tabs Test / Settings / Instances, option sub-screens for the card (orientation, dismiss, auto-close, content sizing, Android backdrop), browser (iOS portrait Safari, Android keep-alive) and scanner copy, named instances (App ID + ingress secret, test or production) persisted on the device, orientation lock, and every callback shown as a timestamped chip. Scales from the shorter screen side so it reads the same on every device; two columns in landscape. The scene is now just a camera and the sample component.
+
+### Changed (review pass)
+
+- **Config types are classes** with native defaults (`new StashNativeCardConfig { orientationPreference = ... }` is safe); the 2.x fields `forcePortrait`, `backgroundColor` and the ratio fields remain as `[Obsolete(error: true)]` members with migration text.
+- **`OpenCard` / `OpenScanner` return `bool`** and refuse to open while a card or scanner session is active, so a double tap can no longer hand card A's result to card B's callbacks. Every session-scoped native event carries a generation tag; events from a session that was reset are dropped.
+- **Receiver name enforced**: a scene-placed `StashNative` component is renamed to `StashNative` and moved to the scene root; duplicates remove only the component; destroying the singleton detaches the native listener.
+- **Fallback paths** (no native library, bridge exception) clear the per-call callbacks they can never fire; `OpenBrowser` falls back to the system browser like `OpenCard`.
+- User callbacks and event subscribers are invoked individually; a throwing handler is reported on `OnNativeException` and no longer suppresses the others.
+- `OpenCard` no longer rewrites URLs (the native SDK normalizes and validates them). `OpenModal` stub keeps its 2.x `config` parameter.
+- Docs: `IsCurrentlyPresented` excludes Android Custom Tabs; `OnExternalPayment` fires while the card is still closing; `Dismiss()` also closes Safari on iOS; `ScannerUnavailable` also covers missing CameraX/ZXing on Android; Android pauses Unity while a card is on screen, so mid-card events arrive after it closes.
+- iOS bridge runs native calls inline when already on the main thread, so `IsCurrentlyPresented` is true in the frame that opened. Android bridge re-asserts its listener on every open and reports a pending open as presented.
+- Editor simulator honours `autoClose = false` and `allowDismiss`, closes before invoking callbacks (so reopening from a callback works), never creates the singleton outside Play mode, and backs `Dismiss`, `ResetPresentationState` and `IsCurrentlyPresented`.
+- Requirements: Unity 2022.3 LTS (the AndroidX set needs compileSdk 34). Sample `mainTemplate.gradle` forces CameraX 1.3.4 so another plugin cannot pull 1.4.x back in.
+
+### Added
+
+- **QuickStart sample**: one script, one uGUI button, the Stash test cart, and numbered comments on where the backend URL, card options and purchase verification go. Listed first under Package Manager → Samples.
+- **`OpenCard(..., networkErrorCallback, externalPaymentCallback)`**: per-call callbacks for the two endings that previously only had global events.
+- **`DismissBrowser(bool paymentSucceeded)`** (iOS): closes Safari with the deeplink payment result, wrapping `dismissSafariViewControllerWithResult:`.
+- **`IsScannerAvailable`**, **`IsKeepAliveEnabled`** (Android), **`LastScannerErrorMessage`**, **`InstanceOrNull`**, **`OpenScanner(config)`** overload.
+- Android bridge `@Keep` annotation and `clearBackdrop()`; iOS bridge `_StashNativeBridgeDetach`.
+- **`OpenScanner(scanned, dismissed, error, StashNativeScannerConfig?)`**, **`OnQrCodeScanned`**, **`OnScannerDismissed`**, **`OnScannerError`** and the **`StashNativeScannerError`** enum for QR Code Linking. Requires the new optional **`gg.stash.unity.codelink`** package (`Packages/gg.stash.unity.codelink`), which bundles `StashNativeCodeLink-3.0.0.aar`, `StashNativeCodeLink.xcframework` and an EDM4U manifest for CameraX/ZXing. Without it the error callback receives `ScannerUnavailable`; the core package has no camera code or permission.
+- **`OpenBrowser(url, StashNativeBrowserConfig?)`**: iOS portrait Safari sheet via `orientationPreference`.
+- **`StashNativeOrientationPreference`** enum (`FollowHost`, `Portrait`).
+- **`SetBackdropBytes(byte[])`**: Android backdrop helper wrapping `StashNative.setBackdropBytes` (handles the `sbyte[]` JNI conversion).
+- **`SdkVersion`**: embedded native SDK version string.
+- **Editor simulator**: `OpenScanner` opens a text field standing in for the camera; **Scan** fires `OnQrCodeScanned`, **Dismiss Scanner** fires `OnScannerDismissed`. Payment buttons no longer also emit a dismiss, matching native auto-close.
+
+### Removed
+
+- **`OpenModal`** and **`StashNativeModalConfig`** (no native counterpart in 3.x; use `OpenCard`).
+- **`OnOptinResponse`** (removed from the native SDK).
+- **`StashNativeCardConfig.forcePortrait`**, the ratio fields and **`backgroundColor`**.
+- Android `setActivity` plumbing on resume (3.x takes the activity per call).
+
+### Fixed
+
+- Upstream 3.0.0 fixes: checkout keeps its state, WebView and focused fields through rotation, keyboard and window changes; a lost connection ends checkout with `OnNetworkError` instead of a dismissal; the card reveals as soon as the page draws content; the Android JavaScript bridge accepts calls only from the checkout document.
+- `OnPageLoaded` parses the load time culture-invariantly.
+
 ## [2.3.1] - 2026-09-03
 
 ### Changed

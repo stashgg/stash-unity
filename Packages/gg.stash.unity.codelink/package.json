@@ -1,0 +1,27 @@
+{
+  "name": "gg.stash.unity.codelink",
+  "displayName": "Stash for Unity - QR Code Linking",
+  "version": "3.0.0-preview.1",
+  "unity": "2022.3",
+  "unityRelease": "0f1",
+  "description": "Optional StashNativeCodeLink module for Stash for Unity. Adds the native QR scanner used by StashNative.OpenScanner for webshop account linking. Requires gg.stash.unity.",
+  "keywords": [
+    "stash",
+    "qr",
+    "account-linking",
+    "webshop"
+  ],
+  "author": {
+    "name": "Stash",
+    "url": "https://stash.gg"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stashgg/stash-unity.git"
+  },
+  "documentationUrl": "https://stashgg.github.io/stash-native/usage/codelink.html",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "dependencies": {
+    "gg.stash.unity": "3.0.0-preview.1"
+  }
+}

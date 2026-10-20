@@ -1,0 +1,239 @@
+/* Stash sample: settings-style tabbed UI mirroring the stash-native sample apps.
+   Units: the controller scales the panel so 1 unit = 1/390 of the shorter screen side (an iPhone point). */
+
+.app {
+    flex-grow: 1;
+    background-color: rgb(23, 23, 26);
+}
+
+/* ---- toolbar ---- */
+.toolbar {
+    flex-direction: row;
+    align-items: center;
+    height: 56px;
+    padding: 0 16px;
+    background-color: rgb(31, 31, 36);
+    border-bottom-width: 1px;
+    border-bottom-color: rgb(48, 48, 56);
+}
+.back {
+    width: 40px; height: 40px;
+    margin: 0 8px 0 -8px; padding: 0 0 4px 0;
+    border-width: 0; border-radius: 20px;
+    background-color: transparent;
+    color: rgb(92, 143, 255);
+    font-size: 30px;
+    -unity-text-align: middle-center;
+}
+.back:hover { background-color: rgb(48, 48, 56); }
+.back.unity-scroller { display: none; }
+.hidden { display: none; }
+.logo {
+    width: 28px; height: 28px;
+    margin: 0 12px 0 0;
+    background-image: resource("StashLogo");
+    -unity-background-scale-mode: scale-to-fit;
+}
+.logo.hidden { display: none; }
+.title {
+    color: rgb(238, 238, 242);
+    font-size: 18px;
+    -unity-font-style: bold;
+    flex-grow: 1;
+}
+.wide .logo { width: 24px; height: 24px; }
+/* Right-aligned toolbar action (Add, Reset, Delete); hidden on screens without one */
+.action {
+    height: 36px; margin: 0 0 0 12px; padding: 0 16px;
+    border-width: 0; border-radius: 17px;
+    background-color: rgb(48, 48, 56);
+    color: rgb(92, 143, 255);
+    font-size: 15px; -unity-font-style: bold;
+}
+.action:hover { background-color: rgb(60, 60, 70); }
+.action.destructive { color: rgb(255, 110, 110); background-color: rgb(50, 36, 40); margin: 0; }
+.action.hidden { display: none; }
+
+/* ---- screens ---- */
+.screens { flex-grow: 1; }
+.screen { flex-grow: 1; display: none; }
+.screen.active { display: flex; }
+.screen .unity-scroll-view__content-container { padding: 4px 0 32px 0; }
+
+.block { flex-shrink: 0; }
+
+/* Landscape: blocks flow into two equal columns (controller adds .wide); .full spans both */
+.screen .unity-scroll-view__content-and-vertical-scroll-container { flex-grow: 1; }
+.screen .unity-scroll-view__content-viewport { flex-grow: 1; }
+.screen .unity-scroll-view__content-container { align-items: stretch; }
+.wide .screen .unity-scroll-view__content-container {
+    flex-direction: row; flex-wrap: wrap; align-items: flex-start; align-content: flex-start; justify-content: flex-start;
+    padding: 4px 0 32px 0;
+}
+.wide .block { flex-grow: 0; flex-shrink: 0; min-width: 0; }
+.wide .block { padding: 0 8px; }
+.wide .full { margin-left: 8px; margin-right: 8px; }
+
+/* Landscape chrome is compact: height is scarce, width is not */
+.wide .toolbar { height: 48px; padding: 0 12px; }
+.wide .title { font-size: 16px; }
+.wide .tabbar { height: 46px; }
+.wide .section-title { margin: 10px 6px 4px 6px; }
+.wide .section { padding: 4px 14px; }
+.wide .unity-button { height: 42px; margin: 6px 0; }
+.wide .unity-base-field { min-height: 44px; }
+.wide .unity-slider-int { min-height: 54px; padding: 4px 0; }
+.wide .hint { margin-bottom: 6px; }
+.wide .chips { top: 50px; }
+
+.section-title {
+    color: rgb(158, 158, 173);
+    font-size: 12px;
+    -unity-font-style: bold;
+    letter-spacing: 1px;
+    margin: 20px 8px 8px 8px;
+}
+.section {
+    background-color: rgb(41, 41, 46);
+    border-radius: 14px;
+    padding: 6px 16px;
+}
+.hint {
+    color: rgb(158, 158, 173);
+    font-size: 12px;
+    white-space: normal;
+    margin: 0 6px 10px 6px;
+}
+.section > .hint { margin: -4px 0 8px 0; }
+
+/* ---- controls (class selectors so they override the default theme) ---- */
+.unity-button {
+    height: 46px;
+    margin: 8px 0;
+    padding: 0 16px;
+    border-width: 0;
+    border-radius: 10px;
+    background-color: rgb(66, 66, 76);
+    color: rgb(238, 238, 242);
+    font-size: 15px;
+    white-space: normal;
+}
+.unity-button:hover { background-color: rgb(80, 80, 92); }
+.unity-button:active { background-color: rgb(56, 56, 66); }
+.unity-button.primary { background-color: rgb(92, 143, 255); }
+.unity-button.primary:hover { background-color: rgb(110, 158, 255); }
+.unity-button.primary:active { background-color: rgb(74, 122, 230); }
+.unity-button.destructive { color: rgb(255, 110, 110); background-color: rgb(50, 36, 40); margin-top: 18px; }
+.unity-button.nav { background-color: transparent; -unity-text-align: middle-left; padding: 0 4px; border-radius: 0; margin: 0; height: 50px; }
+.section > .unity-button.nav.divider { border-bottom-width: 1px; border-bottom-color: rgb(55, 55, 64); }
+.unity-button.nav:hover { background-color: rgb(50, 50, 58); }
+.unity-button.inline { width: 88px; margin: 0 0 0 10px; }
+
+.url-row { flex-direction: row; align-items: center; margin: 10px 0 4px 0; }
+.url-row .unity-base-field { flex-grow: 1; flex-shrink: 1; flex-basis: 0; min-width: 0; margin: 0; min-height: 44px; }
+.url-row .unity-base-field__input { flex-grow: 1; flex-basis: 0; min-width: 0; overflow: hidden; }
+.url-row .unity-base-text-field__input .unity-text-element { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.url-row .unity-button.inline { flex-shrink: 0; }
+
+.unity-base-field {
+    min-height: 48px;
+    margin: 2px 0;
+    padding: 2px 0;
+    flex-direction: row;
+    align-items: center;
+}
+.unity-base-field__label {
+    color: rgb(238, 238, 242);
+    font-size: 15px;
+    min-width: 0; width: auto;
+    flex-grow: 1; flex-basis: 0;
+    white-space: normal;
+    -unity-text-align: middle-left;
+    margin: 0 16px 0 0; padding: 0;
+}
+.unity-base-field__input { flex-grow: 1; flex-basis: 0; min-width: 0; }
+
+.unity-base-text-field__input {
+    min-height: 38px;
+    border-radius: 9px; border-width: 0;
+    padding: 0 12px;
+    background-color: rgb(26, 26, 30);
+    color: rgb(238, 238, 242);
+    font-size: 14px;
+}
+.unity-base-text-field__input:focus { background-color: rgb(34, 34, 40); }
+.unity-base-text-field__input .unity-text-element { color: rgb(238, 238, 242); }
+
+/* Sliders: label above a full-width track */
+.unity-slider-int { flex-direction: column; align-items: stretch; min-height: 60px; padding: 6px 0; }
+.unity-slider-int > .unity-base-field__label { font-size: 13px; color: rgb(158, 158, 173); margin: 0 0 2px 0; flex-grow: 0; flex-basis: auto; }
+.unity-slider-int > .unity-base-field__input { flex-direction: row; align-items: center; flex-basis: auto; }
+.unity-base-slider__drag-container { flex-grow: 1; min-height: 32px; justify-content: center; }
+.unity-base-slider__tracker { height: 4px; margin-top: -2px; top: 50%; border-radius: 2px; border-width: 0; background-color: rgb(80, 80, 92); }
+.unity-base-slider__dragger { width: 24px; height: 24px; margin-top: -12px; top: 50%; border-radius: 12px; border-width: 0; background-color: rgb(238, 238, 242); }
+.unity-base-slider__text-field { width: 64px; margin: 0 0 0 10px; flex-grow: 0; }
+.unity-base-slider__text-field > .unity-base-text-field__input { min-height: 30px; font-size: 13px; padding: 0 6px; }
+
+/* Toggle: square check on the right */
+.unity-toggle > .unity-base-field__input { flex-grow: 0; flex-basis: auto; justify-content: flex-end; }
+.unity-toggle__checkmark { width: 28px; height: 28px; margin: 0; border-radius: 6px; border-width: 0; background-color: rgb(80, 80, 92); -unity-background-image-tint-color: white; }
+.unity-toggle:checked .unity-toggle__checkmark { background-color: rgb(92, 143, 255); }
+.unity-toggle:hover .unity-toggle__checkmark { background-color: rgb(96, 96, 110); }
+.unity-toggle:checked:hover .unity-toggle__checkmark { background-color: rgb(110, 158, 255); }
+
+/* Info and instance rows */
+.info-row { flex-direction: row; align-items: center; min-height: 48px; }
+.info-label { color: rgb(238, 238, 242); font-size: 15px; flex-grow: 1; }
+.info-value { color: rgb(158, 158, 173); font-size: 15px; }
+
+.instance-row { flex-direction: row; align-items: center; min-height: 58px; padding: 2px 0; }
+.instance-select { flex-grow: 1; height: 56px; margin: 0; padding: 0; background-color: transparent; border-radius: 0; -unity-text-align: middle-left; flex-direction: row; align-items: center; }
+.instance-select:hover { background-color: rgb(50, 50, 58); }
+.instance-radio { width: 22px; height: 22px; border-radius: 11px; border-width: 2px; border-color: rgb(120, 120, 136); margin-right: 12px; }
+.instance-radio.on { border-color: rgb(92, 143, 255); background-color: rgb(92, 143, 255); }
+.instance-name { color: rgb(238, 238, 242); font-size: 15px; flex-grow: 1; }
+.instance-env { font-size: 11px; -unity-font-style: bold; border-radius: 6px; padding: 2px 6px; margin-right: 8px; color: rgb(23, 23, 26); background-color: rgb(120, 200, 150); }
+.instance-env.prod { background-color: rgb(255, 170, 90); }
+.instance-edit { width: 68px; height: 36px; margin: 0 0 0 8px; padding: 0; font-size: 13px; }
+.instance-empty { color: rgb(158, 158, 173); font-size: 14px; white-space: normal; margin: 12px 0; }
+
+/* ---- callback chips: full-width rows with a timestamp, newest on top, tap to dismiss ---- */
+.chips { position: absolute; top: 58px; left: 20px; right: 20px; }
+.chip {
+    flex-direction: row; align-items: center;
+    padding: 11px 16px; margin-bottom: 6px;
+    border-radius: 12px;
+    background-color: rgb(92, 143, 255);
+    border-width: 1px; border-color: rgba(255, 255, 255, 0.25);
+}
+.chip:hover { background-color: rgb(110, 158, 255); }
+.chip-text { flex-grow: 1; color: white; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip-time { color: rgba(255, 255, 255, 0.75); font-size: 12px; margin-left: 8px; }
+
+/* ---- bottom tabs ---- */
+.tabbar {
+    flex-direction: row;
+    height: 58px;
+    background-color: rgb(31, 31, 36);
+    border-top-width: 1px;
+    border-top-color: rgb(48, 48, 56);
+}
+.tab {
+    flex-grow: 1; flex-basis: 0;
+    height: 100%; margin: 0; padding: 0;
+    border-width: 0; border-radius: 0;
+    background-color: transparent;
+    color: rgb(158, 158, 173);
+    font-size: 13px;
+    padding-top: 2px;
+}
+.tab:hover { background-color: rgb(40, 40, 46); }
+.tab { border-top-width: 2px; border-top-color: transparent; }
+.tab.active { color: rgb(92, 143, 255); -unity-font-style: bold; border-top-color: rgb(92, 143, 255); }
+
+/* Hairline between rows inside a card (the controller marks every row but the last) */
+.section > .divider { border-bottom-width: 1px; border-bottom-color: rgb(55, 55, 64); }
+.section > .unity-button.divider { border-bottom-width: 0; }
+
+.unity-scroller { display: none; }
+.hidden { display: none; }

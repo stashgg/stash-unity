@@ -21,11 +21,43 @@ Or fix it in Xcode project:
 3. Open the **General** tab and scroll to **Frameworks, Libraries, and Embedded Content**.
 4. If **StashNative.framework** is missing, click **+** and add it from the project (it should appear under Frameworks or Plugins/iOS). If it is already listed, set it to **Embed & Sign**.
 
-Ensure `StashNative.xcframework` is present in `Packages/gg.stash.unity/Plugins/iOS/` before building from Unity so the post-process can add it to the main target’s embed phase.
+Ensure `StashNative.xcframework` is present in `Packages/gg.stash.unity/Plugins/iOS/` before building from Unity so the post-process can add it to the main target’s embed phase. The same applies to `StashNativeCodeLink.xcframework` in `Packages/gg.stash.unity.codelink/Plugins/iOS/` when that package is installed.
 
 ### [Android] Bridge does not compile
 
-The Unity bridge expects the StashNative AAR to expose `StashNative` and related classes. If your AAR uses a different Java package than `com.stash.stashnative`, update the fully qualified class names in `StashNativeCardUnityBridge.java` to match the AAR.
+The Unity bridge (`StashNativeUnityBridge.java`) expects `com.stash.stashnative.StashNative` from `StashNative-3.0.0.aar`. A leftover 2.x AAR (`StashNative-2.x.aar`, which exposes `StashNativeCard`) in `Assets/Plugins/Android` or in the package folder causes duplicate-class or missing-class errors; remove it.
+
+### [Android] Release build with Minify: checkout opens in Chrome, no callbacks, or `OpenScanner` reports `ScannerUnavailable`
+
+R8 removed the Unity bridge class. The package annotates `com.stash.unity.StashNativeUnityBridge` with `@androidx.annotation.Keep`; if your ProGuard configuration strips or ignores annotations, add `-keep class com.stash.unity.** { *; }` to your user ProGuard file. Unity logs `StashNative: Android bridge ... not found` and raises `OnNativeException("InitializeAndroidPlugin")` when this happens.
+
+### [Android] Callbacks arrive late, `OnApplicationPause` fires when a card opens
+
+Expected. The card runs in its own activity, which pauses the Unity player. Events native raises while the card is up are queued and delivered in order after it closes. Use `autoClose = true` if you need the payment result immediately; see the README note under OpenCard.
+
+### [Android] `NoClassDefFoundError: androidx/window/...` or `androidx/webkit/...` at runtime
+
+Stash Native 3.0.0 requires `androidx.window:window`, `androidx.window:window-java`, `androidx.webkit:webkit` and `androidx.core:core`. Add them via EDM4U (the package ships `Editor/StashNativeDependencies.xml`) or in `mainTemplate.gradle`; see the README Installation section.
+
+### [Android] Gradle fails in `mergeExtDexRelease` with `D8: java.lang.NullPointerException` on `camera-*-1.4.2`
+
+CameraX 1.4.x is built with a Kotlin toolchain that the D8 dexer bundled with Unity 2022.3's Android Gradle Plugin 7.4.2 cannot read; the build also reports a `StackOverflowError`. Pin CameraX to 1.3.4 (`camera-camera2`, `camera-lifecycle`, `camera-view`), which is what the package's dependency manifest and README specify. The QR scanner uses no CameraX API newer than 1.3.0. On Unity 6 with AGP 8.x, 1.4.2 works.
+
+### [Android/iOS] `OpenScanner` reports `ScannerUnavailable`
+
+The optional `gg.stash.unity.codelink` package is not installed, or on Android its CameraX/ZXing dependencies are missing from the Gradle classpath. Install the package and add the four libraries listed in its README. On iOS also confirm `StashNativeCodeLink.xcframework` is embedded (same fix as for `StashNative.xcframework` above).
+
+### [iOS] Scanner reports `MissingCameraUsageDescription`
+
+Set **Camera Usage Description** in Player Settings → iOS → Other Settings. Unity writes it to `NSCameraUsageDescription`.
+
+### [iOS] Build fails with deployment target errors
+
+Stash Native 3.0.0 requires iOS 15.0. Set **Target minimum iOS Version** to 15.0 or higher in Player Settings.
+
+### [Android/iOS] `OnCardDismissed` never fires after a successful payment
+
+That is the 3.0 contract: with `autoClose = true` the card closes and only the success/failure callback fires. Network errors and external-payment handoffs also end the card without a dismiss event. Put "flow ended" cleanup in `OnNetworkError` and `OnExternalPayment` as well; see the README table "How a card ends".
 
 ### [Android] Blank card
 
@@ -55,4 +87,4 @@ dependencies {
 **DEPS**}
 ```
 
-> **Note:** Stash Popup will automatically detect if Chrome Custom Tabs is available in the Android bundle and fall back gracefully to the default browser if not.
+> **Note:** Stash Native will automatically detect if Chrome Custom Tabs is available in the Android bundle and fall back gracefully to the default browser if not.

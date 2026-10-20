@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Resolved by the External Dependency Manager for Unity (EDM4U), if installed.
+     Without EDM4U, add the same libraries to Assets/Plugins/Android/mainTemplate.gradle.
+     The first four are required by Stash Native 3.0.0; androidx.browser is optional (Chrome Custom Tabs). -->
+<dependencies>
+  <androidPackages>
+    <androidPackage spec="androidx.core:core:1.12.0" />
+    <androidPackage spec="androidx.webkit:webkit:1.11.0" />
+    <androidPackage spec="androidx.window:window:1.4.0" />
+    <androidPackage spec="androidx.window:window-java:1.4.0" />
+    <androidPackage spec="androidx.browser:browser:1.7.0" />
+  </androidPackages>
+</dependencies>

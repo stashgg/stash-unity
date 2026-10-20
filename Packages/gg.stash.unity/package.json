@@ -1,8 +1,8 @@
 {
   "name": "gg.stash.unity",
   "displayName": "Stash for Unity",
-  "version": "2.3.1",
-  "unity": "2021.3",
+  "version": "3.0.0-preview.1",
+  "unity": "2022.3",
   "unityRelease": "0f1",
   "description": "Native-feeling Stash Pay IAP checkout and webshop presentation directly inside your Unity game (Android/iOS).",
   "keywords": [
@@ -25,8 +25,13 @@
   "license": "SEE LICENSE IN LICENSE.md",
   "samples": [
     {
-      "displayName": "Stash Integration Sample",
-      "description": "Reference implementation: OpenCard, OpenModal, OpenBrowser with callback handling.",
+      "displayName": "QuickStart",
+      "description": "One button that opens a Stash checkout. Start here.",
+      "path": "Samples~/QuickStart"
+    },
+    {
+      "displayName": "Stash Test App",
+      "description": "Test app for every Stash Native feature: card, browser, QR linking, options and callbacks.",
       "path": "Samples~/StashSample"
     }
   ]

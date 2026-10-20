@@ -6,15 +6,15 @@
 	<dict>
 		<key>Headers/StashNative.h</key>
 		<data>
-		IjNX7bgS9J9mONDx0Cqq54JRV0M=
+		/WkJdbGHMu3+4YKqfFxxuut8mRY=
 		</data>
-		<key>Headers/StashNativeCard.h</key>
+		<key>Headers/StashNativeScannerSupport.h</key>
 		<data>
-		HkgPsXs8GlVAiCuxr8n0GDzxsRo=
+		L+teX5Vwl+u9WgoPvSr+exmyzjM=
 		</data>
 		<key>Info.plist</key>
 		<data>
-		kZ9ChGVqAs8rAg/gliWuoQkxVF8=
+		abjYuEqVy9tFXY/wqjf278tqPLc=
 		</data>
 		<key>Modules/module.modulemap</key>
 		<data>
@@ -27,14 +27,14 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			m2RuOxLT4fhLfLvOOX+Ymp3GaTABHSM+GOznER/D+SQ=
+			b9NXl4+3BsUeUiBJmnwDLHe/3jGfgg58GpiE3540npA=
 			</data>
 		</dict>
-		<key>Headers/StashNativeCard.h</key>
+		<key>Headers/StashNativeScannerSupport.h</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			XEMA9Ugum/1KCo3zfWnk4chhEAcgLN+AJny+/lc6eVs=
+			hZchJsmXuKuR8HaHTecOIK6QR5hJ5Uc3uiXA0jcWSkE=
 			</data>
 		</dict>
 		<key>Modules/module.modulemap</key>

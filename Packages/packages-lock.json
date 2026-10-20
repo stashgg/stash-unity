@@ -264,6 +264,14 @@
       "source": "embedded",
       "dependencies": {}
     },
+    "gg.stash.unity.codelink": {
+      "version": "file:gg.stash.unity.codelink",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {
+        "gg.stash.unity": "3.0.0-preview.1"
+      }
+    },
     "com.unity.modules.ai": {
       "version": "1.0.0",
       "depth": 0,

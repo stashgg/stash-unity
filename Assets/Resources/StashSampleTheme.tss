@@ -1,0 +1,2 @@
+/* Unity's default runtime theme; the sample's own styling lives in StashSample.uss. */
+@import url("unity-theme://default");
