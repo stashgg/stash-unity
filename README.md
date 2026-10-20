@@ -129,6 +129,12 @@ StashNative.Instance.DismissBrowser(paymentSucceeded: true);
 
 ## Unity Editor simulator
 
+<div align="center">
+  <img src="https://storage.googleapis.com/stash_sdk_demo/popup_editor.png" width="800px" /><br/>
+  <em>Unity Editor Simulation</em>
+</div>
+</br>
+
 In Play mode, `OpenCard()` opens the checkout in a preview window (macOS and Windows) with buttons to trigger payment and dismiss callbacks; `autoClose` and `allowDismiss` behave as on device. `OpenScanner()` opens a text field standing in for the camera. `OpenBrowser()` opens the system browser.
 
 ## Migrating from 2.x
