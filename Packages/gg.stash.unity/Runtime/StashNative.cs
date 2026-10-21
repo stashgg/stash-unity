@@ -30,8 +30,7 @@ namespace Stash.Native
         CameraPermissionNotDeclared,
         /// <summary>
         /// No scanner can be shown: the optional <c>gg.stash.unity.codelink</c> package is not installed, or on Android its
-        /// CameraX/ZXing dependencies are missing from the build. No scanner remains presented and no dismissal follows.
-        /// On Android a transparent activity may briefly start and finish before this is reported.
+        /// CameraX/ZXing dependencies are missing from the build. Nothing is presented and no dismissal follows.
         /// </summary>
         ScannerUnavailable
     }

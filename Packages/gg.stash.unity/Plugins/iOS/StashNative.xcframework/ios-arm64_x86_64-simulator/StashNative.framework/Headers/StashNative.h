@@ -149,6 +149,7 @@ typedef NS_ENUM(NSInteger, StashNativeOrientationPreference) {
 #else
 @property (nonatomic, assign, nullable) id<StashNativeDelegate> delegate;
 #endif
+/** Query presentation and processing state on the main thread; the state is owned there. */
 @property (nonatomic, readonly) BOOL isCurrentlyPresented;
 @property (nonatomic, readonly) BOOL isPurchaseProcessing;
 + (instancetype)sharedInstance;
