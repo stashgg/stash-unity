@@ -106,23 +106,15 @@ if (StashNative.Instance.IsScannerAvailable)
 
 ## API
 
-| Member | Notes |
-|--------|-------|
-| `bool OpenCard(url, dismiss, success, failure, StashNativeCardConfig, networkError, externalPayment)` | All but `url` optional. |
-| `bool OpenScanner(scanned, dismissed, error, StashNativeScannerConfig)` / `OpenScanner(config)` | Needs `gg.stash.unity.codelink`. |
-| `void OpenBrowser(url, StashNativeBrowserConfig)` | Config is iOS only (portrait Safari). |
-| `void CloseBrowser()` / `void DismissBrowser()` | `CloseBrowser` raises `OnBrowserDismissed`. `DismissBrowser` closes Safari silently; iOS only. |
-| `void Dismiss()` / `void ResetPresentationState()` | Reset drops any event still in flight. |
-| `void SetKeepAliveEnabled(bool)` / `SetKeepAliveConfig(StashNativeKeepAliveConfig)` / `bool IsKeepAliveEnabled` | Android only. |
-| `void SetBackdropBytes(byte[])` | Android only. |
-| `void SetInspectableWebViewsEnabled(bool)` / `bool IsInspectableWebViewsEnabled` | Debug only. |
-| `bool IsCurrentlyPresented` / `bool IsPurchaseProcessing` / `bool IsScannerAvailable` | `IsCurrentlyPresented` stays true while a browser is open over a card; a standalone Android browser does not count. |
-| `string SdkVersion` / `string LastScannerErrorMessage` | |
-| `StashNative InstanceOrNull` | Never creates the singleton. |
+The C# API mirrors the native SDK, so the native docs describe each call, option and event. Everything is on `StashNative.Instance`.
 
-**Events**: `OnCardDismissed`, `OnPaymentSuccess(string order)`, `OnPaymentFailure`, `OnPageLoaded(double ms)`, `OnNetworkError`, `OnExternalPayment(string url)`, `OnBrowserDismissed`, `OnQrCodeScanned(string)`, `OnScannerDismissed`, `OnScannerError(StashNativeScannerError)`, `OnNativeException(string, Exception)`.
+- **Checkout card**: `OpenCard(url, ...)` with an optional `StashNativeCardConfig`. See [opening the card](https://stashgg.github.io/stash-native/usage/checkout-card.html#open-the-card), [configuration](https://stashgg.github.io/stash-native/usage/checkout-card.html#configuration), [portrait checkout](https://stashgg.github.io/stash-native/usage/checkout-card.html#forcing-portrait-card) and the Android [backdrop](https://stashgg.github.io/stash-native/usage/checkout-card.html#portrait-backdrop-android) (`SetBackdropBytes`).
+- **In-game browser**: `OpenBrowser`, `CloseBrowser`, `DismissBrowser`, and the Android keep-alive service (`SetKeepAliveEnabled`, `SetKeepAliveConfig`). See [opening the browser](https://stashgg.github.io/stash-native/usage/browser.html#open-the-browser), [handling results](https://stashgg.github.io/stash-native/usage/browser.html#handling-results) and [keep-alive](https://stashgg.github.io/stash-native/usage/browser.html#keep-alive-service-android).
+- **QR code linking**: `OpenScanner` with an optional `StashNativeScannerConfig`, and `IsScannerAvailable`. See [opening the scanner](https://stashgg.github.io/stash-native/usage/codelink.html#open-the-scanner), [configuration](https://stashgg.github.io/stash-native/usage/codelink.html#configuration) and [errors](https://stashgg.github.io/stash-native/usage/codelink.html#errors).
+- **Callbacks**: pass them to `OpenCard` / `OpenScanner`, or subscribe to the matching `On...` events (`OnPaymentSuccess`, `OnCardDismissed`, `OnBrowserDismissed`, ...). See [Callbacks](https://stashgg.github.io/stash-native/usage/callbacks.html#order-of-events).
+- **State and control**: `IsCurrentlyPresented`, `IsPurchaseProcessing`, `Dismiss`, `ResetPresentationState`, `SdkVersion`, `SetInspectableWebViewsEnabled`. See [checking state](https://stashgg.github.io/stash-native/usage/checkout-card.html#checking-state) and [WebView debugging](https://stashgg.github.io/stash-native/usage/checkout-card.html#webview-debugging).
 
-**Config types** are classes whose new instances carry the native defaults: `StashNativeCardConfig` (`preferredContentWidth` 400, `preferredContentHeight` 560, `maximumContentHeight` 720, `edgeMargin` 16, `allowDismiss`, `autoClose`, `orientationPreference`), `StashNativeBrowserConfig` (`orientationPreference`), `StashNativeScannerConfig` (header, callout and status texts, `showCallout`), `StashNativeKeepAliveConfig` (title, text, icon resource id). Field meaning is defined in the native docs for the [card](https://stashgg.github.io/stash-native/usage/checkout-card.html) and [scanner](https://stashgg.github.io/stash-native/usage/codelink.html).
+Every member also has XML docs in `Runtime/StashNative.cs`, so your IDE shows the details inline.
 
 ## Unity Editor simulator
 
