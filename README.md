@@ -58,40 +58,49 @@ Package Manager → **Stash for Unity** → **Samples**:
 
 ## Usage
 
-Links come from your backend ([integration guide](https://docs.stash.gg/guides/stash-pay/integration)). Everything goes through the `StashNative.Instance` singleton on the Unity main thread.
+Generate checkout links on your backend ([integration guide](https://docs.stash.gg/guides/stash-pay/integration)), then open them through `StashNative.Instance`.
+
+### Checkout card
 
 ```csharp
 using Stash.Native;
 
-bool opened = StashNative.Instance.OpenCard(
+StashNative.Instance.OpenCard(
     checkoutUrl,
-    dismissCallback: () => RefreshShop(),
-    successCallback: order => VerifyAndGrant(order),   // verify with your backend before granting
+    successCallback: order => VerifyAndGrant(order),   // verify on your backend before granting
     failureCallback: () => ShowError(),
-    config: new StashNativeCardConfig { orientationPreference = StashNativeOrientationPreference.Portrait },
-    networkErrorCallback: () => RefreshShop(),
-    externalPaymentCallback: url => { /* checkout continues in the browser; finish via deeplink */ });
+    dismissCallback: () => RefreshShop());
 ```
 
-Everything after the URL is optional. Exactly one per-call callback ends each card, and the matching global event fires too (see [Callbacks](https://stashgg.github.io/stash-native/usage/callbacks.html) for what each one means). `externalPaymentCallback` is informational: after a default handoff the card has closed and the presentation ends with `OnBrowserDismissed`; with the page's `keepOpen` the card stays open and ends with its own callback. `OpenCard` returns `false` and leaves the open card alone if a card or scanner is already presented.
+- All callbacks and the config are optional.
+- Each card ends with exactly one callback. Also pass `networkErrorCallback`, and `externalPaymentCallback` if you use browser-based payment methods. See [Callbacks](https://stashgg.github.io/stash-native/usage/callbacks.html).
+- `OpenCard` returns `false` if a card or scanner is already open.
+- Landscape game? Pass `config: new StashNativeCardConfig { orientationPreference = StashNativeOrientationPreference.Portrait }`.
+
+### QR code linking
+
+Needs the [`gg.stash.unity.codelink`](Packages/gg.stash.unity.codelink/README.md) package.
 
 ```csharp
-// QR code linking (needs gg.stash.unity.codelink)
 if (StashNative.Instance.IsScannerAvailable)
     StashNative.Instance.OpenScanner(code => LinkAccount(code));
-
-// In-game browser. When your payment deep link arrives:
-StashNative.Instance.OpenBrowser(url);
-StashNative.Instance.CloseBrowser();     // closes it and raises OnBrowserDismissed (both platforms)
-StashNative.Instance.DismissBrowser();   // iOS: closes Safari silently; the game handles the result itself
 ```
 
-### Unity-specific behaviour
+### In-game browser
 
-- **Android pauses Unity while a card is on screen.** The checkout runs in its own activity, so `OnApplicationPause(true)` fires on every open and callbacks native raises mid-card (`OnPageLoaded`, `autoClose = false` results, non-fatal scanner errors, `OnExternalPayment`) arrive after the card closes. Keep `autoClose = true` if you need the result immediately.
-- **Portrait checkout in a landscape game**: set `orientationPreference = Portrait`; Player Settings must allow portrait. On Android, `SetBackdropBytes(jpegBytes)` right before `OpenCard` shows a frame capture behind the card during the rotation (see `Assets/StashSample.cs`).
-- **Receiver GameObject**: callbacks arrive on a GameObject named `StashNative`. The component creates it, or renames a scene-placed one to match.
-- **Callback exceptions** are logged and reported on `OnNativeException`; other listeners still run.
+```csharp
+StashNative.Instance.OpenBrowser(url);
+
+// When your payment deep link arrives:
+StashNative.Instance.CloseBrowser();     // closes the browser, raises OnBrowserDismissed
+StashNative.Instance.DismissBrowser();   // iOS only: closes Safari without any callback
+```
+
+### Good to know
+
+- **Android pauses Unity while a card is open.** Callbacks raised during the card arrive after it closes.
+- **Callbacks arrive on a GameObject named `StashNative`.** The singleton creates it for you.
+- **A throwing callback doesn't break the others.** The exception is logged and reported on `OnNativeException`.
 
 ## API
 
