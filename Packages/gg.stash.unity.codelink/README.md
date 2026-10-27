@@ -27,7 +27,20 @@ implementation 'com.google.zxing:core:3.5.3'
 
 Add them to your `mainTemplate.gradle`, or let the External Dependency Manager (EDM4U) resolve `Editor/StashNativeCodeLinkDependencies.xml` from this package.
 
-CameraX is pinned to 1.3.4 on purpose. The 1.4.x line is built with a newer Kotlin toolchain that the D8 dexer in Unity 2022.3's Android Gradle Plugin 7.4.2 cannot process (`D8: java.lang.NullPointerException` during `mergeExtDexRelease`). Projects on Unity 6 with AGP 8.x can raise it to 1.4.2, the version the native SDK is built against; the module uses no API newer than 1.3.0.
+CameraX is pinned to 1.3.4 on purpose. The D8 dexer in Unity 2022.3's Android Gradle Plugin 7.4 cannot process CameraX 1.4.x (`D8: java.lang.NullPointerException` during `mergeExtDexRelease`). A plain `implementation` line is only a request, so force the version in case another plugin asks for 1.4.x:
+
+```gradle
+configurations.all {
+    resolutionStrategy {
+        force 'androidx.camera:camera-core:1.3.4'
+        force 'androidx.camera:camera-camera2:1.3.4'
+        force 'androidx.camera:camera-lifecycle:1.3.4'
+        force 'androidx.camera:camera-view:1.3.4'
+    }
+}
+```
+
+Unity 6 (AGP 8.x) can use CameraX 1.4.2, the version the native SDK is built against, and drop the pin. The module uses no CameraX API newer than 1.3.0.
 
 ## Usage
 

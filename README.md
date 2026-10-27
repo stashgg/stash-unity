@@ -27,11 +27,13 @@ This README covers what is specific to Unity: installing the packages, the C# AP
 | Package | Git URL (Package Manager → **+** → *Add package from git URL*) |
 |---------|------------------------------------------------------------------|
 | **`gg.stash.unity`** (required) | `https://github.com/stashgg/stash-unity.git?path=Packages/gg.stash.unity` |
-| **`gg.stash.unity.codelink`** (optional, QR scanner; adds the camera permission) | `https://github.com/stashgg/stash-unity.git?path=Packages/gg.stash.unity.codelink` |
+| **`gg.stash.unity.codelink`** (optional, QR scanner) | `https://github.com/stashgg/stash-unity.git?path=Packages/gg.stash.unity.codelink` |
+
+The QR scanner package has its own camera setup and Android dependencies; see its [README](Packages/gg.stash.unity.codelink/README.md).
 
 ### Android dependencies
 
-Stash Native needs AndroidX libraries Unity does not add by itself. Projects using the [External Dependency Manager](https://github.com/googlesamples/unity-jar-resolver) pick them up from the `Editor/*Dependencies.xml` files in both packages. Otherwise enable **Custom Main Gradle Template** (Player → Publishing Settings) and add to `dependencies { }` before `**DEPS**`:
+Stash Native needs AndroidX libraries Unity does not add by itself. Projects using the [External Dependency Manager](https://github.com/googlesamples/unity-jar-resolver) pick them up from the package's `Editor/StashNativeDependencies.xml`. Otherwise enable **Custom Main Gradle Template** (Player → Publishing Settings) and add to `dependencies { }` before `**DEPS**`:
 
 ```gradle
     implementation 'androidx.core:core:1.12.0'
@@ -39,30 +41,13 @@ Stash Native needs AndroidX libraries Unity does not add by itself. Projects usi
     implementation 'androidx.window:window:1.4.0'
     implementation 'androidx.window:window-java:1.4.0'
     implementation 'androidx.browser:browser:1.7.0'          // optional: Chrome Custom Tabs for OpenBrowser
-    implementation 'androidx.camera:camera-camera2:1.3.4'    // the next four only with gg.stash.unity.codelink
-    implementation 'androidx.camera:camera-lifecycle:1.3.4'
-    implementation 'androidx.camera:camera-view:1.3.4'
-    implementation 'com.google.zxing:core:3.5.3'
 ```
 
-Unity 2022.3 ships Android Gradle Plugin 7.4, whose dexer cannot process CameraX 1.4.x. Pin CameraX so another plugin cannot pull it up:
-
-```gradle
-configurations.all {
-    resolutionStrategy {
-        force 'androidx.camera:camera-core:1.3.4'
-        force 'androidx.camera:camera-camera2:1.3.4'
-        force 'androidx.camera:camera-lifecycle:1.3.4'
-        force 'androidx.camera:camera-view:1.3.4'
-    }
-}
-```
-
-Unity 6 (AGP 8.x) can use CameraX 1.4.2 without the pin. The Unity bridge class is annotated `@Keep`; if your ProGuard setup strips annotations, add `-keep class com.stash.unity.** { *; }`.
+The Unity bridge class is annotated `@Keep`; if your ProGuard setup strips annotations, add `-keep class com.stash.unity.** { *; }`.
 
 ### iOS
 
-With the CodeLink package installed, set **Camera Usage Description** in Player Settings. Both xcframeworks are embedded by Unity's Xcode export.
+`StashNative.xcframework` is embedded by Unity's Xcode export; no setup needed.
 
 ### Samples
 
