@@ -1,9 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 
-FOUNDATION_EXPORT double StashNativeVersionNumber;
-FOUNDATION_EXPORT const unsigned char StashNativeVersionString[];
-
 NS_ASSUME_NONNULL_BEGIN
 
 FOUNDATION_EXPORT NSErrorDomain const StashNativeScannerErrorDomain;
@@ -23,7 +20,7 @@ typedef NS_ENUM(NSInteger, StashNativeOrientationPreference) {
 
 /** Responsive card. Defaults: 400 x 560 content, 16 margin, 720 maximum content height.
  * Dimensions are points of web content, excluding safe areas.
- * Preferred height is the resting ceiling and fallback; shorter intrinsic content can shrink it.
+ * Preferred height is the resting height, limited by the maximum and available space.
  */
 @interface StashNativeCardConfig : NSObject <NSCopying>
 @property (nonatomic) CGFloat preferredContentWidth;
@@ -104,18 +101,23 @@ typedef NS_ENUM(NSInteger, StashNativeOrientationPreference) {
 - (void)stashNativeDidEncounterNetworkError;
 
 /**
- * Called when the checkout page calls \c window.stash_sdk.openExternalBrowser(url). The SDK closes the
- * checkout without invoking \c stashNativeDidDismissCard, then opens the URL in
- * \c SFSafariViewController. Closing it emits \c stashNativeDidDismissBrowser. The \c url string includes
- * the theme query parameter when applicable. An iPhone portrait checkout keeps its portrait window
- * through a native Safari sheet and restores the host orientation when the browser closes.
+ * Called when the checkout page calls \c window.stash_sdk.externalBrowser(url, {keepOpen}). The \c url
+ * string includes the theme query parameter when applicable.
+ * By default the SDK closes the checkout without invoking \c stashNativeDidDismissCard, then opens the URL
+ * in \c SFSafariViewController. Closing it emits \c stashNativeDidDismissBrowser. An iPhone portrait
+ * checkout keeps its portrait window through a native Safari sheet and restores the host orientation
+ * when the browser closes.
+ * With \c keepOpen, Safari opens over the card, which stays open. This callback is informational:
+ * closing Safari returns to the card and emits no browser event, and the card ends with its own events.
  */
 - (void)stashNativeDidRequestExternalPaymentWithURL:(NSString *)url
     NS_SWIFT_NAME(stashNativeDidRequestExternalPayment(with:));
 
 /**
- * Called after a browser opened with openBrowser or checkout's openExternalBrowser is dismissed.
- * Covers user and programmatic closure; no card dismissal callback is emitted.
+ * Called after a browser opened with openBrowser or checkout's externalBrowser is dismissed.
+ * Covers user closure and closeBrowser; no card dismissal callback is emitted. Not emitted for
+ * Safari opened with \c keepOpen, which returns to the open card, or after dismissSafariViewController
+ * or resetPresentationState, which end silently.
  */
 - (void)stashNativeDidDismissBrowser;
 
@@ -153,7 +155,9 @@ typedef NS_ENUM(NSInteger, StashNativeOrientationPreference) {
 @property (nonatomic, readonly) BOOL isCurrentlyPresented;
 @property (nonatomic, readonly) BOOL isPurchaseProcessing;
 + (instancetype)sharedInstance;
-+ (NSString *)sdkVersion;
+/** The SDK version string, for example "3.0.0". Matches Android's StashNative.getVersion(). */
++ (NSString *)getVersion;
++ (NSString *)sdkVersion DEPRECATED_MSG_ATTRIBUTE("Use getVersion.");
 + (void)setInspectableWebViewsEnabled:(BOOL)enabled;
 + (BOOL)isInspectableWebViewsEnabled;
 /** The presenter must belong to the window that initiated checkout. Invalid/busy opens are ignored. */
@@ -179,8 +183,16 @@ typedef NS_ENUM(NSInteger, StashNativeOrientationPreference) {
 - (void)dismiss;
 /** Immediately tears down the session without delegate callbacks; keeps the delegate registration. */
 - (void)resetPresentationState;
+/** Closes Safari opened by openBrowser or externalBrowser, emitting \c stashNativeDidDismissBrowser.
+ * Safari opened with \c keepOpen closes back to the open card without a browser event.
+ */
 - (void)closeBrowser;
-- (void)dismissSafariViewControllerWithResult:(BOOL)success;
+/** Closes the SDK's Safari without any delegate callback, for example when the payment deep link
+ * arrives and the game handles the result itself. Safari opened by openBrowser or externalBrowser ends
+ * its presentation silently. Safari opened with \c keepOpen closes back to the open card, whose page
+ * still reports its own events.
+ */
+- (void)dismissSafariViewController;
 @end
 
 NS_ASSUME_NONNULL_END

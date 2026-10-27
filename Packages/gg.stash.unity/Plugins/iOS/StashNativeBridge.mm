@@ -142,7 +142,7 @@ bool _StashNativeBridgeIsScannerAvailable(void) {
 /** Returned buffer is strdup'd; IL2CPP's generated P/Invoke wrapper frees it after marshaling. */
 const char* _StashNativeBridgeSdkVersion(void) {
 #if STASHNATIVE_AVAILABLE
-    NSString* v = [StashNative sdkVersion];
+    NSString* v = [StashNative getVersion];
     return strdup(v ? [v UTF8String] : "");
 #else
     return strdup("");
@@ -221,12 +221,10 @@ void _StashNativeBridgeCloseBrowser(void) {
 #endif
 }
 
-/** Closes Safari and reports the deeplink payment result; the SDK then raises payment success/failure and browser dismissed. */
-void _StashNativeBridgeDismissBrowser(bool success) {
+/** Closes Safari silently (no delegate callback) once the game has the result from its deep link. */
+void _StashNativeBridgeDismissBrowser(void) {
 #if STASHNATIVE_AVAILABLE
-    RunOnMain(^{ [[StashNative sharedInstance] dismissSafariViewControllerWithResult:success]; });
-#else
-    (void)success;
+    RunOnMain(^{ [[StashNative sharedInstance] dismissSafariViewController]; });
 #endif
 }
 

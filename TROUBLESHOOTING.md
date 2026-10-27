@@ -57,7 +57,7 @@ Stash Native 3.0.0 requires iOS 15.0. Set **Target minimum iOS Version** to 15.0
 
 ### [Android/iOS] `OnCardDismissed` never fires after a successful payment
 
-That is the 3.0 contract: with `autoClose = true` the card closes and only the success/failure callback fires. Network errors and external-payment handoffs also end the card without a dismiss event. Put "flow ended" cleanup in `OnNetworkError` and `OnExternalPayment` as well; see the README table "How a card ends".
+That is the 3.0 contract: with `autoClose = true` the card closes and only the success/failure callback fires. A network error ends the card with `OnNetworkError`. An external-payment handoff ends with `OnBrowserDismissed` when the browser closes, or, if the page passed `keepOpen`, with the card's own events later. Pass the per-call callbacks to `OpenCard` so every ending reaches the same cleanup; see [Callbacks](https://stashgg.github.io/stash-native/usage/callbacks.html).
 
 ### [Android] Blank card
 

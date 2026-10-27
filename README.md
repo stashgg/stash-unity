@@ -88,16 +88,17 @@ bool opened = StashNative.Instance.OpenCard(
     externalPaymentCallback: url => { /* checkout continues in the browser; finish via deeplink */ });
 ```
 
-Everything after the URL is optional. Exactly one per-call callback ends each card, and the matching global event fires too (see [Callbacks](https://stashgg.github.io/stash-native/usage/callbacks.html) for what each one means). `OpenCard` returns `false` and leaves the open card alone if a card or scanner is already presented.
+Everything after the URL is optional. Exactly one per-call callback ends each card, and the matching global event fires too (see [Callbacks](https://stashgg.github.io/stash-native/usage/callbacks.html) for what each one means). `externalPaymentCallback` is informational: after a default handoff the card has closed and the presentation ends with `OnBrowserDismissed`; with the page's `keepOpen` the card stays open and ends with its own callback. `OpenCard` returns `false` and leaves the open card alone if a card or scanner is already presented.
 
 ```csharp
 // QR code linking (needs gg.stash.unity.codelink)
 if (StashNative.Instance.IsScannerAvailable)
     StashNative.Instance.OpenScanner(code => LinkAccount(code));
 
-// In-game browser; on iOS report the deeplink result to close Safari with a payment event
+// In-game browser. When your payment deep link arrives:
 StashNative.Instance.OpenBrowser(url);
-StashNative.Instance.DismissBrowser(paymentSucceeded: true);
+StashNative.Instance.CloseBrowser();     // closes it and raises OnBrowserDismissed (both platforms)
+StashNative.Instance.DismissBrowser();   // iOS: closes Safari silently; the game handles the result itself
 ```
 
 ### Unity-specific behaviour
@@ -114,12 +115,12 @@ StashNative.Instance.DismissBrowser(paymentSucceeded: true);
 | `bool OpenCard(url, dismiss, success, failure, StashNativeCardConfig, networkError, externalPayment)` | All but `url` optional. |
 | `bool OpenScanner(scanned, dismissed, error, StashNativeScannerConfig)` / `OpenScanner(config)` | Needs `gg.stash.unity.codelink`. |
 | `void OpenBrowser(url, StashNativeBrowserConfig)` | Config is iOS only (portrait Safari). |
-| `void CloseBrowser()` / `void DismissBrowser(bool paymentSucceeded)` | iOS only; no-op on Android. |
+| `void CloseBrowser()` / `void DismissBrowser()` | `CloseBrowser` raises `OnBrowserDismissed`. `DismissBrowser` closes Safari silently; iOS only. |
 | `void Dismiss()` / `void ResetPresentationState()` | Reset drops any event still in flight. |
 | `void SetKeepAliveEnabled(bool)` / `SetKeepAliveConfig(StashNativeKeepAliveConfig)` / `bool IsKeepAliveEnabled` | Android only. |
 | `void SetBackdropBytes(byte[])` | Android only. |
 | `void SetInspectableWebViewsEnabled(bool)` / `bool IsInspectableWebViewsEnabled` | Debug only. |
-| `bool IsCurrentlyPresented` / `bool IsPurchaseProcessing` / `bool IsScannerAvailable` | Android does not track Custom Tabs in `IsCurrentlyPresented`. |
+| `bool IsCurrentlyPresented` / `bool IsPurchaseProcessing` / `bool IsScannerAvailable` | `IsCurrentlyPresented` stays true while a browser is open over a card; a standalone Android browser does not count. |
 | `string SdkVersion` / `string LastScannerErrorMessage` | |
 | `StashNative InstanceOrNull` | Never creates the singleton. |
 

@@ -202,12 +202,17 @@ namespace Stash.Native
         /// <summary>Fired when checkout ends because of a network error. The card is already dismissed and <see cref="OnCardDismissed"/> does not fire.</summary>
         public event Action OnNetworkError;
         /// <summary>
-        /// Fired when checkout hands off to the external browser (e.g. GPay, Klarna, crypto). The native SDK raises this as the handoff
-        /// starts: the card is closing but may still be on screen, so do not open another card from this callback. <see cref="OnCardDismissed"/>
-        /// does not fire; <see cref="OnBrowserDismissed"/> follows when the browser closes (on Android only if the browser launched).
+        /// Fired when the checkout page sends the payment to the browser (e.g. Klarna, Cash App). Informational; do not open another
+        /// card from this callback. By default the card closes without <see cref="OnCardDismissed"/> and the presentation ends with
+        /// <see cref="OnBrowserDismissed"/> (also when the browser cannot open). When the page passes <c>keepOpen</c>, the browser opens
+        /// over the card, no browser event follows, and the card ends later with its own events.
         /// </summary>
         public event Action<string> OnExternalPayment;
-        /// <summary>Fired when the external browser (Chrome Custom Tabs / SFSafariViewController) closes after <see cref="OpenBrowser"/> or an external payment handoff.</summary>
+        /// <summary>
+        /// Fired when the browser (Chrome Custom Tabs / SFSafariViewController) closes, or cannot open, after <see cref="OpenBrowser"/>
+        /// or an external payment that closed the card. Not fired for a <c>keepOpen</c> browser, after <see cref="DismissBrowser"/>,
+        /// or after <see cref="ResetPresentationState"/>.
+        /// </summary>
         public event Action OnBrowserDismissed;
         /// <summary>Fired once with the raw QR payload after the scanner card has closed. Requires <c>gg.stash.unity.codelink</c>.</summary>
         public event Action<string> OnQrCodeScanned;
@@ -228,8 +233,9 @@ namespace Stash.Native
         [Obsolete("Opt-in responses were removed from Stash Native 3.0.0; the checkout page handles channel selection itself.", true)]
         public event Action<string> OnOptinResponse { add { } remove { } }
 
-        // Per-call callbacks for the current card. Cleared when the card's session ends:
-        // user/page dismiss, payment result with autoClose on, network error, or external-payment handoff.
+        // Per-call callbacks for the current card. Cleared when the card's session ends: user/page dismiss, payment result
+        // with autoClose on, network error, or, after an external-payment handoff, the browser closing (default handoff) or a
+        // silent DismissBrowser(). A keepOpen handoff leaves the card open, so its callbacks stay until the card's own ending.
         private Action _cardDismissCallback;
         private Action<string> _cardSuccessCallback;
         private Action _cardFailureCallback;
@@ -237,6 +243,9 @@ namespace Stash.Native
         private Action<string> _cardExternalPaymentCallback;
         private bool _cardAutoClose = true;
         private bool _cardSessionActive;
+        // Set by an external-payment handoff. Native does not say whether the page passed keepOpen, so the next signal decides:
+        // a card event means the card stayed open; OnBrowserDismissed means it had closed and the session is over.
+        private bool _cardHandoffPending;
 
         // Per-call callbacks for the current scanner. Cleared on scan, dismiss, or ScannerUnavailable.
         private Action<string> _scannerScannedCallback;
@@ -257,6 +266,7 @@ namespace Stash.Native
             _cardNetworkErrorCallback = null;
             _cardExternalPaymentCallback = null;
             _cardSessionActive = false;
+            _cardHandoffPending = false;
         }
 
         private void ClearScannerCallbacks()
@@ -352,9 +362,9 @@ namespace Stash.Native
         private void HandleExternalPayment(string url)
         {
             var u = url ?? "";
-            var cb = _cardExternalPaymentCallback;
-            ClearCardCallbacks();
-            Invoke("externalPaymentCallback", cb, u);
+            // Not an ending: with keepOpen the card stays and ends later with its own events. See _cardHandoffPending.
+            if (_cardSessionActive) _cardHandoffPending = true;
+            Invoke("externalPaymentCallback", _cardExternalPaymentCallback, u);
             Raise("OnExternalPayment", OnExternalPayment, u);
         }
 
@@ -364,7 +374,12 @@ namespace Stash.Native
                 Raise("OnPageLoaded", OnPageLoaded, loadTime);
         }
 
-        private void HandleBrowserDismissed() => Raise("OnBrowserDismissed", OnBrowserDismissed);
+        private void HandleBrowserDismissed()
+        {
+            // After a default handoff the card already closed; the browser closing ends that presentation.
+            if (_cardHandoffPending) ClearCardCallbacks();
+            Raise("OnBrowserDismissed", OnBrowserDismissed);
+        }
 
         private void HandleQrCodeScanned(string content)
         {
@@ -457,7 +472,7 @@ namespace Stash.Native
         [DllImport("__Internal")] private static extern void _StashNativeBridgeOpenBrowser(string url, int orientationPreference);
         [DllImport("__Internal")] private static extern void _StashNativeBridgeOpenScanner(int generation, bool hasConfig, string headerText, string calloutTitle, string calloutSubtitle, string cameraUnavailableText, string connectedText, bool showCallout);
         [DllImport("__Internal")] private static extern void _StashNativeBridgeCloseBrowser();
-        [DllImport("__Internal")] private static extern void _StashNativeBridgeDismissBrowser(bool success);
+        [DllImport("__Internal")] private static extern void _StashNativeBridgeDismissBrowser();
         [DllImport("__Internal")] private static extern void _StashNativeBridgeDismiss();
         [DllImport("__Internal")] private static extern void _StashNativeBridgeResetPresentationState();
         [DllImport("__Internal")] private static extern void _StashNativeBridgeDetach();
@@ -804,11 +819,15 @@ namespace Stash.Native
 #endif
         }
 
-        /// <summary>iOS only: dismisses the Safari view programmatically without a payment result. No-op on Android (Custom Tabs cannot be closed by the app).</summary>
+        /// <summary>
+        /// Closes the SDK's browser and raises <see cref="OnBrowserDismissed"/>. On Android, call it when your payment deep link
+        /// arrives while <see cref="IsCurrentlyPresented"/> is true, from an activity that is not <c>singleTask</c> (see the native
+        /// browser docs). A <c>keepOpen</c> browser closes back to its card without a browser event.
+        /// </summary>
         public void CloseBrowser()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
-            try { androidPluginInstance?.Call("closeBrowser"); }
+            try { InitializeAndroidPlugin(); androidPluginInstance?.Call("closeBrowser"); }
             catch (Exception e) { HandleNativeException("CloseBrowser", e); }
 #elif UNITY_IOS && !UNITY_EDITOR
             try { _StashNativeBridgeCloseBrowser(); }
@@ -817,14 +836,15 @@ namespace Stash.Native
         }
 
         /// <summary>
-        /// iOS only: closes the Safari view opened by <see cref="OpenBrowser"/> or an external-payment handoff and reports the payment result
-        /// that arrived through your deeplink. The SDK then raises <see cref="OnPaymentSuccess"/> or <see cref="OnPaymentFailure"/> followed by
-        /// <see cref="OnBrowserDismissed"/>. No-op on Android, where the deeplink itself returns the user to the game.
+        /// iOS only: closes Safari silently, without <see cref="OnBrowserDismissed"/> or payment events, for when your payment deep
+        /// link has arrived and the game handles the result itself. Ends an external-payment handoff's session. A <c>keepOpen</c>
+        /// Safari closes back to its card, which still reports its own events. No-op on Android.
         /// </summary>
-        public void DismissBrowser(bool paymentSucceeded)
+        public void DismissBrowser()
         {
 #if UNITY_IOS && !UNITY_EDITOR
-            try { _StashNativeBridgeDismissBrowser(paymentSucceeded); }
+            if (_cardHandoffPending) ClearCardCallbacks();
+            try { _StashNativeBridgeDismissBrowser(); }
             catch (Exception e) { HandleNativeException("DismissBrowser", e); }
 #endif
         }
@@ -861,8 +881,8 @@ namespace Stash.Native
         }
 
         /// <summary>
-        /// True while a card or scanner is presented or an open is pending. Browser: true on iOS while Safari is up; on Android
-        /// Custom Tabs are not tracked and this stays false. In the Editor it reflects the test window.
+        /// True while a card or scanner is presented or an open is pending, including while a browser is open over it. A standalone
+        /// browser counts on iOS but not on Android. In the Editor it reflects the test window.
         /// </summary>
         public bool IsCurrentlyPresented
         {
