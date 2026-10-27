@@ -140,22 +140,33 @@ In Play mode, `OpenCard()` opens the checkout in a preview window (macOS and Win
 
 ## Migrating from 2.x
 
-Removed members carry `[Obsolete(error: true)]` so the compiler points at every call site.
+Removed and renamed members carry `[Obsolete(error: true)]`, so the compiler points at every call site.
 
-| 2.x | 3.0 |
-|-----|-----|
-| `OpenModal`, `StashNativeModalConfig` | Removed; use `OpenCard`. |
-| `forcePortrait` | `orientationPreference = Portrait` |
-| Ratio fields, `backgroundColor` | Points-based `StashNativeCardConfig`; theming via the `theme=` URL parameter. |
-| Config structs | Classes with native defaults. |
-| `OpenCard` returns `void` | Returns `bool`; new `networkErrorCallback`, `externalPaymentCallback`. |
-| `OnDialogDismissed` | `OnCardDismissed`; payment auto-close and network errors no longer emit a dismiss. |
-| `OnBrowserClosed` | `OnBrowserDismissed` |
-| `OnOptinResponse` | Removed. |
-| Raw JNI `setBackdropBytes` | `SetBackdropBytes(bytes)` |
-| iOS 13, Unity 2021.3, `androidx.core` recommended | iOS 15, Unity 2022.3, AndroidX set required. |
+**Removed**
 
-Bridges were renamed (`StashNativeUnityBridge.java`, `StashNativeBridge.mm`); delete any 2.x copies in `Assets/`.
+- `OpenModal` and `StashNativeModalConfig`. Use `OpenCard`; the card now adapts to tablets and large screens.
+- `OnOptinResponse`. The checkout page handles channel selection itself.
+- `backgroundColor`. The checkout themes itself via the `theme=` URL parameter.
+
+**Renamed**
+
+- `OnDialogDismissed` is now `OnCardDismissed`.
+- `OnBrowserClosed` is now `OnBrowserDismissed`.
+- `forcePortrait = true` is now `orientationPreference = StashNativeOrientationPreference.Portrait`.
+
+**Changed**
+
+- Card sizing uses points instead of screen ratios: `preferredContentWidth`, `preferredContentHeight`, `maximumContentHeight`, `edgeMargin`. The `cardHeightRatioPortrait` and `tablet*Ratio*` fields are gone.
+- `OnCardDismissed` no longer fires after a payment auto-close, a network error or an external-payment handoff. If you cleaned up in the dismiss callback, pass `networkErrorCallback` to `OpenCard` and handle the success and failure callbacks too.
+- `OpenCard` returns `bool`, `false` when a card or scanner is already open. Existing calls still compile.
+- Config types are classes, so `new StashNativeCardConfig { ... }` starts from the native defaults.
+- The Android backdrop is set with `SetBackdropBytes(bytes)` instead of calling the native class through JNI.
+
+**Requirements**
+
+- Unity 2022.3, iOS 15 and compileSdk 34 are now the minimums.
+- The AndroidX libraries listed under [Installation](#android-dependencies) are required, not optional.
+- The native bridges were renamed to `StashNativeUnityBridge.java` and `StashNativeBridge.mm`. Delete any 2.x copies in `Assets/`.
 
 ## More
 
