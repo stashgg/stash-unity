@@ -6,10 +6,10 @@ Install it only if your game links webshop accounts by scanning the QR code show
 
 ## Installation
 
-Install the core package first, then add this one from the same repository:
+Install the core package first, then add this one from the same repository and branch:
 
 ```
-https://github.com/stashgg/stash-unity.git?path=Packages/gg.stash.unity.codelink
+https://github.com/stashgg/stash-unity.git?path=Packages/gg.stash.unity.codelink#update/stash-native-3.0.0
 ```
 
 ## Platform setup

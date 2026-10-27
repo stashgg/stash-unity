@@ -26,8 +26,10 @@ This README covers what is specific to Unity: installing the packages, the C# AP
 
 | Package | Git URL (Package Manager → **+** → *Add package from git URL*) |
 |---------|------------------------------------------------------------------|
-| **`gg.stash.unity`** (required) | `https://github.com/stashgg/stash-unity.git?path=Packages/gg.stash.unity` |
-| **`gg.stash.unity.codelink`** (optional, QR scanner) | `https://github.com/stashgg/stash-unity.git?path=Packages/gg.stash.unity.codelink` |
+| **`gg.stash.unity`** (required) | `https://github.com/stashgg/stash-unity.git?path=Packages/gg.stash.unity#update/stash-native-3.0.0` |
+| **`gg.stash.unity.codelink`** (optional, QR scanner) | `https://github.com/stashgg/stash-unity.git?path=Packages/gg.stash.unity.codelink#update/stash-native-3.0.0` |
+
+During the 3.0.0 preview the packages install from the `update/stash-native-3.0.0` branch, which the `#update/stash-native-3.0.0` suffix selects. Install both packages from the same branch. To pick up later changes on the branch, remove and re-add the package, or delete its entry under `"lock"` in `Packages/packages-lock.json`.
 
 The QR scanner package has its own camera setup and Android dependencies; see its [README](Packages/gg.stash.unity.codelink/README.md).
 
@@ -77,15 +79,6 @@ StashNative.Instance.OpenCard(
 - `OpenCard` returns `false` if a card or scanner is already open.
 - Landscape game? Pass `config: new StashNativeCardConfig { orientationPreference = StashNativeOrientationPreference.Portrait }`.
 
-### QR code linking
-
-Needs the [`gg.stash.unity.codelink`](Packages/gg.stash.unity.codelink/README.md) package.
-
-```csharp
-if (StashNative.Instance.IsScannerAvailable)
-    StashNative.Instance.OpenScanner(code => LinkAccount(code));
-```
-
 ### In-game browser
 
 ```csharp
@@ -94,6 +87,15 @@ StashNative.Instance.OpenBrowser(url);
 // When your payment deep link arrives:
 StashNative.Instance.CloseBrowser();     // closes the browser, raises OnBrowserDismissed
 StashNative.Instance.DismissBrowser();   // iOS only: closes Safari without any callback
+```
+
+### QR code linking
+
+Needs the [`gg.stash.unity.codelink`](Packages/gg.stash.unity.codelink/README.md) package.
+
+```csharp
+if (StashNative.Instance.IsScannerAvailable)
+    StashNative.Instance.OpenScanner(code => LinkAccount(code));
 ```
 
 ### Good to know
