@@ -1,0 +1,166 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+  <ui:VisualElement name="app" class="app">
+
+    <!-- Toolbar: back arrow on sub-screens, screen title -->
+    <ui:VisualElement class="toolbar">
+      <ui:Button name="back" text="‹" class="back" />
+      <ui:VisualElement name="logo" class="logo" />
+      <ui:Label name="title" text="Test" class="title" />
+      <ui:Button name="action" text="" class="action" />
+    </ui:VisualElement>
+
+    <!-- Screens: the controller shows exactly one -->
+    <ui:VisualElement name="screens" class="screens">
+
+      <ui:ScrollView name="screen-test" class="screen" vertical-scroller-visibility="Hidden" horizontal-scroller-visibility="Hidden" touch-scroll-type="Elastic">
+        <ui:VisualElement class="block">
+          <ui:Label text="CHECKOUT CARD" class="section-title" />
+          <ui:VisualElement class="section">
+            <ui:VisualElement class="url-row">
+              <ui:TextField name="checkout-url" class="url" />
+              <ui:Button name="open-card" text="Open" class="primary inline" />
+            </ui:VisualElement>
+            <ui:Button name="card-generate-checkout" text="Generate Checkout" />
+          </ui:VisualElement>
+        </ui:VisualElement>
+
+        <ui:VisualElement class="block">
+          <ui:Label text="BROWSER" class="section-title" />
+          <ui:VisualElement class="section">
+            <ui:VisualElement class="url-row">
+              <ui:TextField name="browser-url" class="url" />
+              <ui:Button name="open-browser" text="Open" class="primary inline" />
+            </ui:VisualElement>
+            <ui:Button name="browser-generate-checkout" text="Generate Checkout" />
+            <ui:Button name="browser-open-webshop" text="Open Webshop" />
+          </ui:VisualElement>
+        </ui:VisualElement>
+
+        <ui:VisualElement class="block">
+          <ui:Label text="LINK WEBSHOP" class="section-title" />
+          <ui:VisualElement class="section">
+            <ui:Button name="open-scanner" text="Scan QR Code" class="primary" />
+          </ui:VisualElement>
+        </ui:VisualElement>
+      </ui:ScrollView>
+
+      <ui:ScrollView name="screen-settings" class="screen" vertical-scroller-visibility="Hidden" horizontal-scroller-visibility="Hidden" touch-scroll-type="Elastic">
+        <ui:VisualElement class="block">
+          <ui:Label text="PRESENTATION OPTIONS" class="section-title" />
+          <ui:VisualElement class="section">
+            <ui:Button name="nav-card" text="Card options" class="nav" />
+            <ui:Button name="nav-browser" text="Browser options" class="nav" />
+            <ui:Button name="nav-scanner" text="QR Code scan options" class="nav" />
+          </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement class="block">
+          <ui:Label text="OTHER" class="section-title" />
+          <ui:VisualElement class="section">
+            <ui:Toggle name="lock-landscape" label="Lock app to landscape" />
+                </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement class="block">
+          <ui:Label text="ABOUT" class="section-title" />
+          <ui:VisualElement class="section">
+            <ui:VisualElement class="info-row">
+              <ui:Label text="SDK version" class="info-label" />
+              <ui:Label name="sdk-version" text="" class="info-value" />
+            </ui:VisualElement>
+          </ui:VisualElement>
+        </ui:VisualElement>
+      </ui:ScrollView>
+
+      <ui:ScrollView name="screen-instances" class="screen" vertical-scroller-visibility="Hidden" horizontal-scroller-visibility="Hidden" touch-scroll-type="Elastic">
+        <ui:VisualElement class="block">
+          <ui:Label text="INSTANCES" class="section-title" />
+          <ui:VisualElement name="instance-list" class="section" />
+        </ui:VisualElement>
+      </ui:ScrollView>
+
+      <ui:ScrollView name="screen-card-options" class="screen" vertical-scroller-visibility="Hidden" horizontal-scroller-visibility="Hidden" touch-scroll-type="Elastic">
+        <ui:VisualElement class="block">
+          <ui:Label text="GENERAL" class="section-title" />
+          <ui:VisualElement class="section">
+            <ui:Toggle name="card-portrait" label="Prefer portrait" />
+            <ui:Toggle name="card-allow-dismiss" label="Allow dismissal" />
+            <ui:Toggle name="card-auto-close" label="Auto-close on payment event" />
+          </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement class="block android-only">
+          <ui:Label text="BACKDROP" class="section-title" />
+          <ui:VisualElement class="section">
+            <ui:Toggle name="card-backdrop" label="Portrait backdrop" />
+          </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement class="block">
+          <ui:Label text="RESPONSIVE SIZE" class="section-title" />
+          <ui:VisualElement class="section">
+            <ui:SliderInt name="card-width" label="Preferred content width" low-value="240" high-value="800" show-input-field="true" />
+            <ui:SliderInt name="card-height" label="Preferred content height" low-value="240" high-value="1200" show-input-field="true" />
+            <ui:SliderInt name="card-max-height" label="Maximum content height (0 = unlimited)" low-value="0" high-value="1400" show-input-field="true" />
+            <ui:SliderInt name="card-margin" label="Edge margin" low-value="0" high-value="64" show-input-field="true" />
+          </ui:VisualElement>
+        </ui:VisualElement>
+      </ui:ScrollView>
+
+      <ui:ScrollView name="screen-browser-options" class="screen" vertical-scroller-visibility="Hidden" horizontal-scroller-visibility="Hidden" touch-scroll-type="Elastic">
+        <ui:VisualElement class="block">
+          <ui:Label text="GENERAL" class="section-title" />
+          <ui:VisualElement class="section">
+            <ui:Toggle name="browser-keep-alive" label="Keep-alive service" class="android-only" />
+            <ui:Toggle name="browser-portrait" label="Prefer portrait" class="ios-only" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+      </ui:ScrollView>
+
+      <ui:ScrollView name="screen-scanner-options" class="screen" vertical-scroller-visibility="Hidden" horizontal-scroller-visibility="Hidden" touch-scroll-type="Elastic">
+        <ui:VisualElement class="block">
+          <ui:Label text="HEADER" class="section-title" />
+          <ui:VisualElement class="section">
+            <ui:TextField name="scanner-header" label="Header text" />
+          </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement class="block">
+          <ui:Label text="INFO CALLOUT" class="section-title" />
+          <ui:VisualElement class="section">
+            <ui:Toggle name="scanner-callout" label="Show info callout" />
+            <ui:TextField name="scanner-callout-title" label="Callout title" />
+            <ui:TextField name="scanner-callout-subtitle" label="Callout subtitle" />
+          </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement class="block">
+          <ui:Label text="STATUS TEXT" class="section-title" />
+          <ui:VisualElement class="section">
+            <ui:TextField name="scanner-camera-unavailable" label="Camera unavailable text" />
+            <ui:TextField name="scanner-connected" label="Connected text" />
+          </ui:VisualElement>
+        </ui:VisualElement>
+      </ui:ScrollView>
+
+      <ui:ScrollView name="screen-instance-edit" class="screen" vertical-scroller-visibility="Hidden" horizontal-scroller-visibility="Hidden" touch-scroll-type="Elastic">
+        <ui:VisualElement class="block">
+          <ui:Label text="INSTANCE" class="section-title" />
+          <ui:VisualElement class="section">
+            <ui:TextField name="instance-name" label="Name" />
+            <ui:TextField name="instance-app-id" label="App ID" />
+            <ui:TextField name="instance-secret" label="Ingress secret" password="true" />
+            <ui:TextField name="instance-user-id" label="User ID" />
+            <ui:Toggle name="instance-production" label="Production" />
+          </ui:VisualElement>
+        </ui:VisualElement>
+      </ui:ScrollView>
+
+    </ui:VisualElement>
+
+    <!-- Bottom navigation -->
+    <ui:VisualElement class="tabbar">
+      <ui:Button name="tab-test" text="Test" class="tab" />
+      <ui:Button name="tab-settings" text="Settings" class="tab" />
+      <ui:Button name="tab-instances" text="Instances" class="tab" />
+    </ui:VisualElement>
+
+    <!-- Callback chips: last child so they render above every screen, toolbar and tab bar -->
+    <ui:VisualElement name="chips" class="chips" picking-mode="Ignore" />
+
+  </ui:VisualElement>
+</ui:UXML>

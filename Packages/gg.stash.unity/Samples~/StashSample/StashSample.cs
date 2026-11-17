@@ -214,10 +214,10 @@ public class StashSample : MonoBehaviour
     {
         switch (current)
         {
-            case Screen.Instances:      AddInstance(); break;
-            case Screen.CardOptions:    cardConfig = StashNativeCardConfig.Default; Rebuild(Screen.CardOptions); break;
+            case Screen.Instances: AddInstance(); break;
+            case Screen.CardOptions: cardConfig = StashNativeCardConfig.Default; Rebuild(Screen.CardOptions); break;
             case Screen.ScannerOptions: scannerConfig = StashNativeScannerConfig.Default; Rebuild(Screen.ScannerOptions); break;
-            case Screen.InstanceEdit:   DeleteEditingInstance(); break;
+            case Screen.InstanceEdit: DeleteEditingInstance(); break;
         }
     }
 
