@@ -12,12 +12,22 @@ using Stash.Editor.Windows;
 namespace Stash.Editor
 {
     /// <summary>
-    /// Editor window for testing StashNative card and modal in Unity Editor (macOS and Windows).
+    /// Editor window for testing the StashNative checkout card and QR scanner in the Unity Editor (macOS and Windows).
+    /// The card opens in a native WebView window; the scanner is simulated with a text field.
+    /// Mirrors the device lifecycle: payment with autoClose closes the card before the callback and emits no dismiss;
+    /// with autoClose off the window stays open until dismissed; Dismiss / ResetPresentationState / IsCurrentlyPresented
+    /// from the runtime API are routed here.
     /// </summary>
     public class StashEditorPluginWindow : EditorWindow
     {
+        private enum Mode { Card, Scanner }
+
         private string currentUrl = "";
-        private bool isPopupMode = false;
+        private Mode mode = Mode.Card;
+        private bool autoClose = true;
+        private bool allowDismiss = true;
+        private bool sessionActive;
+        private string simulatedQrPayload = "";
         private WebViewLauncher webViewLauncher;
 
         // Device size presets (width x height in points)
@@ -35,7 +45,6 @@ namespace Stash.Editor
         private DeviceSize currentDeviceSize = DeviceSize.iPhone14;
         private Vector2 customSize = new Vector2(390, 844);
 
-        // Device size definitions
         private static readonly Vector2[] DeviceSizes = new Vector2[]
         {
             new Vector2(375, 667),   // iPhone SE
@@ -63,55 +72,90 @@ namespace Stash.Editor
         public static void ShowWindow()
         {
             instance = GetWindow<StashEditorPluginWindow>("Stash Native - Test Window");
-            instance.minSize = new Vector2(320, 300);
-            instance.maxSize = new Vector2(320, 300);
+            instance.minSize = new Vector2(320, 320);
+            instance.maxSize = new Vector2(320, 320);
         }
 
-        public static void OpenModal(string url, StashNativeModalConfig? config = null)
+        // ---- entry points used by StashNative (via reflection) --------------------------------
+
+        /// <summary>Called by StashNative.OpenCard in Play mode.</summary>
+        public static void OpenCard(string url, bool autoClose, bool allowDismiss)
         {
             if (instance == null) ShowWindow();
+            instance.EndCurrentSession(closeIfIdle: false); // switching flows ends the previous one like a user dismissal
+            instance.mode = Mode.Card;
+            instance.autoClose = autoClose;
+            instance.allowDismiss = allowDismiss;
             instance.currentUrl = url;
-            instance.isPopupMode = true;
+            instance.sessionActive = true;
             instance.LoadUrl(url);
-            instance.ApplyDeviceSize();
+            instance.Repaint();
         }
 
-        public static void OpenCard(string url)
+        /// <summary>Called by StashNative.OpenScanner in Play mode. No camera; type a payload and press Scan.</summary>
+        public static void OpenScanner()
         {
             if (instance == null) ShowWindow();
-            instance.currentUrl = url;
-            instance.isPopupMode = false;
-            instance.LoadUrl(url);
-            instance.ApplyDeviceSize();
+            instance.EndCurrentSession(closeIfIdle: false);
+            instance.DisposeWebView();
+            instance.mode = Mode.Scanner;
+            instance.currentUrl = "";
+            instance.sessionActive = true;
+            instance.Repaint();
         }
+
+        /// <summary>StashNative.Dismiss(): ends the current card or scanner with its dismissal callback.</summary>
+        public static void Dismiss()
+        {
+            if (instance == null) return;
+            instance.EndCurrentSession();
+            instance.Repaint();
+        }
+
+        /// <summary>StashNative.ResetPresentationState(): tears the simulation down without callbacks.</summary>
+        public static void Reset()
+        {
+            if (instance == null) return;
+            instance.sessionActive = false;
+            instance.DisposeWebView();
+            instance.Repaint();
+        }
+
+        /// <summary>StashNative.IsCurrentlyPresented in the Editor.</summary>
+        public static bool IsPresented() => instance != null && instance.sessionActive;
+
+        // ---- GUI --------------------------------------------------------------------------------
 
         private void OnGUI()
         {
             EditorGUILayout.Space(5);
 
-            // Info callout
+            if (!Application.isPlaying)
+            {
+                EditorGUILayout.HelpBox("Enter Play mode and call StashNative.Instance.OpenCard / OpenScanner to simulate the native flows here.", MessageType.Info);
+                return;
+            }
+
+            if (mode == Mode.Scanner)
+            {
+                DrawScannerGUI();
+                return;
+            }
+
             EditorGUILayout.HelpBox("You can test Stash Pay purchases in the preview window. Callbacks will be triggered as if you were running on a device. You can also simulate callback events using the buttons below.", MessageType.Info);
             EditorGUILayout.Space(5);
 
-            // Mode indicator
-            EditorGUILayout.LabelField($"Mode: {(isPopupMode ? "Modal" : "Card")}", EditorStyles.boldLabel);
-
-            // URL display
+            EditorGUILayout.LabelField($"Mode: Card   autoClose: {autoClose}   allowDismiss: {allowDismiss}   presented: {sessionActive}", EditorStyles.boldLabel);
             EditorGUILayout.LabelField("URL:", EditorStyles.boldLabel);
             EditorGUILayout.SelectableLabel(currentUrl, EditorStyles.textField, GUILayout.Height(18));
 
             EditorGUILayout.Space(5);
 
-            // Device size selector
             EditorGUILayout.LabelField("Preview Size:", EditorStyles.boldLabel);
             int newDeviceSize = EditorGUILayout.Popup((int)currentDeviceSize, DeviceSizeNames);
             if (newDeviceSize != (int)currentDeviceSize)
-            {
                 currentDeviceSize = (DeviceSize)newDeviceSize;
-                ApplyDeviceSize();
-            }
 
-            // Custom size input
             if (currentDeviceSize == DeviceSize.Custom)
             {
                 EditorGUILayout.BeginHorizontal();
@@ -119,69 +163,127 @@ namespace Stash.Editor
                 customSize.x = EditorGUILayout.FloatField(customSize.x);
                 EditorGUILayout.LabelField("Height:", GUILayout.Width(50));
                 customSize.y = EditorGUILayout.FloatField(customSize.y);
-                if (GUILayout.Button("Apply", GUILayout.Width(50)))
-                {
-                    ApplyDeviceSize();
-                }
                 EditorGUILayout.EndHorizontal();
             }
 
             EditorGUILayout.Space(5);
 
-            // Action buttons
-            if (GUILayout.Button("Reload", GUILayout.Height(25)))
+            using (new EditorGUI.DisabledScope(!sessionActive))
             {
-                if (!string.IsNullOrEmpty(currentUrl))
-                {
+                if (GUILayout.Button("Reload", GUILayout.Height(25)) && !string.IsNullOrEmpty(currentUrl))
                     LoadUrl(currentUrl);
-                }
-            }
 
+                EditorGUILayout.Space(5);
+                EditorGUILayout.LabelField("Simulate Callbacks:", EditorStyles.boldLabel);
+                EditorGUILayout.BeginHorizontal();
+                if (GUILayout.Button("Payment Success", GUILayout.Height(22))) OnWebViewPaymentSuccess();
+                if (GUILayout.Button("Payment Failure", GUILayout.Height(22))) OnWebViewPaymentFailure();
+                EditorGUILayout.EndHorizontal();
+
+                EditorGUILayout.BeginHorizontal();
+                using (new EditorGUI.DisabledScope(!allowDismiss))
+                {
+                    if (GUILayout.Button(allowDismiss ? "Dismiss Card (user)" : "Dismiss Card (allowDismiss = false)", GUILayout.Height(22)))
+                        EndCurrentSession();
+                }
+                EditorGUILayout.EndHorizontal();
+            }
+        }
+
+        private void DrawScannerGUI()
+        {
+            EditorGUILayout.HelpBox("QR scanner simulation. There is no camera in the Editor: paste the QR payload below and press Scan to fire OnQrCodeScanned, or Dismiss to fire OnScannerDismissed.", MessageType.Info);
             EditorGUILayout.Space(5);
 
-            // Simulate callback buttons for testing
-            EditorGUILayout.LabelField("Simulate Callbacks:", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField($"Mode: Scanner   presented: {sessionActive}", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("QR payload:", EditorStyles.boldLabel);
+            simulatedQrPayload = EditorGUILayout.TextField(simulatedQrPayload);
+
+            EditorGUILayout.Space(5);
             EditorGUILayout.BeginHorizontal();
-
-            if (GUILayout.Button("Payment Success", GUILayout.Height(22)))
+            using (new EditorGUI.DisabledScope(!sessionActive || string.IsNullOrEmpty(simulatedQrPayload)))
             {
-                OnWebViewPaymentSuccess();
+                if (GUILayout.Button("Scan", GUILayout.Height(22)))
+                {
+                    var payload = simulatedQrPayload;
+                    // Native closes the scanner card before delivering the scan.
+                    sessionActive = false;
+                    Debug.Log("[StashNative Editor] QR scanned: " + payload);
+                    StashNative.InstanceOrNull?.OnEditorQrCodeScanned(payload);
+                    CloseWindowIfIdle();
+                    return;
+                }
             }
-
-            if (GUILayout.Button("Payment Failure", GUILayout.Height(22)))
+            using (new EditorGUI.DisabledScope(!sessionActive))
             {
-                OnWebViewPaymentFailure();
+                if (GUILayout.Button("Dismiss Scanner", GUILayout.Height(22)))
+                {
+                    EndCurrentSession();
+                    return;
+                }
             }
-
-            EditorGUILayout.EndHorizontal();
-
-            EditorGUILayout.BeginHorizontal();
-
-            if (GUILayout.Button("Dismiss Dialog", GUILayout.Height(22)))
-            {
-                OnWebViewDismissDialog();
-            }
-
             EditorGUILayout.EndHorizontal();
         }
 
-        private void ApplyDeviceSize()
+        // ---- lifecycle ----------------------------------------------------------------------------
+
+        /// <summary>Ends the active session the way a user dismissal would: state is cleared first, then the callback runs, so a
+        /// callback that opens the next card is not closed by this one.</summary>
+        private void EndCurrentSession(bool closeIfIdle = true)
         {
-            // Window size is fixed to fit content
-            this.minSize = new Vector2(320, 300);
-            this.maxSize = new Vector2(320, 300);
+            if (!sessionActive) return;
+            sessionActive = false;
+            var endedMode = mode;
+            DisposeWebView();
+            if (endedMode == Mode.Scanner)
+            {
+                Debug.Log("[StashNative Editor] Scanner dismissed");
+                StashNative.InstanceOrNull?.OnEditorScannerDismissed();
+            }
+            else
+            {
+                Debug.Log("[StashNative Editor] Card dismissed");
+                StashNative.InstanceOrNull?.OnEditorCardDismissed();
+            }
+            if (closeIfIdle) CloseWindowIfIdle();
+        }
+
+        private void OnWebViewPaymentSuccess()
+        {
+            Debug.Log("[StashNative Editor] Payment Success callback received");
+            if (autoClose)
+            {
+                // Device order: card closes, then the callback; no dismiss follows.
+                sessionActive = false;
+                DisposeWebView();
+            }
+            StashNative.InstanceOrNull?.OnEditorPaymentSuccess("");
+            CloseWindowIfIdle();
+        }
+
+        private void OnWebViewPaymentFailure()
+        {
+            Debug.Log("[StashNative Editor] Payment Failure callback received");
+            if (autoClose)
+            {
+                sessionActive = false;
+                DisposeWebView();
+            }
+            StashNative.InstanceOrNull?.OnEditorPaymentFailure();
+            CloseWindowIfIdle();
+        }
+
+        /// <summary>Closes the window only if the callback that just ran did not start a new session.</summary>
+        private void CloseWindowIfIdle()
+        {
+            if (sessionActive) { Repaint(); return; }
+            Close();
         }
 
         private void LoadUrl(string url)
         {
-            if (string.IsNullOrEmpty(url))
-                return;
-
-            Repaint();
-
-            // Create native webview window immediately
+            if (string.IsNullOrEmpty(url)) return;
             CreateWebViewWindow();
-
             Repaint();
         }
 
@@ -201,14 +303,9 @@ namespace Stash.Editor
             );
 
             webViewLauncher = new WebViewLauncher();
-
-            // Subscribe to callbacks
+            // Opt-in responses were removed in Stash Native 3.0 and are no longer forwarded.
             webViewLauncher.OnPaymentSuccess += OnWebViewPaymentSuccess;
             webViewLauncher.OnPaymentFailure += OnWebViewPaymentFailure;
-            webViewLauncher.OnOptinResponse += OnWebViewOptinResponse;
-
-            // Set up polling for notifications (macOS uses NSNotificationCenter, Windows uses message queue)
-            StartNotificationPolling();
 
             if (webViewLauncher.CreateWindow(webviewRect, currentUrl))
             {
@@ -223,70 +320,12 @@ namespace Stash.Editor
             }
         }
 
-        private void StartNotificationPolling()
-        {
-            // Poll for notifications using EditorApplication.update
-            UnityEditor.EditorApplication.update += PollForNotifications;
-        }
-
-        private void StopNotificationPolling()
-        {
-            UnityEditor.EditorApplication.update -= PollForNotifications;
-        }
-
-        private void PollForNotifications()
-        {
-            // Polling is handled by the WebViewLauncher class
-            // macOS uses NSNotificationCenter, Windows uses message queue
-        }
-
-        private void OnWebViewPaymentSuccess()
-        {
-            Debug.Log("[StashNative Editor] Payment Success callback received");
-            if (StashNative.Instance != null)
-                StashNative.Instance.OnEditorPaymentSuccess("");
-            CloseEditorWindow();
-        }
-
-        private void OnWebViewPaymentFailure()
-        {
-            Debug.Log("[StashNative Editor] Payment Failure callback received");
-            if (StashNative.Instance != null)
-                StashNative.Instance.OnEditorPaymentFailure();
-            CloseEditorWindow();
-        }
-
-        private void OnWebViewOptinResponse(string optinType)
-        {
-            Debug.Log("[StashNative Editor] Optin Response callback received: " + optinType);
-            if (StashNative.Instance != null)
-                StashNative.Instance.OnEditorOptinResponse(optinType);
-            CloseEditorWindow();
-        }
-
-        private void OnWebViewDismissDialog()
-        {
-            Debug.Log("[StashNative Editor] Dismiss Dialog callback received");
-            if (StashNative.Instance != null)
-                StashNative.Instance.OnEditorDismissCatalog();
-            CloseEditorWindow();
-        }
-
-        private void CloseEditorWindow()
-        {
-            DisposeWebView();
-            this.Close();
-        }
-
         private void DisposeWebView()
         {
             if (webViewLauncher != null)
             {
-                // Unsubscribe from callbacks
                 webViewLauncher.OnPaymentSuccess -= OnWebViewPaymentSuccess;
                 webViewLauncher.OnPaymentFailure -= OnWebViewPaymentFailure;
-                webViewLauncher.OnOptinResponse -= OnWebViewOptinResponse;
-
                 webViewLauncher.Dispose();
                 webViewLauncher = null;
             }
@@ -294,9 +333,13 @@ namespace Stash.Editor
 
         private void OnDestroy()
         {
-            if (StashNative.Instance != null)
-                StashNative.Instance.OnEditorDismissCatalog();
+            // Closing the window by hand counts as the user dismissing the card or scanner. Never creates the runtime
+            // singleton (InstanceOrNull), so closing the window outside Play mode leaves the scene untouched.
+            if (sessionActive && Application.isPlaying)
+                EndCurrentSession();
+            sessionActive = false;
             DisposeWebView();
+            if (instance == this) instance = null;
         }
 
         private void OnDisable()
@@ -306,4 +349,3 @@ namespace Stash.Editor
     }
 }
 #endif // UNITY_EDITOR_OSX || UNITY_EDITOR_WIN
-

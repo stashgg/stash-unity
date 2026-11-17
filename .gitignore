@@ -77,3 +77,8 @@ crashlytics-build.properties
 *.orig
 *.swp
 *~
+# ...but keep Unity package sample folders (Samples~), which end in ~ by convention
+!Samples~/
+
+# Unity/Mono crash dumps
+mono_crash.*.json

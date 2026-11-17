@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: f7a1b2c3d4e5567890123456789abcde
+guid: 1c92f3e52133405f8e9b465b60ca8a5c
 PluginImporter:
   externalObjects: {}
   serializedVersion: 2
@@ -7,7 +7,7 @@ PluginImporter:
   executionOrder: {}
   defineConstraints: []
   isPreloaded: 0
-  isOverridable: 0
+  isOverridable: 1
   isExplicitlyReferenced: 0
   validateReferences: 1
   platformData:
@@ -70,21 +70,21 @@ PluginImporter:
   - first:
       VisionOS: VisionOS
     second:
-      enabled: 1
+      enabled: 0
       settings: {}
   - first:
       iPhone: iOS
     second:
       enabled: 1
       settings:
-        AddToEmbeddedBinaries: false
+        AddToEmbeddedBinaries: true
         CPU: AnyCPU
         CompileFlags: 
         FrameworkDependencies: 
   - first:
       tvOS: tvOS
     second:
-      enabled: 1
+      enabled: 0
       settings: {}
   userData: 
   assetBundleName: 

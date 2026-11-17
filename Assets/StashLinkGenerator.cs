@@ -15,14 +15,31 @@ public class StashLinkGenerator : MonoBehaviour
 {
     #region API Calls
 
-    private const string QUICK_PAY_ENDPOINT = "https://test-api.stash.gg/sdk/server/checkout_links/generate_quick_pay_url";
-    private const string AUTHENTICATED_URL_ENDPOINT = "https://test-api.stash.gg/sdk/server/generate_url";
+    private const string API_BASE_TEST = "https://test-api.stash.gg";
+    private const string API_BASE_PROD = "https://api.stash.gg";
+    private const string QUICK_PAY_PATH = "/sdk/server/checkout_links/generate_quick_pay_url";
+    private const string AUTHENTICATED_URL_PATH = "/sdk/server/generate_url";
 
     [Tooltip("App ID from Studio → Project Settings → App details")]
     [SerializeField] private string appId = "YOUR_APP_ID";
 
     [FormerlySerializedAs("apiKey")]
+    [Tooltip("Ingress API secret (base64) from Studio → Project Settings → API Secrets")]
     [SerializeField] private string ingressApiKey = "YOUR_INGRESS_API_KEY";
+
+    [Tooltip("Use the production API (api.stash.gg) instead of the test API (test-api.stash.gg)")]
+    [SerializeField] private bool production = false;
+
+    [Tooltip("Player id sent in generated links")]
+    [SerializeField] private string userId = "test_user_id";
+
+    /// <summary>Editable at runtime so the sample UI can switch credentials without rebuilding.</summary>
+    public string AppId { get => appId; set => appId = value; }
+    public string IngressApiKey { get => ingressApiKey; set => ingressApiKey = value; }
+    public bool Production { get => production; set => production = value; }
+    public string UserId { get => userId; set => userId = value; }
+
+    private string ApiBase => production ? API_BASE_PROD : API_BASE_TEST;
 
     /// <summary>Request a quick pay checkout URL. See https://docs.stash.gg/api/server-quickpay/GenerateQuickPayUrl for reference.</summary>
     public void RequestCheckoutUrl(Action<string> onUrl, Action<string> onError)
@@ -57,14 +74,14 @@ public class StashLinkGenerator : MonoBehaviour
             },
             user = new QuickPayUser
             {
-                id = "test_user_id",
+                id = userId,
                 validatedEmail = "test@domain.com",
                 platform = platformValue
             }
         };
 
         byte[] body = Encoding.UTF8.GetBytes(JsonUtility.ToJson(request));
-        using (var www = new UnityWebRequest(QUICK_PAY_ENDPOINT, "POST"))
+        using (var www = new UnityWebRequest(ApiBase + QUICK_PAY_PATH, "POST"))
         {
             www.uploadHandler = new UploadHandlerRaw(body);
             www.downloadHandler = new DownloadHandlerBuffer();
@@ -96,12 +113,12 @@ public class StashLinkGenerator : MonoBehaviour
     {
         var request = new AuthenticatedUrlRequest
         {
-            user = new AuthenticatedUrlUser { id = "WEBSHOP_USER_ID" },
+            user = new AuthenticatedUrlUser { id = userId },
             target = target
         };
 
         byte[] body = Encoding.UTF8.GetBytes(JsonUtility.ToJson(request));
-        using (var www = new UnityWebRequest(AUTHENTICATED_URL_ENDPOINT, "POST"))
+        using (var www = new UnityWebRequest(ApiBase + AUTHENTICATED_URL_PATH, "POST"))
         {
             www.uploadHandler = new UploadHandlerRaw(body);
             www.downloadHandler = new DownloadHandlerBuffer();

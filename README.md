@@ -1,369 +1,161 @@
 # Stash for Unity [![Lint](https://github.com/stashgg/stash-unity/actions/workflows/lint.yml/badge.svg)](https://github.com/stashgg/stash-unity/actions/workflows/lint.yml) ![buildtest](https://github.com/stashgg/stash-unity/actions/workflows/main.yml/badge.svg)
 
 <p align="left">
-  <img src="https://github.com/stashgg/stash-native/raw/main/.github/assets/stash_unity.png" width="128" height="128" alt="Stash Unity Logo"/>
+  <img src="https://github.com/stashgg/stash-native/raw/main/docs/assets/images/stash_unity_rounded.png" width="128" height="128" alt="Stash for Unity"/>
 </p>
 
-Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native) (embedded **Stash Native 2.3.1**), enabling native-feeling Stash Pay IAP checkout and webshop presentation directly inside your Unity game (Android/iOS).
+Unity wrapper for the [Stash Native SDK](https://stashgg.github.io/stash-native/) 3.0.0: Stash Pay checkout, pre-authenticated webshops and QR code account linking inside your Unity game on Android and iOS.
+
+This README covers what is specific to Unity: installing the packages, the C# API, and Editor simulation. How the card, browser, scanner and callbacks behave is documented once, for every platform, in the native docs:
+
+- [Checkout Card](https://stashgg.github.io/stash-native/usage/checkout-card.html)
+- [In-Game Browser](https://stashgg.github.io/stash-native/usage/browser.html)
+- [QR Code Linking](https://stashgg.github.io/stash-native/usage/codelink.html)
+- [Callbacks](https://stashgg.github.io/stash-native/usage/callbacks.html)
+- [Engine wrappers](https://stashgg.github.io/stash-native/architecture/engine-wrappers.html)
+
+> **3.0.0 is a breaking update from 2.x.** See [Migrating from 2.x](#migrating-from-2x).
 
 ## Requirements
 
-- Unity 2021.3+ (LTS recommended)
-- iOS 13.0+ / Android API 21+
+- Unity 2022.3 LTS or newer
+- iOS 15.0+
+- Android API 21+, compileSdk 34+
 
-## Installation (UPM)
+## Installation
 
-This package is distributed via the Unity Package Manager (UPM).
+| Package | Git URL (Package Manager → **+** → *Add package from git URL*) |
+|---------|------------------------------------------------------------------|
+| **`gg.stash.unity`** (required) | `https://github.com/stashgg/stash-unity.git?path=Packages/gg.stash.unity` |
+| **`gg.stash.unity.codelink`** (optional, QR scanner) | `https://github.com/stashgg/stash-unity.git?path=Packages/gg.stash.unity.codelink` |
 
-### Add from Git URL (recommended)
+The QR scanner package has its own camera setup and Android dependencies; see its [README](Packages/gg.stash.unity.codelink/README.md).
 
-1. Open **Window > Package Manager**
-2. Click **+** → **Add package from git URL**
-3. Enter: `https://github.com/stashgg/stash-unity.git?path=Packages/gg.stash.unity`
+### Android dependencies
 
-### Add via manifest.json
-
-Add to your project's `Packages/manifest.json` under `dependencies`:
-
-```json
-"gg.stash.unity": "https://github.com/stashgg/stash-unity.git?path=Packages/gg.stash.unity"
-```
-
-### Android: Optional Gradle dependencies
-
-Use your package manager or custom project Gradle file to add the following dependencies.
-
-| Dependency | Why add it |
-|------------|------------|
-| **`androidx.browser:browser`** (1.7.0 and up) | **`OpenBrowser()`** and some external browser flows use Chrome Custom Tabs when this is on the classpath; otherwise Android may open the plain system browser. |
-| **`androidx.core:core`** (1.12.0 and up) — **recommended** | Aligns Jetpack with current Stash Native behavior (broadcast receiver registration, foreground service helpers, and other `androidx.core` APIs). Unity projects that still resolve **very old** `androidx.core` (e.g. 1.2.x from legacy EDM trees) can hit **`NoSuchMethodError`** or subtle incompatibilities with other plugins. Pinning **`androidx.core:core`** to **1.12.0+** is not required by this package but is **recommended** for the most reliable Android experience. |
-
-**Steps (Custom Gradle Template):**
-
-1. **Edit → Project Settings → Player → Android → Publishing Settings**
-2. Enable **Custom Main Gradle Template** (Unity creates or uses `Assets/Plugins/Android/mainTemplate.gradle`).
-3. Open `mainTemplate.gradle`, find the `dependencies { }` block, and **before** the `**DEPS**` line Unity injects, add:
+Stash Native needs AndroidX libraries Unity does not add by itself. Projects using the [External Dependency Manager](https://github.com/googlesamples/unity-jar-resolver) pick them up from the package's `Editor/StashNativeDependencies.xml`. Otherwise enable **Custom Main Gradle Template** (Player → Publishing Settings) and add to `dependencies { }` before `**DEPS**`:
 
 ```gradle
-    implementation 'androidx.browser:browser:1.7.0'
     implementation 'androidx.core:core:1.12.0'
+    implementation 'androidx.webkit:webkit:1.11.0'
+    implementation 'androidx.window:window:1.4.0'
+    implementation 'androidx.window:window-java:1.4.0'
+    implementation 'androidx.browser:browser:1.7.0'          // optional: Chrome Custom Tabs for OpenBrowser
 ```
 
-If other plugins pull an older `androidx.core`, you can add a resolution strategy so the newer version wins (example only—adjust to match your Gradle setup):
+The Unity bridge class is annotated `@Keep`; if your ProGuard setup strips annotations, add `-keep class com.stash.unity.** { *; }`.
 
-```gradle
-configurations.all {
-    resolutionStrategy {
-        force 'androidx.core:core:1.12.0'
-    }
-}
-```
+### iOS
 
-### Import sample (optional)
+`StashNative.xcframework` is embedded by Unity's Xcode export; no setup needed.
 
-After adding the package, you can import the sample scene and scripts:
+### Samples
 
-1. Open **Window > Package Manager**
-2. Select **Stash for Unity** in the list
-3. Expand **Samples** and click **Import** next to **Stash Integration Sample**
-4. On `StashLinkGenerator`, set your **App ID** and **ingress API Key**. The sample signs requests with `x-stash-hmac-signature` (legacy `X-Stash-Api-Key` is no longer used).
+Package Manager → **Stash for Unity** → **Samples**:
 
-Do not expect to browse the sample under **Packages** in the Project window: folders named **`Samples~`** are intentionally ignored by Unity’s importer (only **Import** copies them into your **Assets** folder).
+- **QuickStart**: one button that opens a Stash checkout, with numbered comments on where your backend URL, options and purchase verification go. Start here.
+- **Stash Test App**: every feature and option, mirroring the [native sample apps](https://stashgg.github.io/stash-native/usage/sample-apps.html). Add your App ID and ingress secret on the *Instances* tab to generate real links (test only; production links come from your backend).
 
-## Sample / Demo
+## Usage
 
-- **iOS:** [Open in Appetize.io](https://appetize.io/app/b_eyszozcrmyt2zifoh5bjyiifha)
-- **Android:** [Open in Appetize.io](https://appetize.io/app/b_e7zfxgltohxm2rd5aw4zplzmwq?device=pixel7&osVersion=13.0&toolbar=true)
+Generate checkout links on your backend ([integration guide](https://docs.stash.gg/guides/stash-pay/integration)), then open them through `StashNative.Instance`.
 
-# Quick Start
-
-## Package structure
-
-When installed via UPM, the package lives under `Packages/gg.stash.unity/` with this layout:
-
-| Path | Description |
-|------|-------------|
-| **Runtime/** | **`StashNative.cs`** – Singleton API: `OpenCard`, `OpenModal`, `OpenBrowser`, `CloseBrowser`, Android keep-alive helpers, and events. |
-| **Editor/** | **(Optional)** Editor window for testing card/modal flows in the Unity Editor (Windows and macOS). |
-| **Plugins/Android/** | StashNative AAR and Unity bridge for Android. |
-| **Plugins/iOS/** | Unity bridge and StashNative.xcframework for iOS. |
-| **Samples~/StashSample/** | Optional sample (on disk only). Unity **does not list** files under `Samples~` in the Project window (the `~` path is excluded from import). Use **Package Manager → Samples → Import** to copy them into `Assets/`. |
-
-
-##  Usage
-
-Stash-native is used to handle Stash links - either Stash Pay links for IAP purchases or pre-authenticated links for embedded webshops. These links should always be generated securely on your backend server to ensure proper authentication and permissions.
-
-Before you start integrating the library, we strongly recommend reading our [integration guide](https://docs.stash.gg/guides/stash-pay/integration) for best practices and detailed instructions on generating checkout URLs and Stash links correctly.
-
-> **iOS Development Note:**
-> The first OpenCard or OpenModal call may be slow when running under the Xcode debugger (especially if connected wirelessly), due to `WKWebView` processes being heavily instrumented by Xcode. This delay only affects debug sessions on the first call, not production builds.
-
-
-### OpenCard()
-
-Drawer-style card: slides up from the bottom on phones, centered on tablets. Suited for Stash Pay payment links, pre-authenticated webshop URLs or payment opt-in dialogs.
+### Checkout card
 
 ```csharp
 using Stash.Native;
 
-public class MyStore : MonoBehaviour
-{
-    void PurchaseItem(string checkoutUrl)
-    {
-        var config = StashNativeCardConfig.Default;
-        // If your game is locked to landscape orientation, force portrait for checkout:
-        // config.forcePortrait = true;
-
-        StashNative.Instance.OpenCard(
-            STASH_URL_TO_OPEN,
-            dismissCallback: OnDialogDismissed,
-            successCallback: OnPaymentSuccess,
-            failureCallback: OnPaymentFailure,
-            config: config
-        );
-    }
-
-    void OnDialogDismissed() => VerifyPurchaseStatus();
-    void OnPaymentSuccess(string order) => VerifyPurchaseStatus();
-    void OnPaymentFailure() => ShowErrorMessage("Payment could not be processed");
-}
-```
-
-### Force portrait card in landscape games
-
-Use **`StashNativeCardConfig.forcePortrait = true`** when your game is locked to landscape but you want the Stash card in portrait. For best experience, we recommend following adjustments:
-
-**Lock Unity screen orientation while the potrait card is presented.** We recommend temporarily locking rotation in the Unity player for the duration of the card, then restoring every autorotation flag and the previous **`Screen.orientation`** in your dismiss, success, and failure paths. That way the game does not keep autorotating behind the potrait card, which can sometime cause keyboard focus or layout glitches.
-
-```csharp
-// To lock the orientation while the card is open, save current orientation settings, apply lock, and restore after:
-// Example:
-var savedOrientation = Screen.orientation;
-// ...save all autorotate states as needed...
-
-// Lock orientation to rotation used at the time card will be presented.
-Screen.orientation = ScreenOrientation.LandscapeLeft;
-
-// Restore all previous orientation/autorotate settings inside each callback:
 StashNative.Instance.OpenCard(
     checkoutUrl,
-    dismissCallback: () => { /* Restore orientation here */ },
-    successCallback: _ => { /* Restore orientation here */ },
-    failureCallback: () => { /* Restore orientation here */ },
-    config: config);
+    successCallback: order => VerifyAndGrant(order),   // verify on your backend before granting
+    failureCallback: () => ShowError(),
+    dismissCallback: () => RefreshShop());
 ```
 
-**Android: backdrop for landscape-only builds.** With **`forcePortrait`**, checkout runs in a portrait activity while Unity may still be landscape-only; the Unity surface can look black or distorted during the transition (This is Android OS behaviour). You can, optionally capture the current frame and pass it to the SDK **before** **`OpenCard`** so it is shown as a full-screen backdrop behind the dim overlay (JPEG bytes). The SDK consumes the buffer; you do not need to free it on the native side.
+- All callbacks and the config are optional.
+- Each card ends with exactly one callback. Also pass `networkErrorCallback`, and `externalPaymentCallback` if you use browser-based payment methods. See [Callbacks](https://stashgg.github.io/stash-native/usage/callbacks.html).
+- `OpenCard` returns `false` if a card or scanner is already open.
+- Landscape game? Pass `config: new StashNativeCardConfig { orientationPreference = StashNativeOrientationPreference.Portrait }`.
+
+### In-game browser
 
 ```csharp
-#if UNITY_ANDROID && !UNITY_EDITOR
-yield return new WaitForEndOfFrame();
-var snap = new Texture2D(Screen.width, Screen.height, TextureFormat.RGB24, false);
-snap.ReadPixels(new Rect(0, 0, Screen.width, Screen.height), 0, 0);
-snap.Apply();
-byte[] imageBytes = snap.EncodeToPNG(); // or ImageConversion.EncodeToJPG(snap, 75)
-Destroy(snap);
+StashNative.Instance.OpenBrowser(url);
 
-using (var stashCard = new AndroidJavaClass("com.stash.stashnative.StashNativeCard"))
-{
-    stashCard.CallStatic("setBackdropBytes", (object)imageBytes);
-}
-#endif
-
-StashNative.Instance.OpenCard(/* … */);
+// When your payment deep link arrives:
+StashNative.Instance.CloseBrowser();     // closes the browser, raises OnBrowserDismissed
+StashNative.Instance.DismissBrowser();   // iOS only: closes Safari without any callback
 ```
 
-After the flow ends, call **`setBackdropBytes(null)`** on Android if you use a backdrop, so a stale image is not reused. If Unity logs JNI warnings about **`byte[]`**, convert to **`sbyte[]`** when calling **`setBackdropBytes`** (see **`Assets/StashSample.cs`** in this repo).
+### QR code linking
 
-### OpenModal()
-
-Centered modal dialog on all devices. Same layout on phone and tablet; resizes on rotation. Suited for channel selection or as an alternative checkout style.
+Needs the [`gg.stash.unity.codelink`](Packages/gg.stash.unity.codelink/README.md) package.
 
 ```csharp
-using Stash.Native;
-
-StashNative.Instance.OpenModal(
-    STASH_URL_TO_OPEN,
-    dismissCallback: () => RefreshShopState(),
-    successCallback: order => OnPurchaseComplete(order),
-    failureCallback: OnPurchaseFailed
-);
-// All callbacks and config are optional
+if (StashNative.Instance.IsScannerAvailable)
+    StashNative.Instance.OpenScanner(code => LinkAccount(code));
 ```
 
-All callbacks and config are optional; you can pass only the ones you need or use the global events instead. See the API reference below for more details about configuration options.
+### Good to know
 
+- **Android pauses Unity while a card is open.** Callbacks raised during the card arrive after it closes.
+- **Callbacks arrive on a GameObject named `StashNative`.** The singleton creates it for you.
+- **A throwing callback doesn't break the others.** The exception is logged and reported on `OnNativeException`.
 
-### OpenBrowser()
+## API
 
-Opens the URL in the platform browser (Chrome Custom Tabs on Android, SFSafariViewController on iOS). Use when you need an alternative lightweight, system-native browser view.
+The C# API mirrors the native SDK, so the native docs describe each call, option and event. Everything is on `StashNative.Instance`.
 
-On iOS, `CloseBrowser()` dismisses the Safari view when your app regains focus; on Android it is a no-op as Chrome Custom Tabs can't be dismissed by the app.
+- **Checkout card**: `OpenCard(url, ...)` with an optional `StashNativeCardConfig`. See [opening the card](https://stashgg.github.io/stash-native/usage/checkout-card.html#open-the-card), [configuration](https://stashgg.github.io/stash-native/usage/checkout-card.html#configuration), [portrait checkout](https://stashgg.github.io/stash-native/usage/checkout-card.html#forcing-portrait-card) and the Android [backdrop](https://stashgg.github.io/stash-native/usage/checkout-card.html#portrait-backdrop-android) (`SetBackdropBytes`).
+- **In-game browser**: `OpenBrowser`, `CloseBrowser`, `DismissBrowser`, and the Android keep-alive service (`SetKeepAliveEnabled`, `SetKeepAliveConfig`). See [opening the browser](https://stashgg.github.io/stash-native/usage/browser.html#open-the-browser), [handling results](https://stashgg.github.io/stash-native/usage/browser.html#handling-results) and [keep-alive](https://stashgg.github.io/stash-native/usage/browser.html#keep-alive-service-android).
+- **QR code linking**: `OpenScanner` with an optional `StashNativeScannerConfig`, and `IsScannerAvailable`. See [opening the scanner](https://stashgg.github.io/stash-native/usage/codelink.html#open-the-scanner), [configuration](https://stashgg.github.io/stash-native/usage/codelink.html#configuration) and [errors](https://stashgg.github.io/stash-native/usage/codelink.html#errors).
+- **Callbacks**: pass them to `OpenCard` / `OpenScanner`, or subscribe to the matching `On...` events (`OnPaymentSuccess`, `OnCardDismissed`, `OnBrowserDismissed`, ...). See [Callbacks](https://stashgg.github.io/stash-native/usage/callbacks.html#order-of-events).
+- **State and control**: `IsCurrentlyPresented`, `IsPurchaseProcessing`, `Dismiss`, `ResetPresentationState`, `SdkVersion`, `SetInspectableWebViewsEnabled`. See [checking state](https://stashgg.github.io/stash-native/usage/checkout-card.html#checking-state) and [WebView debugging](https://stashgg.github.io/stash-native/usage/checkout-card.html#webview-debugging).
 
-```csharp
-StashNative.Instance.OpenBrowser(STASH_URL_TO_OPEN);
-// Later, on iOS only:
-StashNative.Instance.CloseBrowser();
-```
+Every member also has XML docs in `Runtime/StashNative.cs`, so your IDE shows the details inline.
 
-### OnBrowserClosed Callback
-
-Fires when the external browser closes (Chrome Custom Tabs on Android, `SFSafariViewController` on iOS):
-
-- after a direct `OpenBrowser()` call, and
-- after an external payment redirect from `OpenCard()` / `OpenModal()`.
-
-```csharp
-StashNative.Instance.OnBrowserClosed += () => Debug.Log("Browser closed");
-```
-
-Works out of the box on both platforms — no `AndroidManifest.xml` edits or activity subclassing required. The Android SDK owns the Custom Tabs result lifecycle internally via an invisible proxy activity that's auto-merged into your app from the bundled AAR.
-
-### Android keep-alive (optional)
-
-Android may kill or suspend your game during external payments in Chrome Custom Tabs or the browser, especially on low-memory devices. To prevent this, you can enable Stash's optional keep-alive foreground service (off by default). This service will automaticaly spawn when browser opens and unload when user returns to the game. See the [stash-native README](https://github.com/stashgg/stash-native/blob/main/README.md) for manifest and permission details. Enable it like this:
-
-```csharp
-#if UNITY_ANDROID && !UNITY_EDITOR
-StashNative.Instance.SetKeepAliveEnabled(true);
-StashNative.Instance.SetKeepAliveConfig(new StashNativeKeepAliveConfig
-{
-    notificationTitle = "Payment in progress",
-    notificationText = "Tap to return to the app",
-    notificationIconResId = 0  // 0 = library default icon; or your Android drawable resource id
-});
-#endif
-StashNative.Instance.OpenBrowser(checkoutUrl);
-```
-
----
-
-## Full API Reference
-
-All public API lives on the **`StashNative`** singleton. Access it via **`StashNative.Instance`**.
-
----
-
-### Singleton
-
-| Member | Description |
-|--------|-------------|
-| **`StashNative Instance`** | Static read-only. The single instance. Created on first access and persisted across scenes (`DontDestroyOnLoad`). |
-
----
-
-### Methods
-
-| Signature | Description |
-|-----------|-------------|
-| **`void OpenCard(string url, Action dismissCallback, Action<string> successCallback, Action failureCallback, StashNativeCardConfig? config)`** | Opens the URL in the native card (drawer). `successCallback` receives an optional order payload (may be empty). All callbacks and config are optional. |
-| **`void OpenModal(string url, Action dismissCallback, Action<string> successCallback, Action failureCallback, StashNativeModalConfig? config)`** | Opens the URL in a centered modal. Same success signature as `OpenCard`. |
-| **`void OpenBrowser(string url)`** | Opens the URL in the platform browser (Chrome Custom Tabs when `androidx.browser` is on the classpath, otherwise the system browser on Android; `SFSafariViewController` on iOS). |
-| **`void CloseBrowser()`** | **iOS only:** dismisses the Safari view programmatically. No-op on Android. |
-| **`void SetKeepAliveEnabled(bool enabled)`** | **Android only:** opt in to the SDK keep-alive foreground service during external browser flows. |
-| **`void SetKeepAliveConfig(StashNativeKeepAliveConfig config)`** | **Android only:** notification title, text, and optional icon resource id (`0` = library default). |
-| **`void Dismiss()`** | Dismisses the current card or modal. |
-| **`void SetInspectableWebViewsEnabled(bool enabled)`** | **Debug/QA only:** makes checkout WebViews inspectable (Safari Web Inspector on iOS 16.4+, `chrome://inspect` on Android). Off by default; do **not** enable in production. Call before opening any checkout. |
-| **`bool IsCurrentlyPresented`** | True if a card or modal is currently visible. |
-| **`bool IsPurchaseProcessing`** | True when a purchase is in progress and the dialog cannot be dismissed manually. |
-| **`bool IsInspectableWebViewsEnabled`** | True when checkout WebView inspection is enabled. Default false. |
-
----
-
-### Global Events
-
-Subscribe on `StashNative.Instance`.
-
-| Event | When it fires |
-|-------|----------------|
-| **`OnDialogDismissed`** | Card or modal was dismissed by the user. |
-| **`OnPaymentSuccess`** | Payment completed successfully in the in-app UI. Argument: optional order string from checkout (may be empty). |
-| **`OnPaymentFailure`** | Payment failed in the in-app UI. |
-| **`OnExternalPayment`** | Checkout opened an external URL (e.g. GPay, Klarna, crypto). Finalize via deeplink; same flow as described in [stash-native callbacks](https://github.com/stashgg/stash-native/blob/main/README.md). |
-| **`OnBrowserClosed`** | The external browser (Chrome Custom Tabs / SFSafariViewController) was closed after `OpenBrowser` or an external payment redirect. |
-| **`OnOptinResponse`** | Opt-in / channel selection response (e.g. `"stash_pay"`, `"native_iap"`). |
-| **`OnPageLoaded`** | Page finished loading (argument: load time in ms). |
-| **`OnNetworkError`** | Page load failed (no connection, HTTP error, timeout). |
-| **`OnNativeException`** | Exception during a native call (operation name, exception, missing library). |
-
-**Callbacks / events:** You can pass **per-call callbacks** to `OpenCard` / `OpenModal` (dismiss, success, failure) and/or subscribe to the **events** above. Per-call callbacks are ideal for handling the result of a specific open (e.g. refresh inventory after this purchase via Stash Pay/Webshop). Events are ideal for global listeners (e.g. analytics, logging, opt-in dialogs) that should run for every card/modal result. Both are invoked when a result occurs.
-
----
-
-### Config types
-
-#### `StashNativeCardConfig` (struct)
-
-Optional per-call config for **`OpenCard`**. **`StashNativeCardConfig.Default`** for defaults.
-
-| Field | Default | Description |
-|-------|---------|-------------|
-| **`forcePortrait`** | `false` | Portrait-locked on phone when true. **Required for landscape-locked games:** Set to `true` if your Unity game is locked to landscape orientation to ensure checkout displays in portrait. Portrait orientation must be enabled in Unity Player Settings (iOS: `allowedAutorotateToPortrait: 1`). |
-| **`cardHeightRatioPortrait`** | `0.68f` | Card height ratio portrait (0.1–1.0). |
-| **`cardWidthRatioLandscape`** | `0.7f` | Card width ratio landscape. |
-| **`cardHeightRatioLandscape`** | `0.9f` | Card height ratio landscape. |
-| **`tabletWidthRatioPortrait`** | `0.4f` | Tablet width portrait. |
-| **`tabletHeightRatioPortrait`** | `0.5f` | Tablet height portrait. |
-| **`tabletWidthRatioLandscape`** | `0.3f` | Tablet width landscape. |
-| **`tabletHeightRatioLandscape`** | `0.6f` | Tablet height landscape. |
-| **`autoClose`** | `true` | When `false`, the card stays open after the payment success/failure callback (callbacks still fire) until closed by the page, user, or host. |
-| **`backgroundColor`** | `null` | Optional shell color (`#RGB`, `#RRGGBB`, `#AARRGGBB`). Omit for the default Stash light/dark theme. |
-
-#### `StashNativeModalConfig` (struct)
-
-Optional per-call config for **`OpenModal`**. **`StashNativeModalConfig.Default`** for defaults.
-
-| Field | Default | Description |
-|-------|---------|-------------|
-| **`allowDismiss`** | `true` | User can dismiss (tap outside / gestures per native SDK). |
-| **`phoneWidthRatioPortrait`** … **`tabletHeightRatioLandscape`** | (see struct) | Size ratios 0.1–1.0. |
-| **`autoClose`** | `true` | When `false`, the modal stays open after the payment success/failure callback (callbacks still fire) until closed by the page, user, or host. |
-| **`backgroundColor`** | `null` | Optional shell color; omit for default Stash theme. |
-
-#### `StashNativeKeepAliveConfig` (struct)
-
-Used with **`SetKeepAliveConfig`** on **Android** only.
-
-| Field | Description |
-|-------|-------------|
-| **`notificationTitle`** | Notification title. |
-| **`notificationText`** | Notification body. |
-| **`notificationIconResId`** | Android drawable resource id, or **`0`** for the library default icon. |
-
-
-## Unity Editor Simulator
+## Unity Editor simulator
 
 <div align="center">
   <img src="https://storage.googleapis.com/stash_sdk_demo/popup_editor.png" width="800px" /><br/>
   <em>Unity Editor Simulation</em>
 </div>
 </br>
-</br>
 
-Package includes a Unity editor extension that allows you to test Stash URLs directly in the Unity Editor without building to a device.
+In Play mode, `OpenCard()` opens the checkout in a preview window (macOS and Windows) with buttons to trigger payment and dismiss callbacks; `autoClose` and `allowDismiss` behave as on device. `OpenScanner()` opens a text field standing in for the camera. `OpenBrowser()` opens the system browser.
 
-When you call `OpenCard()` or `OpenModal()` in the Editor, the extension intercepts and displays the flow in a preview window. You can interact with the UI and verify callback events. `OpenBrowser()` is not simulated; it opens the system browser.
+## Migrating from 2.x
 
-> **Note:** Currently **Windows** and **macOS** versions of Unity are supported for editor simulator. Linux versions of editor are not supported.
+Removed and renamed members carry `[Obsolete(error: true)]`, so the compiler points at every call site.
 
-## Troubleshooting
+**Removed**
 
-See **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** for iOS/Android build issues (Xcode symbols, framework embedding, Gradle, Custom Tabs, keep-alive, and related fixes).
+- `OpenModal` and `StashNativeModalConfig`. Use `OpenCard`; the card now adapts to tablets and large screens.
+- `OnOptinResponse`. The checkout page handles channel selection itself.
+- `backgroundColor`. The checkout themes itself via the `theme=` URL parameter.
 
-## Documentation
+**Renamed**
 
-- [Stash Documentation](https://docs.stash.gg) - Full API reference and integration guides.
+- `OnDialogDismissed` is now `OnCardDismissed`.
+- `OnBrowserClosed` is now `OnBrowserDismissed`.
+- `forcePortrait = true` is now `orientationPreference = StashNativeOrientationPreference.Portrait`.
 
-## Versioning
+**Changed**
 
-This package follows [Semantic Versioning](https://semver.org/) (major.minor.patch):
+- Card sizing uses points instead of screen ratios: `preferredContentWidth`, `preferredContentHeight`, `maximumContentHeight`, `edgeMargin`. The `cardHeightRatioPortrait` and `tablet*Ratio*` fields are gone.
+- `OnCardDismissed` no longer fires after a payment auto-close, a network error or an external-payment handoff. If you cleaned up in the dismiss callback, pass `networkErrorCallback` to `OpenCard` and handle the success and failure callbacks too.
+- `OpenCard` returns `bool`, `false` when a card or scanner is already open. Existing calls still compile.
+- Config types are classes, so `new StashNativeCardConfig { ... }` starts from the native defaults.
+- The Android backdrop is set with `SetBackdropBytes(bytes)` instead of calling the native class through JNI.
 
-- **Major**: Breaking changes
-- **Minor**: New features (backward compatible)
-- **Patch**: Bug fixes
+**Requirements**
 
-## Support
+- Unity 2022.3, iOS 15 and compileSdk 34 are now the minimums.
+- The AndroidX libraries listed under [Installation](#android-dependencies) are required, not optional.
+- The native bridges were renamed to `StashNativeUnityBridge.java` and `StashNativeBridge.mm`. Delete any 2.x copies in `Assets/`.
 
-- Documentation: https://docs.stash.gg
-- Email: developers@stash.gg
+## More
+
+- [TROUBLESHOOTING.md](TROUBLESHOOTING.md): build issues on both platforms.
+- [Stash Native SDK docs](https://stashgg.github.io/stash-native/) and [Stash Documentation](https://docs.stash.gg).
+- Support: developers@stash.gg

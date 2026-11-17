@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Resolved by the External Dependency Manager for Unity (EDM4U), if installed.
+     Without EDM4U, add the same libraries to Assets/Plugins/Android/mainTemplate.gradle. -->
+<dependencies>
+  <androidPackages>
+    <androidPackage spec="androidx.camera:camera-camera2:1.3.4" />
+    <androidPackage spec="androidx.camera:camera-lifecycle:1.3.4" />
+    <androidPackage spec="androidx.camera:camera-view:1.3.4" />
+    <androidPackage spec="com.google.zxing:core:3.5.3" />
+  </androidPackages>
+</dependencies>
