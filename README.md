@@ -14,7 +14,7 @@ This README covers what is specific to Unity: installing the packages, the C# AP
 - [Callbacks](https://stashgg.github.io/stash-native/usage/callbacks.html)
 - [Engine wrappers](https://stashgg.github.io/stash-native/architecture/engine-wrappers.html)
 
-> **3.0.0 is a preview release** tracking the Stash Native 3.0.0 preview. It is a breaking update from 2.x; see [Migrating from 2.x](#migrating-from-2x).
+> **3.0.0 is a breaking update from 2.x.** See [Migrating from 2.x](#migrating-from-2x).
 
 ## Requirements
 
@@ -26,10 +26,8 @@ This README covers what is specific to Unity: installing the packages, the C# AP
 
 | Package | Git URL (Package Manager → **+** → *Add package from git URL*) |
 |---------|------------------------------------------------------------------|
-| **`gg.stash.unity`** (required) | `https://github.com/stashgg/stash-unity.git?path=Packages/gg.stash.unity#update/stash-native-3.0.0` |
-| **`gg.stash.unity.codelink`** (optional, QR scanner) | `https://github.com/stashgg/stash-unity.git?path=Packages/gg.stash.unity.codelink#update/stash-native-3.0.0` |
-
-During the 3.0.0 preview the packages install from the `update/stash-native-3.0.0` branch, which the `#update/stash-native-3.0.0` suffix selects. Install both packages from the same branch. To pick up later changes on the branch, remove and re-add the package, or delete its entry under `"lock"` in `Packages/packages-lock.json`.
+| **`gg.stash.unity`** (required) | `https://github.com/stashgg/stash-unity.git?path=Packages/gg.stash.unity` |
+| **`gg.stash.unity.codelink`** (optional, QR scanner) | `https://github.com/stashgg/stash-unity.git?path=Packages/gg.stash.unity.codelink` |
 
 The QR scanner package has its own camera setup and Android dependencies; see its [README](Packages/gg.stash.unity.codelink/README.md).
 
