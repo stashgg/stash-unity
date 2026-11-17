@@ -5,6 +5,20 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [2.3.2] - 2026-11-17
+
+### Changed
+
+- **Embedded Stash Native SDK 2.3.2 on Android** (`StashNative-2.3.2.aar`). The iOS `StashNative.xcframework` stays at 2.3.1. No Unity API change.
+- **Android**: checkout can open an external payment (for example Google Pay) in a Custom Tab over the card with `window.stash_sdk.externalBrowser(url, { keepOpen: true })`. The card stays open under the tab, `OnExternalPayment` is informational, the purchase arrives through `OnPaymentSuccess`, and the card and tab close together. No `OnBrowserClosed` follows on this path, and the game must not call `Dismiss()` from `OnExternalPayment`: the tab closes with the card, which ends the payment. This needs `androidx.browser` (Chrome Custom Tabs) in the game; without it, the payment closes the card as before.
+- **Android**: the optional keep-alive notification returns to a card covered by such a tab instead of closing it.
+
+### Fixed
+
+- **Android**: stopping the keep-alive service right after starting it no longer crashes the game on Android 8+.
+- **Android**: `ResetPresentationState()` stops the keep-alive service, which otherwise kept its notification after a reset while a browser was open.
+
+
 ## [2.3.1] - 2026-09-03
 
 ### Changed
