@@ -4,7 +4,7 @@
   <img src="https://github.com/stashgg/stash-native/raw/main/.github/assets/stash_unity.png" width="128" height="128" alt="Stash Unity Logo"/>
 </p>
 
-Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native) (embedded **Stash Native 2.3.1**), enabling native-feeling Stash Pay IAP checkout and webshop presentation directly inside your Unity game (Android/iOS).
+Unity package wrapper for [stash-native](https://github.com/stashgg/stash-native) (embedded **Stash Native 2.3.2** on Android and **2.3.1** on iOS), enabling native-feeling Stash Pay IAP checkout and webshop presentation directly inside your Unity game (Android/iOS).
 
 ## Requirements
 
@@ -35,7 +35,7 @@ Use your package manager or custom project Gradle file to add the following depe
 
 | Dependency | Why add it |
 |------------|------------|
-| **`androidx.browser:browser`** (1.7.0 and up) | **`OpenBrowser()`** and some external browser flows use Chrome Custom Tabs when this is on the classpath; otherwise Android may open the plain system browser. |
+| **`androidx.browser:browser`** (1.7.0 and up) | **`OpenBrowser()`** and some external browser flows use Chrome Custom Tabs when this is on the classpath; otherwise Android may open the plain system browser. Checkout can keep the card open under the browser (`keepOpen`) only with Custom Tabs; without it, that payment closes the card as before. |
 | **`androidx.core:core`** (1.12.0 and up) — **recommended** | Aligns Jetpack with current Stash Native behavior (broadcast receiver registration, foreground service helpers, and other `androidx.core` APIs). Unity projects that still resolve **very old** `androidx.core` (e.g. 1.2.x from legacy EDM trees) can hit **`NoSuchMethodError`** or subtle incompatibilities with other plugins. Pinning **`androidx.core:core`** to **1.12.0+** is not required by this package but is **recommended** for the most reliable Android experience. |
 
 **Steps (Custom Gradle Template):**
@@ -214,6 +214,8 @@ Fires when the external browser closes (Chrome Custom Tabs on Android, `SFSafari
 - after a direct `OpenBrowser()` call, and
 - after an external payment redirect from `OpenCard()` / `OpenModal()`.
 
+It does not fire when checkout keeps the card open under the browser (Android, `keepOpen`); the card then ends with its own events.
+
 ```csharp
 StashNative.Instance.OnBrowserClosed += () => Debug.Log("Browser closed");
 ```
@@ -280,7 +282,7 @@ Subscribe on `StashNative.Instance`.
 | **`OnDialogDismissed`** | Card or modal was dismissed by the user. |
 | **`OnPaymentSuccess`** | Payment completed successfully in the in-app UI. Argument: optional order string from checkout (may be empty). |
 | **`OnPaymentFailure`** | Payment failed in the in-app UI. |
-| **`OnExternalPayment`** | Checkout opened an external URL (e.g. GPay, Klarna, crypto). Finalize via deeplink; same flow as described in [stash-native callbacks](https://github.com/stashgg/stash-native/blob/main/README.md). |
+| **`OnExternalPayment`** | Checkout opened an external URL (e.g. GPay, Klarna, crypto). Finalize via deeplink; same flow as described in [stash-native callbacks](https://github.com/stashgg/stash-native/blob/main/README.md). On Android, checkout can instead keep the card open under the browser (`keepOpen`): the purchase then arrives through `OnPaymentSuccess` and no `OnBrowserClosed` follows. Do not call `Dismiss()` from this event: on that path the tab closes with the card, which ends the payment. |
 | **`OnBrowserClosed`** | The external browser (Chrome Custom Tabs / SFSafariViewController) was closed after `OpenBrowser` or an external payment redirect. |
 | **`OnOptinResponse`** | Opt-in / channel selection response (e.g. `"stash_pay"`, `"native_iap"`). |
 | **`OnPageLoaded`** | Page finished loading (argument: load time in ms). |
